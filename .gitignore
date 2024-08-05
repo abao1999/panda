@@ -1,3 +1,32 @@
+# data directory and files
+data/
+*.arrow
+
+# output and logging files
+outputs/
+*/events.out*
+logs/
+**/.ipynb_checkpoints/*
+**/figures/*
+**/logs/*
+**/outputs/*
+**/metrics/*
+**/checkpoints/*
+**/wandb/*
+**/runs/*
+**/*.log
+
+# run outputs
+*.log
+*.sbatch
+**/*.pyc
+**/.hydra/*
+.vscode/*
+**/__pycache__/*
+**/.DS_Store
+**/*.egg-info
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
