@@ -8,7 +8,7 @@ import re
 import sys
 import json
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 
 import numpy as np
 import torch
@@ -22,20 +22,6 @@ from transformers import (
 )
 import accelerate
 import gluonts
-
-
-### Utils for pipeline
-def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:
-    max_len = max(len(c) for c in tensors)
-    padded = []
-    for c in tensors:
-        assert isinstance(c, torch.Tensor)
-        assert c.ndim == 1
-        padding = torch.full(
-            size=(max_len - len(c),), fill_value=torch.nan, device=c.device
-        )
-        padded.append(torch.concat((padding, c), dim=-1))
-    return torch.stack(padded)
 
 
 ### Utils for training
@@ -207,6 +193,25 @@ def has_enough_observations(
         return True
     return False
 
+
+def ensure_contiguous(model):
+    """
+    Ensure that all parameters in the model are contiguous. 
+    If any parameter is not contiguous, make it contiguous.
+    
+    :param model: The model whose parameters need to be checked.
+    """
+    for name, param in model.named_parameters():
+        if not param.is_contiguous():
+            print(f"Parameter {name} is not contiguous. Making it contiguous.")
+            param.data = param.data.contiguous()
+        else:
+            print(f"Parameter {name} is already contiguous.")
+
+    # Verify that parameters are now contiguous
+    for name, param in model.named_parameters():
+        assert param.is_contiguous(), f"Parameter '{name}' is not contiguous after making changes."
+    print("All parameters are contiguous.")
 
 # def setup_rocm_distributed():
 #     """

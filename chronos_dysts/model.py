@@ -3,52 +3,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # TODO: modify for dysts
 
-from dataclasses import dataclass
-from typing import Any, Dict, Literal, Optional
-
-import chronos # TODO: only needed to get attribute in config
-# from chronos import ChronosTokenizer
-from chronos_dysts.tokenizer import ChronosTokenizer
-
 import torch
 import torch.nn as nn
 from transformers import (
     GenerationConfig,
     PreTrainedModel,
 )
-
-
-@dataclass
-class ChronosConfig:
-    """
-    This class holds all the configuration parameters to be used
-    by ``ChronosTokenizer`` and ``ChronosModel``.
-    """
-
-    tokenizer_class: str
-    tokenizer_kwargs: Dict[str, Any]
-    context_length: int
-    prediction_length: int
-    n_tokens: int
-    n_special_tokens: int
-    pad_token_id: int
-    eos_token_id: int
-    use_eos_token: bool
-    model_type: Literal["causal", "seq2seq"]
-    num_samples: int
-    temperature: float
-    top_k: int
-    top_p: float
-
-    def __post_init__(self):
-        assert (
-            self.pad_token_id < self.n_special_tokens
-            and self.eos_token_id < self.n_special_tokens
-        ), f"Special token id's must be smaller than {self.n_special_tokens=}"
-
-    def create_tokenizer(self) -> "ChronosTokenizer":
-        class_ = getattr(chronos, self.tokenizer_class)
-        return class_(**self.tokenizer_kwargs, config=self)
+from typing import Optional
+from chronos_dysts.tokenizer import ChronosConfig
+# from chronos_dysts.utils import ChronosConfigType # this fails because circular import
 
 
 class ChronosModel(nn.Module):

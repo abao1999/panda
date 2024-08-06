@@ -22,7 +22,7 @@ from gluonts.transform import (
 )
 
 # from chronos import ChronosTokenizer
-from chronos_dysts.tokenizer import ChronosTokenizer
+from chronos_dysts.utils import ChronosTokenizerType
 
 class PseudoShuffledIterableDataset(IterableDataset):
     """
@@ -107,7 +107,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         self,
         datasets: list,
         probabilities: List[float],
-        tokenizer: ChronosTokenizer,
+        tokenizer: ChronosTokenizerType,
         context_length: int = 512,
         prediction_length: int = 64,
         drop_prob: float = 0.2,

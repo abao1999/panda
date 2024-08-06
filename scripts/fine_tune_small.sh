@@ -6,10 +6,10 @@
 #     --max-steps 100 \
 #     --learning-rate 0.001
 
-# On multiple GPUs (example with 6 GPUs)
-torchrun --nproc-per-node=6 scripts/training/train.py --config scripts/training/configs/chronos-t5-small.yaml
+# # On multiple GPUs (example with 6 GPUs)
+# torchrun --nproc-per-node=6 scripts/training/train.py --config scripts/training/configs/chronos-t5-small.yaml
 
-# # On single GPU
-# CUDA_VISIBLE_DEVICES=0 python scripts/training/train.py --config scripts/training/configs/chronos-t5-small.yaml
+# On single GPU
+CUDA_VISIBLE_DEVICES=0 python scripts/training/train.py --config scripts/training/configs/chronos-t5-small.yaml
 
 # accelerate launch scripts/training/train.py --config scripts/training/configs/chronos-t5-small.yaml

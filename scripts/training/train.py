@@ -21,7 +21,7 @@ from gluonts.transform import LastValueImputation
 
 # from torch.nn.parallel import DistributedDataParallel as DDP
 # from chronos import ChronosConfig
-from chronos_dysts.model import ChronosConfig
+from chronos_dysts.tokenizer import ChronosConfig
 
 from chronos_dysts.utils import (
     is_main_process,
@@ -30,6 +30,7 @@ from chronos_dysts.utils import (
     get_next_path,
     load_model,
     has_enough_observations,
+    ensure_contiguous,
 )
 from chronos_dysts.dataset import ChronosDataset
 
@@ -178,6 +179,8 @@ def main(
 
     # Add extra items to model config so that it's saved in the ckpt
     model.config.chronos_config = chronos_config.__dict__
+    ensure_contiguous(model)
+
 
     # # This actually makes things slower, but doesnt throw errors at least
     # # torch distributed training, for torchrun (Elastic Launch)
@@ -233,9 +236,13 @@ def main(
     )
     log_on_main("Training", logger)
 
+    print("TRAINING")
     trainer.train()
 
     if is_main_process():
+        print("SAVING MODEL")
+        ensure_contiguous(model)
+        print("ENSURED all model parameters are contiguous")
         model.save_pretrained(output_dir / "checkpoint-final")
         save_training_info(
             output_dir / "checkpoint-final", training_config=raw_training_config

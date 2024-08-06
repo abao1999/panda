@@ -5,9 +5,49 @@
 
 import torch
 from typing import Any, Optional, Tuple
-
 # from chronos import ChronosConfig
-from chronos_dysts.model import ChronosConfig # only needed for typing
+from dataclasses import dataclass
+from typing import Any, Dict, Literal, Optional
+
+
+@dataclass
+class ChronosConfig:
+    """
+    This class holds all the configuration parameters to be used
+    by ``ChronosTokenizer`` and ``ChronosModel``.
+    """
+
+    tokenizer_class: str
+    tokenizer_kwargs: Dict[str, Any]
+    context_length: int
+    prediction_length: int
+    n_tokens: int
+    n_special_tokens: int
+    pad_token_id: int
+    eos_token_id: int
+    use_eos_token: bool
+    model_type: Literal["causal", "seq2seq"]
+    num_samples: int
+    temperature: float
+    top_k: int
+    top_p: float
+
+    def __post_init__(self):
+        assert (
+            self.pad_token_id < self.n_special_tokens
+            and self.eos_token_id < self.n_special_tokens
+        ), f"Special token id's must be smaller than {self.n_special_tokens=}"
+
+    def create_tokenizer(self) -> "ChronosTokenizer": # this type hint is source of circular import
+        # # options for dynamic class access (requires class as attribute of module i.e. __init__.py file)
+        # class_ = getattr(__import__(__name__), self.tokenizer_class)
+        # class_ = getattr("chronos_dysts.tokenizer", self.tokenizer_class)
+        # # module = importlib.import_module(module_name)
+        # # can also move to end of file and use direct class registry or factory function
+        class_ = globals().get(self.tokenizer_class) # solution with globals, not recommended
+        return class_(**self.tokenizer_kwargs, config=self)
+    
+
 
 class ChronosTokenizer:
     """

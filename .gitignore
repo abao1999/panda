@@ -3,7 +3,11 @@ data/
 *.arrow
 
 # output and logging files
-outputs/
+output/
+*/run/
+*.pt
+*.pth
+*.safetensors
 */events.out*
 logs/
 **/.ipynb_checkpoints/*
