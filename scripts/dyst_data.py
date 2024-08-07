@@ -58,22 +58,24 @@ def main():
     num_periods = 5
     num_points = 1024
 
-    train, test = split_systems(0.3, seed=rseed)    
+    test, train = split_systems(0.3, seed=rseed)    
     print(train)
     print(test)
 
     train_ensemble = make_trajectory_ensemble(
-        num_points, subset=train, random_state=rseed, use_tqdm=True, standardize=True, pts_per_period=num_points//num_periods
+        num_points, subset=train, random_state=rseed, use_tqdm=True, standardize=True, pts_per_period=num_points//num_periods,
     )
     test_ensemble = make_trajectory_ensemble(
-        num_points, subset=test, random_state=rseed, use_tqdm=True, standardize=True, pts_per_period=num_points//num_periods
+        num_points, subset=test, random_state=rseed, use_tqdm=True, standardize=True, pts_per_period=num_points//num_periods,
     )
 
     print("Saving timeseries to arrow files")    
     work_dir = os.getenv('WORK')
-    data_dir = os.path.join(work_dir, 'data')
 
-    for trajs in [train_ensemble, test_ensemble]:
+    for split, trajs in [('train', train_ensemble), ('test', test_ensemble)]:
+        
+        data_dir = os.path.join(work_dir, f'data/{split}')
+        os.makedirs(data_dir, exist_ok=True)
         process_trajs(data_dir, trajs)
 
 
