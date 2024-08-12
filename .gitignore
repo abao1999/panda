@@ -1,15 +1,17 @@
 # data directory and files
 data/
 *.arrow
+# *.csv
 
 # output and logging files
 output/
-*/run/
 *.pt
 *.pth
 *.safetensors
 */events.out*
 logs/
+# **/results/
+**/run/
 **/.ipynb_checkpoints/*
 **/figures/*
 **/logs/*

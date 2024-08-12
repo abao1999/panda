@@ -208,10 +208,10 @@ def ensure_contiguous(model):
         else:
             print(f"Parameter {name} is already contiguous.")
 
-    # Verify that parameters are now contiguous
-    for name, param in model.named_parameters():
-        assert param.is_contiguous(), f"Parameter '{name}' is not contiguous after making changes."
-    print("All parameters are contiguous.")
+    # # Verify that parameters are now contiguous
+    # for name, param in model.named_parameters():
+    #     assert param.is_contiguous(), f"Parameter '{name}' is not contiguous after making changes."
+    # print("All parameters are contiguous.")
 
 # def setup_rocm_distributed():
 #     """

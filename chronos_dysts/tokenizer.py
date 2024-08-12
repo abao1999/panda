@@ -5,9 +5,9 @@
 
 import torch
 from typing import Any, Optional, Tuple
-# from chronos import ChronosConfig
 from dataclasses import dataclass
 from typing import Any, Dict, Literal, Optional
+import importlib
 
 
 @dataclass
@@ -39,12 +39,10 @@ class ChronosConfig:
         ), f"Special token id's must be smaller than {self.n_special_tokens=}"
 
     def create_tokenizer(self) -> "ChronosTokenizer": # this type hint is source of circular import
-        # # options for dynamic class access (requires class as attribute of module i.e. __init__.py file)
-        # class_ = getattr(__import__(__name__), self.tokenizer_class)
-        # class_ = getattr("chronos_dysts.tokenizer", self.tokenizer_class)
-        # # module = importlib.import_module(module_name)
         # # can also move to end of file and use direct class registry or factory function
         class_ = globals().get(self.tokenizer_class) # solution with globals, not recommended
+        # module = importlib.import_module(__name__) # __import__(__name__)
+        # class_ = getattr(module, self.tokenizer_class)
         return class_(**self.tokenizer_kwargs, config=self)
     
 

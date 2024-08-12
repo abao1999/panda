@@ -24,9 +24,17 @@ from .typechecks import (
     is_valid_vector,
 )
 
-from .types import (
+from .type_aliases import (
     FloatOrFloatSequence,
     ChronosTokenizerType,
     ChronosModelType,
     ChronosConfigType,
+    offset_alias_to_period_alias,
+)
+
+# need to put this here to avoid circular import
+from .eval_utils import (
+    to_gluonts_univariate,
+    load_and_split_dataset,
+    generate_sample_forecasts,
 )

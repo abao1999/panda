@@ -179,8 +179,6 @@ def main(
 
     # Add extra items to model config so that it's saved in the ckpt
     model.config.chronos_config = chronos_config.__dict__
-    ensure_contiguous(model)
-
 
     # # This actually makes things slower, but doesnt throw errors at least
     # # torch distributed training, for torchrun (Elastic Launch)
@@ -228,6 +226,7 @@ def main(
         remove_unused_columns=False,
     )
 
+    ensure_contiguous(model)
     # Create Trainer instance
     trainer = Trainer(
         model=model,
@@ -240,9 +239,7 @@ def main(
     trainer.train()
 
     if is_main_process():
-        print("SAVING MODEL")
-        ensure_contiguous(model)
-        print("ENSURED all model parameters are contiguous")
+        # ensure_contiguous(model)
         model.save_pretrained(output_dir / "checkpoint-final")
         save_training_info(
             output_dir / "checkpoint-final", training_config=raw_training_config

@@ -1,13 +1,12 @@
 import os
-import dysts
 import numpy as np
-import dysts.flows as flows
 
 from pathlib import Path
 from typing import List, Union, Dict
 from datetime import datetime
 from dysts.base import get_attractor_list, make_trajectory_ensemble
 from gluonts.dataset.arrow import ArrowWriter
+import importlib
 
 
 def split_systems(prop: float, seed: int):
@@ -33,11 +32,12 @@ def convert_to_arrow(
         time_series.ndim == 2
     )
 
-    # Set an arbitrary start time
-    dt = datetime.now().strftime("%m_%d_%H_%M")
+    # GluonTS requires this datetime format for reading arrow file
+    # TODO: we don't need to store start time, get rid of this?
+    start = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     dataset = [
-        {"start": dt, "target": ts} for ts in time_series
+        {"start": start, "target": ts} for ts in time_series
     ]
 
     ArrowWriter(compression=compression).write_to_file(
@@ -79,7 +79,24 @@ def main():
         process_trajs(data_dir, trajs)
 
 
+# TODO: once we add initial condition option for dysts.make_trajectory_ensemble, we need to modify this
+def make_single_dyst(dyst_name="Lorenz", split="train"):
+    """
+    A test function to make a single [dyst_name].arrow file in data/train split
+    """
+    work_dir = os.getenv('WORK')
+    data_dir = os.path.join(work_dir, 'data', split)
+    os.makedirs(data_dir, exist_ok=True)
+    num_points = 1024
+    num_periods = 5
+    dyst_module = importlib.import_module("dysts.flows")
+    dyst_class_ = getattr(dyst_module, dyst_name)
+    print(dyst_class_)
+    traj = dyst_class_().make_trajectory(num_points, standardize=True, pts_per_period=num_points//num_periods)
+    convert_to_arrow(os.path.join(data_dir, f"{dyst_name}.arrow"), traj)
+
 if __name__ == '__main__':
     main()
+    # make_single_dyst(dyst_name="Lorenz", split="train")
 
 

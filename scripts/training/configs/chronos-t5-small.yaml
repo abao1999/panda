@@ -1,18 +1,18 @@
 training_data_paths:
-- "/stor/work/AMDG_Gilpin_Summer2024/data/lorenz-data.arrow"
+- "/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz.arrow"
 probability:
 - 1.0
 context_length: 512
 prediction_length: 64
 min_past: 60
-max_steps: 2_00
-save_steps: 2_00
-log_steps: 50
+max_steps: 2_000
+save_steps: 2_000
+log_steps: 100
 per_device_train_batch_size: 32
 learning_rate: 0.001
 optim: adamw_torch_fused
 num_samples: 20
-shuffle_buffer_length: 2_00
+shuffle_buffer_length: 2_000
 gradient_accumulation_steps: 1
 model_id: google/t5-efficient-small
 model_type: seq2seq

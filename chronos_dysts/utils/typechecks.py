@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Optional
-from .types import FloatOrFloatSequence
+from .type_aliases import FloatOrFloatSequence
 
 # Typechecks
 def is_bool(x):
