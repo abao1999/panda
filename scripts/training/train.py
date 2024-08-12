@@ -39,7 +39,8 @@ app = typer.Typer(pretty_exceptions_enable=False)
 @app.command()
 @use_yaml_config(param_name="config")
 def main(
-    training_data_paths: str,
+    train_data_dir: str,
+    extra_train_data_paths: Optional[str] = None,
     probability: Optional[str] = None,
     context_length: int = 512,
     prediction_length: int = 64,
@@ -97,24 +98,32 @@ def main(
 
     raw_training_config = deepcopy(locals())
     output_dir = Path(output_dir)
-    training_data_paths = ast.literal_eval(training_data_paths)
-    assert isinstance(training_data_paths, list)
 
+    # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
+    train_data_paths = list(str(path) for path in Path(train_data_dir).rglob("*"))
+
+    # add any additional arrow data filepaths specified to our training set
+    if extra_train_data_paths is not None:
+        extra_train_data_paths = ast.literal_eval(extra_train_data_paths)
+        assert isinstance(extra_train_data_paths, list)
+        train_data_paths += extra_train_data_paths
+
+    # set probabilities (how we weight draws from each data file)
     if isinstance(probability, str):
         probability = ast.literal_eval(probability)
     elif probability is None:
-        probability = [1.0 / len(training_data_paths)] * len(training_data_paths)
+        probability = [1.0 / len(train_data_paths)] * len(train_data_paths)
     assert isinstance(probability, list)
 
-    assert len(training_data_paths) == len(probability)
+    assert len(train_data_paths) == len(probability)
 
-    if dataloader_num_workers > len(training_data_paths):
+    if dataloader_num_workers > len(train_data_paths):
         log_on_main(
-            f"Setting the number of data loader workers to {len(training_data_paths)}, "
+            f"Setting the number of data loader workers to {len(train_data_paths)}, "
             f"instead of {dataloader_num_workers}.",
             logger,
         )
-        dataloader_num_workers = len(training_data_paths)
+        dataloader_num_workers = len(train_data_paths)
 
     if isinstance(tokenizer_kwargs, str):
         tokenizer_kwargs = ast.literal_eval(tokenizer_kwargs)
@@ -126,8 +135,8 @@ def main(
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
-        f"Loading and filtering {len(training_data_paths)} datasets "
-        f"for training: {training_data_paths}",
+        f"Loading and filtering {len(train_data_paths)} datasets "
+        f"for training: {train_data_paths}",
         logger,
     )
 
@@ -145,7 +154,7 @@ def main(
             ),
             FileDataset(path=Path(data_path), freq="h"),
         )
-        for data_path in training_data_paths
+        for data_path in train_data_paths
     ]
 
     log_on_main("Initializing model", logger)

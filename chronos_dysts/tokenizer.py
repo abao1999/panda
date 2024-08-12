@@ -40,9 +40,9 @@ class ChronosConfig:
 
     def create_tokenizer(self) -> "ChronosTokenizer": # this type hint is source of circular import
         # # can also move to end of file and use direct class registry or factory function
-        class_ = globals().get(self.tokenizer_class) # solution with globals, not recommended
-        # module = importlib.import_module(__name__) # __import__(__name__)
-        # class_ = getattr(module, self.tokenizer_class)
+        # class_ = globals().get(self.tokenizer_class) # solution with globals, not recommended
+        module = importlib.import_module(__name__) # __import__(__name__)
+        class_ = getattr(module, self.tokenizer_class)
         return class_(**self.tokenizer_kwargs, config=self)
     
 

@@ -2,6 +2,9 @@
 data/
 *.arrow
 *.csv
+*.png
+*.jpg
+*.jpeg
 
 # output and logging files
 output/

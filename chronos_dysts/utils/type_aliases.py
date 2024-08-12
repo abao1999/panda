@@ -11,6 +11,7 @@ ChronosModelType = ChronosModel
 ChronosConfigType = ChronosConfig
 
 # Taken from pandas._libs.tslibs.dtypes.OFFSET_TO_PERIOD_FREQSTR
+# NOTE: these are just for the chronos benchmark datasets, we don't need these for dysts
 offset_alias_to_period_alias = {
     "WEEKDAY": "D",
     "EOM": "M",

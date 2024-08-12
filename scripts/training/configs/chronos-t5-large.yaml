@@ -1,7 +1,11 @@
-training_data_paths:
-- "/stor/work/AMDG_Gilpin_Summer2024/data/lorenz-data.arrow"
-probability:
-- 1.0
+# directory containing files used for training data
+train_data_dir: "/stor/work/AMDG_Gilpin_Summer2024/data/train/"
+# additional files to add to training data set
+extra_train_data_paths: null
+# - "/stor/work/AMDG_Gilpin_Summer2024/data/lorenz-data.arrow"
+# probabilities to weight how many times we see data files
+probability: null
+# - 1.0
 context_length: 512
 prediction_length: 64
 min_past: 60
