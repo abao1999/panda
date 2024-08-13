@@ -8,6 +8,7 @@ from dysts.base import get_attractor_list, make_trajectory_ensemble, init_cond_s
 from dysts.utils import standardize_ts
 from gluonts.dataset.arrow import ArrowWriter
 import importlib
+from typing import Optional
 
 
 WORK_DIR = os.getenv('WORK')
@@ -65,10 +66,14 @@ def make_single_dyst(
         num_periods: int = 5,
         num_ics: int = 5,
         rseed: int = 999,
+        sel_dim: Optional[int] = None, 
+        transpose: Optional[bool] = False,
 ) -> None:
     """
     Makes single dyst trajectories using the dysts.base.make_trajectory_ensemble functionality
     A bit hacky, but may be useful for testing
+    
+    sel_dim: the index to select i.e. 0 chooses to save only the x dimension of the trajectory
     """
     # initial conditions sampler
     sampler = init_cond_sampler()
@@ -87,16 +92,26 @@ def make_single_dyst(
         single_ensemble_list.append(single_ensemble)
 
     # Aggregate results (1 system x 20 ics iter loop for each train and test ensemble aggregation)
-    single_ensemble = {dyst_name: np.stack([d[dyst_name] for d in single_ensemble_list], axis=0).squeeze()}
+    if transpose:
+        single_ensemble = {dyst_name: np.stack([d[dyst_name] for d in single_ensemble_list], axis=0).squeeze().T}
+    else:
+        single_ensemble = {dyst_name: np.stack([d[dyst_name] for d in single_ensemble_list], axis=0).squeeze()}
     # single_ensemble = {dyst_name: standardize_ts(np.stack([d[dyst_name] for d in single_ensemble_list], axis=0))}
+    
     print(single_ensemble[dyst_name].shape)
+    
     # set up save directory
     data_dir = os.path.join(WORK_DIR, "data", split)
     os.makedirs(data_dir, exist_ok=True)
 
     # save trajectories to arrow file
-    process_trajs(data_dir, single_ensemble)
-
+    if sel_dim is None:
+        process_trajs(data_dir, single_ensemble)
+    else:
+        print(f"Only saving the {sel_dim} dimension")
+        path = os.path.join(data_dir, f"{dyst_name}_dim{sel_dim}.arrow")
+        print("Saving trajectory: ", path)
+        convert_to_arrow(path, single_ensemble[dyst_name][:, :, sel_dim].squeeze())
 
 def main():
 
@@ -146,6 +161,6 @@ def main():
 
 if __name__ == '__main__':
     # main()
-    make_single_dyst(dyst_name="Lorenz", split="train", num_ics=1)
-
+    make_single_dyst(dyst_name="Lorenz", split="train", num_ics=20, sel_dim=0, transpose=False)
+    # make_single_dyst(dyst_name="Lorenz", split="train", num_ics=1, sel_dim=None, transpose=True)
 

@@ -74,32 +74,7 @@ def read_arrow_direct(filepath):
     return df
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
-    args = parser.parse_args()
-    filepath = get_dyst_filepath(args.dyst_name)
-    # with ipc.open_file(filepath) as reader:
-    #     df = reader.read_pandas()
-
-    # read arrow file into pandas dataframe
-    dyst_df = read_arrow_ds(filepath)
-    print(dyst_df.columns)
-
-    # print(dyst_df['target'][0].shape) # this confirms that gluonts in writing the arrow file concatenates dimensions i.e. (1024, 3) -> (3073,)
-
-    # NOTE: we are assuming no jagged arrays i.e. every row of target._np_shape is the same
-    target_shape = dyst_df['target._np_shape'][0]
-    print(target_shape)
-    assert len(target_shape) <= 2, "too many dimensions!"
-
-    # stack and reshape
-    dyst_data = np.stack(dyst_df['target'], axis=0).reshape(-1, target_shape[0], target_shape[1])
-    assert dyst_data.shape[0] == dyst_df.shape[0], "shapes are messed up"
-    
-    print(type(dyst_data))
-    print(dyst_data.shape)
-
+def plot_trajs(dyst_data):
     # Plot the trajectories
     plt.figure(figsize=(6,6))
     for ic_idx in range(5):
@@ -124,6 +99,41 @@ if __name__ == "__main__":
     plt.title(args.dyst_name)
     plt.savefig(f"tests/{args.dyst_name}_3D.png", dpi=300)
     plt.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
+    args = parser.parse_args()
+    filepath = get_dyst_filepath(args.dyst_name)
+    # with ipc.open_file(filepath) as reader:
+    #     df = reader.read_pandas()
+
+    # read arrow file into pandas dataframe
+    dyst_df = read_arrow_ds(filepath)
+    print(dyst_df.columns)
+
+    # print(dyst_df['target'][0].shape) # this confirms that gluonts in writing the arrow file concatenates dimensions i.e. (1024, 3) -> (3073,)
+
+    # stack
+    dyst_data = np.stack(dyst_df['target'], axis=0)
+
+    # if we have 3 dimensions
+    if 'target._np_shape' in dyst_df.columns:
+        # NOTE: we are assuming no jagged arrays i.e. every row of target._np_shape is the same
+        target_shape = dyst_df['target._np_shape'][0]
+        print(target_shape)
+        assert len(target_shape) == 2, "incorrect number of dimensions!"
+        # reshape
+        dyst_data = dyst_data.reshape(-1, target_shape[0], target_shape[1])
+
+    assert dyst_data.shape[0] == dyst_df.shape[0], "shapes are messed up"
+    
+    print(type(dyst_data))
+    print(dyst_data.shape)
+
+    # # plot the trajectories
+    # plot_trajs(dyst_data)
 
 
 
