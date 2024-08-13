@@ -8,7 +8,6 @@ import pyarrow.dataset as ds
 import matplotlib.pyplot as plt
 import argparse
 
-# TODO: once we add initial condition option for dysts.make_trajectory_ensemble, we need to modify this
 
 def get_dyst_filepath(dyst_name):
     """ 
@@ -74,6 +73,7 @@ def read_arrow_direct(filepath):
 
     return df
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
@@ -81,15 +81,30 @@ if __name__ == "__main__":
     filepath = get_dyst_filepath(args.dyst_name)
     # with ipc.open_file(filepath) as reader:
     #     df = reader.read_pandas()
+
+    # read arrow file into pandas dataframe
     dyst_df = read_arrow_ds(filepath)
     print(dyst_df.columns)
-    dyst_data = np.stack(dyst_df['target'].to_numpy())
+
+    # print(dyst_df['target'][0].shape) # this confirms that gluonts in writing the arrow file concatenates dimensions i.e. (1024, 3) -> (3073,)
+
+    # NOTE: we are assuming no jagged arrays i.e. every row of target._np_shape is the same
+    target_shape = dyst_df['target._np_shape'][0]
+    print(target_shape)
+    assert len(target_shape) <= 2, "too many dimensions!"
+
+    # stack and reshape
+    dyst_data = np.stack(dyst_df['target'], axis=0).reshape(-1, target_shape[0], target_shape[1])
+    assert dyst_data.shape[0] == dyst_df.shape[0], "shapes are messed up"
+    
     print(type(dyst_data))
     print(dyst_data.shape)
 
-    # Plot the data
+    # Plot the trajectories
     plt.figure(figsize=(6,6))
-    plt.plot(dyst_data[:, 0], dyst_data[:, 1])
+    for ic_idx in range(5):
+        plt.plot(dyst_data[ic_idx, :, 0], dyst_data[ic_idx, :, 1], alpha=0.5, linewidth=1)
+        plt.scatter(*dyst_data[ic_idx, 0, :2], marker="*", s=100, alpha=0.5)
     plt.xlabel('X')
     plt.ylabel('Y')
     plt.title(f"{args.dyst_name} Y and X")
@@ -98,7 +113,9 @@ if __name__ == "__main__":
 
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot(dyst_data[:, 0], dyst_data[:, 1], dyst_data[:, 2], linewidth=2)  # X,Y,Z
+    for ic_idx in range(5):
+        ax.plot(dyst_data[ic_idx, : , 0], dyst_data[ic_idx, :, 1], dyst_data[ic_idx, :, 2], alpha=0.5, linewidth=1)  # X,Y,Z
+        ax.scatter(*dyst_data[ic_idx, 0, :], marker="*", s=100, alpha=0.5)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
@@ -107,3 +124,39 @@ if __name__ == "__main__":
     plt.title(args.dyst_name)
     plt.savefig(f"tests/{args.dyst_name}_3D.png", dpi=300)
     plt.close()
+
+
+
+# # ================== Could be useful, but will prob eventually move into utils or tests =====================
+# # TODO: once we add initial condition option for dysts.make_trajectory_ensemble, we need to modify this
+# def make_single_dyst(
+#         dyst_name: str = "Lorenz", 
+#         split: str = "train",
+#         num_points: int = 1024,
+#         num_periods: int = 5,
+# ) -> None:
+#     """
+#     A test function to make a single [dyst_name].arrow file in data/train split
+#     Directly calls dysts.flows.[dyst_name].make_trajectory where dyst_name is the name of the dyst class
+#     Samples initial conditions by integrating forward an initial trajectory and sampling points from it uniformly
+#     Thus, initial conditions are "on attractor" (see shadowing lemma)
+
+#     NOTE: this should perform similar functionality to make_single_dyst_from_ensemble but could be useful for debugging
+#     """
+
+#     # set up save directory
+#     data_dir = os.path.join(WORK_DIR, 'data', split)
+#     os.makedirs(data_dir, exist_ok=True)
+
+#     # get dysts class associated with dyst_name
+#     dyst_module = importlib.import_module("dysts.flows")
+#     dyst_class_ = getattr(dyst_module, dyst_name)
+#     print(dyst_class_)
+    
+#     # make trajectory
+#     traj = dyst_class_().make_trajectory(num_points, standardize=True, pts_per_period=num_points//num_periods)
+
+#     # TODO: sample initial conditions
+
+#     # save trajectories to arrow file
+#     convert_to_arrow(os.path.join(data_dir, f"{dyst_name}.arrow"), traj)
