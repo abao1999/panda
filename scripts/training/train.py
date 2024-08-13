@@ -100,7 +100,9 @@ def main(
     output_dir = Path(output_dir)
 
     # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
-    train_data_paths = list(str(path) for path in Path(train_data_dir).rglob("*"))
+    train_data_paths = []
+    if train_data_dir is not None:
+        train_data_paths = list(str(path) for path in Path(train_data_dir).rglob("*"))
 
     # add any additional arrow data filepaths specified to our training set
     if extra_train_data_paths is not None:
