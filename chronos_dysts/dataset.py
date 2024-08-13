@@ -1,7 +1,5 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
-# TODO: modify for dysts
-
 import itertools
 from functools import partial
 from typing import List, Iterator, Optional
@@ -20,8 +18,6 @@ from gluonts.transform import (
     MissingValueImputation,
     LeavesMissingValues,
 )
-
-# from chronos import ChronosTokenizer
 from chronos_dysts.utils import ChronosTokenizerType
 
 class PseudoShuffledIterableDataset(IterableDataset):
