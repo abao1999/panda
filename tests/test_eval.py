@@ -7,14 +7,12 @@ import pandas as pd
 import torch
 import typer
 import yaml
-import os
 
 from gluonts.ev.metrics import MASE, MeanWeightedSumQuantileLoss
 from gluonts.model.evaluation import evaluate_forecasts
 
 from chronos_dysts.pipeline import ChronosPipeline
 from chronos_dysts.utils import load_and_split_dataset, generate_sample_forecasts
-
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -31,10 +29,6 @@ def main(
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
 ):
-    print("Config path: ", config_path)
-    print("Metrics (save) path: ", metrics_path)
-    os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
-
     if isinstance(torch_dtype, str):
         torch_dtype = getattr(torch, torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
@@ -58,13 +52,12 @@ def main(
 
     result_rows = []
     for config in backtest_configs:
-        print("config: ", config)
         dyst_name = config["name"]
-        print("dyst name: ", dyst_name)
         prediction_length = config["prediction_length"]
 
         logger.info(f"Loading {dyst_name}")
         test_data = load_and_split_dataset(backtest_config=config)
+        sdfsdfdsdf
         logger.info(
             f"Generating forecasts for {dyst_name} "
             f"({len(test_data.input)} time series)"
@@ -115,4 +108,3 @@ if __name__ == "__main__":
     logger = logging.getLogger("Chronos Evaluation")
     logger.setLevel(logging.INFO)
     app()
-    print(typer.get_command(app))

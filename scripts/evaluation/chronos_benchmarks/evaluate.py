@@ -1,3 +1,6 @@
+# Evaluation script from original Chronos repo. To test if our modified chronos_dysts retains performance on the chronos benchmark timeseries
+# https://huggingface.co/datasets/autogluon/chronos_datasets
+
 import logging
 from pathlib import Path
 from typing import Optional
@@ -12,9 +15,9 @@ import os
 from gluonts.ev.metrics import MASE, MeanWeightedSumQuantileLoss
 from gluonts.model.evaluation import evaluate_forecasts
 
+# from chronos import ChronosPipeline
 from chronos_dysts.pipeline import ChronosPipeline
-from chronos_dysts.utils import load_and_split_dataset, generate_sample_forecasts
-
+from eval_utils import load_and_split_dataset, generate_sample_forecasts
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -31,6 +34,7 @@ def main(
     top_k: Optional[int] = None,
     top_p: Optional[float] = None,
 ):
+    
     print("Config path: ", config_path)
     print("Metrics (save) path: ", metrics_path)
     os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
@@ -46,27 +50,20 @@ def main(
         torch_dtype=torch_dtype,
     )
 
-    print("Pipeline")
-    print(vars(pipeline))
-
     # Load backtest configs
     with open(config_path) as fp:
         backtest_configs = yaml.safe_load(fp)
 
-    print("Backtest configs")
-    print(backtest_configs)
-
     result_rows = []
     for config in backtest_configs:
-        print("config: ", config)
-        dyst_name = config["name"]
-        print("dyst name: ", dyst_name)
+        dataset_name = config["name"]
         prediction_length = config["prediction_length"]
 
-        logger.info(f"Loading {dyst_name}")
+        logger.info(f"Loading {dataset_name}")
         test_data = load_and_split_dataset(backtest_config=config)
+
         logger.info(
-            f"Generating forecasts for {dyst_name} "
+            f"Generating forecasts for {dataset_name} "
             f"({len(test_data.input)} time series)"
         )
         sample_forecasts = generate_sample_forecasts(
@@ -80,7 +77,7 @@ def main(
             top_p=top_p,
         )
 
-        logger.info(f"Evaluating forecasts for {dyst_name}")
+        logger.info(f"Evaluating forecasts for {dataset_name}")
         metrics = (
             evaluate_forecasts(
                 sample_forecasts,
@@ -95,7 +92,7 @@ def main(
             .to_dict(orient="records")
         )
         result_rows.append(
-            {"dataset": dyst_name, "model": chronos_model_id, **metrics[0]}
+            {"dataset": dataset_name, "model": chronos_model_id, **metrics[0]}
         )
 
     # Save results to a CSV file
@@ -115,4 +112,3 @@ if __name__ == "__main__":
     logger = logging.getLogger("Chronos Evaluation")
     logger.setLevel(logging.INFO)
     app()
-    print(typer.get_command(app))

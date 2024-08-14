@@ -1,65 +1,45 @@
+# utils for evaluation script from original Chronos repo. To test if our modified chronos_dysts evaluation script
+# Currently, we do not load from hugginface repo/dataset
+# TODO: add functionality to load from huggingface repo/dataset
+
 from typing import Iterable
 
-import datasets
 import numpy as np
-import pandas as pd
 import torch
 from gluonts.dataset.split import split
 from gluonts.itertools import batcher
 from gluonts.model.forecast import SampleForecast
+from gluonts.dataset.common import FileDataset
+from pathlib import Path
+
+import pyarrow.dataset as ds
+
 from tqdm.auto import tqdm
+from typing import Optional
 
-# from chronos import ChronosPipeline
-from chronos_dysts.pipeline import ChronosPipeline
+# # TODO: fix this circular import thing, only used for typing though
+# from chronos_dysts.pipeline import ChronosPipeline
 
-from .type_aliases import offset_alias_to_period_alias
-
-
-def to_gluonts_univariate(hf_dataset: datasets.Dataset):
-    series_fields = [
-        col
-        for col in hf_dataset.features
-        if isinstance(hf_dataset.features[col], datasets.Sequence)
-    ]
-    series_fields.remove("timestamp")
-    dataset_length = hf_dataset.info.splits["train"].num_examples * len(series_fields)
-    dataset_freq = pd.infer_freq(hf_dataset[0]["timestamp"])
-    dataset_freq = offset_alias_to_period_alias.get(dataset_freq, dataset_freq)
-
-    gts_dataset = []
-    for hf_entry in hf_dataset:
-        for field in series_fields:
-            gts_dataset.append(
-                {
-                    "start": pd.Period(
-                        hf_entry["timestamp"][0],
-                        freq=dataset_freq,
-                    ),
-                    "target": hf_entry[field],
-                }
-            )
-    assert len(gts_dataset) == dataset_length
-
-    return gts_dataset
-
-
-def load_and_split_dataset(backtest_config: dict):
-    hf_repo = backtest_config["hf_repo"]
-    dataset_name = backtest_config["name"]
+def load_and_split_dataset(backtest_config: dict, verbose: Optional[bool] = False):
+    """
+    Takes in a config for a dyst system and loads the corresponding
+    Arrow file into GluonTS FileDataset https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.common.html 
+    And then uses GluonTS split https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.split.html
+    to generate test instances from windows of original timeseries
+    NOTE: only works for separate dimension files, should be straightforward to extend
+    """
+    dyst_name = backtest_config["name"]
+    filepath = backtest_config["data_filepath"]
     offset = backtest_config["offset"]
     prediction_length = backtest_config["prediction_length"]
     num_rolls = backtest_config["num_rolls"]
 
-    # This is needed because the datasets in autogluon/chronos_datasets_extra cannot
-    # be distribued due to license restrictions and must be generated on the fly
-    trust_remote_code = True if hf_repo == "autogluon/chronos_datasets_extra" else False
+    if verbose:
+        print(f"Loading {dyst_name} from {filepath}")
+        print(f"Splitting timeseries by creating {num_rolls} non-overlapping windows")
+        print(f"And using offset {offset} and prediction length {prediction_length}")
 
-    ds = datasets.load_dataset(
-        hf_repo, dataset_name, split="train", trust_remote_code=trust_remote_code
-    )
-    ds.set_format("numpy")
-
-    gts_dataset = to_gluonts_univariate(ds)
+    gts_dataset = FileDataset(path=Path(filepath), freq="h")
 
     # Split dataset for evaluation
     _, test_template = split(gts_dataset, offset=offset)
@@ -70,7 +50,7 @@ def load_and_split_dataset(backtest_config: dict):
 
 def generate_sample_forecasts(
     test_data_input: Iterable,
-    pipeline: ChronosPipeline,
+    pipeline: "ChronosPipeline",
     prediction_length: int,
     batch_size: int,
     num_samples: int,
@@ -89,6 +69,9 @@ def generate_sample_forecasts(
             ).numpy()
         )
     forecast_samples = np.concatenate(forecast_samples)
+
+    print("Forecast Samples")
+    print(forecast_samples)
 
     # Convert forecast samples into gluonts SampleForecast objects
     sample_forecasts = []
