@@ -5,10 +5,7 @@ from pathlib import Path
 from typing import List, Union, Dict, Iterable
 from datetime import datetime
 from dysts.base import get_attractor_list, make_trajectory_ensemble, init_cond_sampler
-from dysts.utils import standardize_ts
 from gluonts.dataset.arrow import ArrowWriter
-import importlib
-from typing import Optional
 
 WORK_DIR = os.getenv('WORK')
 
@@ -105,6 +102,7 @@ def main():
         data_dir = os.path.join(WORK_DIR, f'data/{split}')
         os.makedirs(data_dir, exist_ok=True)
         process_trajs(data_dir, ensemble, selected_dims='all')
+        # process_trajs(data_dir, ensemble)
 
 
 if __name__ == '__main__':

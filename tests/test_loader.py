@@ -109,7 +109,7 @@ def main(
         extra_train_data_paths = ast.literal_eval(extra_train_data_paths)
         assert isinstance(extra_train_data_paths, list)
         train_data_paths += extra_train_data_paths
-    train_data_paths = ["/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz.arrow"]
+    train_data_paths = ["/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-0.arrow"]
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(probability, str):

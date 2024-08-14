@@ -315,8 +315,6 @@ class RandomAffineDataset(ChronosDataset):
         """Randomized convex combination of coordinates from dirichlet distribution
         """
         coords, metadata = zip(*[(coord["target"], coord["start"]) for coord in dataset])
-        print(metadata)
-        fsdfsdklfjsd
         coordinates = np.stack(coords)
         coeffs = self.rng.dirichlet(self.alpha*np.ones(coordinates.shape[0]), size=self.num_combos)
         combos = coeffs@coordinates
