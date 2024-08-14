@@ -47,8 +47,12 @@ def convert_to_arrow(
 
 
 def process_trajs(
-    base_dir: str, timeseries: Dict[str, np.ndarray], selected_dims: Union[Iterable, str] = None) -> None:
+    base_dir: str, timeseries: Dict[str, np.ndarray], selected_dims: Union[Iterable, str] = None
+) -> None:
     """Saves each trajectory in timeseries ensemble to a separate arrow file
+    
+    TODO: maybe save coordinates to a dedicated system file if selected_dims is specified
+    
     """
     for sys_name, trajectory in timeseries.items():
         if selected_dims is not None:
