@@ -109,6 +109,9 @@ def main(
     )
     results_df.to_csv(metrics_path, index=False)
 
+    # TODO: embeddings, tokenizer_state = pipeline.embed(context)
+    # TODO: get frequency from dataframe? Plot forecasts, interpret metrics, interpret encoder embeddings
+
 
 if __name__ == "__main__":
     logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

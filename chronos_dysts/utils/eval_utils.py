@@ -39,7 +39,7 @@ def load_and_split_dataset(backtest_config: dict, verbose: Optional[bool] = Fals
         print(f"Splitting timeseries by creating {num_rolls} non-overlapping windows")
         print(f"And using offset {offset} and prediction length {prediction_length}")
 
-    gts_dataset = FileDataset(path=Path(filepath), freq="h")
+    gts_dataset = FileDataset(path=Path(filepath), freq="h") # TODO: consider other frequencies?
 
     # Split dataset for evaluation
     _, test_template = split(gts_dataset, offset=offset)
@@ -56,7 +56,9 @@ def generate_sample_forecasts(
     num_samples: int,
     **predict_kwargs,
 ):
-    # Generate forecast samples
+    """
+    Generates forecast samples using GluonTS batcher to batch the generated instances from FileDataset
+    """
     forecast_samples = []
     for batch in tqdm(batcher(test_data_input, batch_size=batch_size)):
         context = [torch.tensor(entry["target"]) for entry in batch]
