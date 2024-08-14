@@ -58,6 +58,7 @@ def process_trajs(
         if selected_dims is not None:
             for i in (range(trajectory.shape[-2]) if selected_dims == 'all' else selected_dims):
                 path = os.path.join(base_dir, f"{sys_name}_dim-{i}.arrow")
+                print(trajectory.shape)
                 convert_to_arrow(path, trajectory[..., i, :])
         else: 
             path = os.path.join(base_dir, f"{sys_name}.arrow")
@@ -105,8 +106,7 @@ def main():
     for split, ensemble in [('train', train_ensemble), ('test', test_ensemble)]:
         data_dir = os.path.join(WORK_DIR, f'data/{split}')
         os.makedirs(data_dir, exist_ok=True)
-        process_trajs(data_dir, ensemble, selected_dims='all')
-        # process_trajs(data_dir, ensemble)
+        process_trajs(data_dir, ensemble, selected_dims=[0])
 
 
 if __name__ == '__main__':

@@ -1,5 +1,4 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.# SPDX-License-Identifier: Apache-2.0
 # TODO: modify for dysts
 
 import ast
@@ -14,15 +13,10 @@ import typer
 from typer_config import use_yaml_config
 import torch
 import transformers
-from transformers import Trainer, TrainingArguments
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
-
-# from torch.nn.parallel import DistributedDataParallel as DDP
-# from chronos import ChronosConfig
 from chronos_dysts.tokenizer import ChronosConfig
-
 from chronos_dysts.utils import (
     is_main_process,
     log_on_main,
@@ -32,7 +26,8 @@ from chronos_dysts.utils import (
     has_enough_observations,
     ensure_contiguous,
 )
-from chronos_dysts.dataset import ChronosDataset, RandomAffineDataset
+from chronos_dysts.dataset import ChronosDataset
+from chronos_dysts.augmentations import RandomAffineTransform, RandomConvexCombinationTransform
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -188,11 +183,7 @@ def main(
     # # Wrap model with DistributedDataParallel
     # model = DDP(model, device_ids=[local_rank])
 
-    shuffled_train_dataset = RandomAffineDataset(
-        10,
-        0.1,
-        9999,
-    # shuffled_train_dataset = ChronosDataset(
+    shuffled_train_dataset = ChronosDataset(
         datasets=train_datasets,
         probabilities=probability,
         tokenizer=chronos_config.create_tokenizer(),
@@ -202,6 +193,8 @@ def main(
         model_type=model_type,
         imputation_method=LastValueImputation() if model_type == "causal" else None,
         mode="training",
+        # sys_augmentation=RandomConvexCombinationTransform(10, 0.1, 888)
+        sys_augmentation=RandomAffineTransform(10, 0.1, 888)
     ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
 
     
