@@ -259,7 +259,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             )
             for dataset in self.datasets
         ]
-
+        
         if self.mode == "training":
             iterables = [
                 self.create_training_data(dataset) for dataset in preprocessed_datasets
@@ -301,3 +301,74 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         else:
             for entry in itertools.chain(*iterators):
                 yield self.to_hf_format(entry)
+
+
+class RandomAffineDataset(ChronosDataset):
+
+    def __init__(self, num_combos: int, alpha: float, random_seed: int, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.alpha = alpha
+        self.num_combos = num_combos
+        self.rng = np.random.default_rng(random_seed)
+
+    def augment(self, dataset) -> dict:
+        """Randomized convex combination of coordinates from dirichlet distribution
+        """
+        coords, metadata = zip(*[(coord["target"], coord["start"]) for coord in dataset])
+        coordinates = np.stack(coords)
+        coeffs = self.rng.dirichlet(self.alpha*np.ones(coordinates.shape[0]), size=self.num_combos)
+        combos = coeffs@coordinates
+        return [{"start": metadata[0], "target": combination} for combination in combos]
+        
+    def __iter__(self) -> Iterator:
+        augmented_datasets = map(self.augment, self.datasets)
+        preprocessed_datasets = [
+            Map(
+                partial(self.preprocess_entry, mode=self.mode),
+                dataset,
+            )
+            for dataset in augmented_datasets
+        ]
+ 
+        if self.mode == "training":
+            iterables = [
+                self.create_training_data(dataset) for dataset in preprocessed_datasets
+            ]
+        elif self.mode == "test":
+            iterables = [
+                self.create_test_data(dataset) for dataset in preprocessed_datasets
+            ]
+        else:
+            iterables = [
+                self.create_validation_data(dataset)
+                for dataset in preprocessed_datasets
+            ]
+
+        worker_info = get_worker_info()
+        if worker_info is None:
+            probs = list(self.probabilities)
+        else:
+            worker_id = worker_info.id
+            num_workers = worker_info.num_workers
+            iterables = list(itertools.islice(iterables, worker_id, None, num_workers))
+            probs = list(
+                itertools.islice(self.probabilities, worker_id, None, num_workers)
+            )
+
+        probs = [prob / sum(probs) for prob in probs]
+
+        iterators = list(map(iter, iterables))
+        if self.mode == "training":
+            while True:
+                idx = np.random.choice(range(len(iterators)), p=probs)
+                try:
+                    yield self.to_hf_format(next(iterators[idx]))
+                except StopIteration:
+                    probs[idx] = 0
+                    if sum(probs) == 0:
+                        return
+                    probs = [prob / sum(probs) for prob in probs]
+        else:
+            for entry in itertools.chain(*iterators):
+                yield self.to_hf_format(entry)
+
