@@ -16,10 +16,6 @@ import transformers
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
-<<<<<<< HEAD
-=======
-
->>>>>>> ceb6eee401a6e8ba45438fe7eefb3c5ad55a33d1
 from chronos_dysts.tokenizer import ChronosConfig
 from chronos_dysts.utils import (
     log_on_main,
@@ -161,26 +157,7 @@ def main(
         top_p=top_p,
     )
 
-<<<<<<< HEAD
-    # # This actually makes things slower, but doesnt throw errors at least
-    # # torch distributed training, for torchrun (Elastic Launch)
-    # local_rank = int(os.environ['LOCAL_RANK'])
-    # torch.cuda.set_device(local_rank)    
-    # # Initialize the distributed environment with Gloo backend
-    # dist.init_process_group(backend='gloo')
-    # # move it to the ROCm device
-    # model = model.to(torch.device(f'cuda:{local_rank}'))
-    # # Wrap model with DistributedDataParallel
-    # model = DDP(model, device_ids=[local_rank])
-
     shuffled_train_dataset = ChronosDataset(
-=======
-    shuffled_train_dataset = RandomAffineDataset(
-        10,
-        0.1,
-        9999,
-    # shuffled_train_dataset = ChronosDataset(
->>>>>>> ceb6eee401a6e8ba45438fe7eefb3c5ad55a33d1
         datasets=train_datasets,
         probabilities=probability,
         tokenizer=chronos_config.create_tokenizer(),
