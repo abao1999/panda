@@ -1,6 +1,4 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.# SPDX-License-Identifier: Apache-2.0
-# TODO: modify for dysts
-
 import ast
 import logging
 import random
@@ -23,7 +21,11 @@ from chronos_dysts.utils import (
     has_enough_observations,
 )
 from chronos_dysts.dataset import ChronosDataset
-from chronos_dysts.augmentations import RandomAffineTransform, RandomConvexCombinationTransform
+from chronos_dysts.augmentations import (
+    RandomAffineTransform, 
+    RandomConvexCombinationTransform,
+    RandomProjectedSkewTransform
+)
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -74,7 +76,6 @@ def main(
     log_on_main(f"Using SEED: {seed}", logger)
     transformers.set_seed(seed=seed)
 
-    raw_training_config = deepcopy(locals())
     output_dir = Path(output_dir)
 
     # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
@@ -87,26 +88,13 @@ def main(
         extra_train_data_paths = ast.literal_eval(extra_train_data_paths)
         assert isinstance(extra_train_data_paths, list)
         train_data_paths += extra_train_data_paths
-    train_data_paths = ["/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-0.arrow"]
+    train_data_paths = [
+        "/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-0.arrow",
+        "/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-1.arrow",
+        "/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-2.arrow",
+    ]
     
     print("train data paths: ", train_data_paths)
-
-    # set probabilities (how we weight draws from each data file)
-    if isinstance(probability, str):
-        probability = ast.literal_eval(probability)
-    elif probability is None:
-        probability = [1.0 / len(train_data_paths)] * len(train_data_paths)
-    assert isinstance(probability, list)
-
-    assert len(train_data_paths) == len(probability)
-
-    if dataloader_num_workers > len(train_data_paths):
-        log_on_main(
-            f"Setting the number of data loader workers to {len(train_data_paths)}, "
-            f"instead of {dataloader_num_workers}.",
-            logger,
-        )
-        dataloader_num_workers = len(train_data_paths)
 
     if isinstance(tokenizer_kwargs, str):
         tokenizer_kwargs = ast.literal_eval(tokenizer_kwargs)
@@ -123,11 +111,6 @@ def main(
         logger,
     )
 
-    log_on_main(
-        f"Mixing probabilities: {probability}",
-        logger,
-    )
-
     train_datasets = [
         Filter(
             partial(
@@ -139,6 +122,43 @@ def main(
         )
         for data_path in train_data_paths
     ]
+    
+    # various augmentations
+    train_datasets.extend([
+        RandomAffineTransform(10, 0.2, 999)(dataset)
+        for dataset in train_datasets[:len(train_data_paths)]
+    ])
+    train_datasets.extend([
+        RandomConvexCombinationTransform(10, 0.2, 999)(dataset)
+        for dataset in train_datasets[:len(train_data_paths)]
+    ])
+    train_datasets.extend(
+        RandomProjectedSkewTransform(2, 5, scale=0.1, random_seed=9809)(
+            train_datasets[:len(train_data_paths)] 
+        )
+    )
+
+    # set probabilities (how we weight draws from each data file)
+    if isinstance(probability, str):
+        probability = ast.literal_eval(probability)
+    elif probability is None:
+        probability = [1.0 / len(train_datasets)] * len(train_datasets)
+    assert isinstance(probability, list)
+
+    assert len(train_datasets) == len(probability)
+
+    if dataloader_num_workers > len(train_datasets):
+        log_on_main(
+            f"Setting the number of data loader workers to {len(train_datasets)}, "
+            f"instead of {dataloader_num_workers}.",
+            logger,
+        )
+        dataloader_num_workers = len(train_datasets)
+
+    log_on_main(
+        f"Mixing probabilities: {probability}",
+        logger,
+    )
 
     chronos_config = ChronosConfig(
         tokenizer_class=tokenizer_class,
@@ -167,8 +187,6 @@ def main(
         model_type=model_type,
         imputation_method=LastValueImputation() if model_type == "causal" else None,
         mode="training",
-        # sys_augmentation=RandomConvexCombinationTransform(10, 0.1, 888)
-        sys_augmentation=RandomAffineTransform(10, 0.1, 888)
     ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
 
     

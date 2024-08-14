@@ -19,7 +19,6 @@ from gluonts.transform import (
     LeavesMissingValues,
 )
 from chronos_dysts.utils import ChronosTokenizerType
-from chronos_dysts.augmentations import SystemTransform, IdentityTransform
 
 
 class PseudoShuffledIterableDataset(IterableDataset):
@@ -114,7 +113,6 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         imputation_method: Optional[MissingValueImputation] = None,
         mode: str = "training",
         np_dtype: np.dtype = np.float32,
-        sys_augmentation: Optional[SystemTransform] = IdentityTransform
     ) -> None:
         super().__init__()
 
@@ -133,7 +131,6 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         self.imputation_method = imputation_method or LeavesMissingValues()
         self.mode = mode
         self.np_dtype = np_dtype
-        self.sys_augmentation = sys_augmentation
 
     def preprocess_entry(self, entry: dict, mode: str) -> dict:
         entry = {f: entry[f] for f in ["start", "target"]}
@@ -256,13 +253,12 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         }
 
     def __iter__(self) -> Iterator:
-        augmented_datasets = map(self.sys_augmentation, self.datasets)
         preprocessed_datasets = [
             Map(
                 partial(self.preprocess_entry, mode=self.mode),
                 dataset,
             )
-            for dataset in augmented_datasets
+            for dataset in self.datasets
         ]
         
         if self.mode == "training":
