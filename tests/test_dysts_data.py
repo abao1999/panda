@@ -9,22 +9,23 @@ import matplotlib.pyplot as plt
 import argparse
 
 
+WORK_DIR = os.getenv('WORK')
+
 def get_dyst_filepath(dyst_name):
     """ 
     [dyst_name].arrow could either be in data/train or data/test
     Check if [dyst_name].arrow is in either data/train or data/test
     """
-    work_dir = os.getenv('WORK')
-    filepath_train = os.path.join(work_dir, 'data/train', f"{dyst_name}.arrow")
-    filepath_test = os.path.join(work_dir, 'data/test', f"{dyst_name}.arrow")
+    filepath_train = os.path.join(WORK_DIR, 'data/train', f"{dyst_name}.arrow")
+    filepath_test = os.path.join(WORK_DIR, 'data/test', f"{dyst_name}.arrow")
 
     if os.path.exists(filepath_train):
         filepath = filepath_train
     elif os.path.exists(filepath_test):
         filepath = filepath_test
     else:
-        train_dir = os.path.join(work_dir, 'data/train')
-        test_dir = os.path.join(work_dir, 'data/test')
+        train_dir = os.path.join(WORK_DIR, 'data/train')
+        test_dir = os.path.join(WORK_DIR, 'data/test')
         available_files = []
         
         if os.path.exists(train_dir):
@@ -134,39 +135,3 @@ if __name__ == "__main__":
 
     # # plot the trajectories
     # plot_trajs(dyst_data)
-
-
-
-# # ================== Could be useful, but will prob eventually move into utils or tests =====================
-# # TODO: once we add initial condition option for dysts.make_trajectory_ensemble, we need to modify this
-# def make_single_dyst(
-#         dyst_name: str = "Lorenz", 
-#         split: str = "train",
-#         num_points: int = 1024,
-#         num_periods: int = 5,
-# ) -> None:
-#     """
-#     A test function to make a single [dyst_name].arrow file in data/train split
-#     Directly calls dysts.flows.[dyst_name].make_trajectory where dyst_name is the name of the dyst class
-#     Samples initial conditions by integrating forward an initial trajectory and sampling points from it uniformly
-#     Thus, initial conditions are "on attractor" (see shadowing lemma)
-
-#     NOTE: this should perform similar functionality to make_single_dyst_from_ensemble but could be useful for debugging
-#     """
-
-#     # set up save directory
-#     data_dir = os.path.join(WORK_DIR, 'data', split)
-#     os.makedirs(data_dir, exist_ok=True)
-
-#     # get dysts class associated with dyst_name
-#     dyst_module = importlib.import_module("dysts.flows")
-#     dyst_class_ = getattr(dyst_module, dyst_name)
-#     print(dyst_class_)
-    
-#     # make trajectory
-#     traj = dyst_class_().make_trajectory(num_points, standardize=True, pts_per_period=num_points//num_periods)
-
-#     # TODO: sample initial conditions
-
-#     # save trajectories to arrow file
-#     convert_to_arrow(os.path.join(data_dir, f"{dyst_name}.arrow"), traj)

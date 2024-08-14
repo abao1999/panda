@@ -14,23 +14,16 @@ import typer
 from typer_config import use_yaml_config
 import torch
 import transformers
-from transformers import Trainer, TrainingArguments
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
 
-# from torch.nn.parallel import DistributedDataParallel as DDP
-# from chronos import ChronosConfig
 from chronos_dysts.tokenizer import ChronosConfig
 
 from chronos_dysts.utils import (
-    is_main_process,
     log_on_main,
-    save_training_info,
     get_next_path,
-    load_model,
     has_enough_observations,
-    ensure_contiguous,
 )
 from chronos_dysts.dataset import ChronosDataset, RandomAffineDataset
 
@@ -45,21 +38,10 @@ def main(
     context_length: int = 512,
     prediction_length: int = 64,
     min_past: int = 64,
-    max_steps: int = 200_000,
-    save_steps: int = 50_000,
-    log_steps: int = 500,
-    per_device_train_batch_size: int = 32,
-    learning_rate: float = 1e-3,
-    optim: str = "adamw_torch_fused",
     shuffle_buffer_length: int = 100,
-    gradient_accumulation_steps: int = 2,
-    model_id: str = "google/t5-efficient-tiny",
     model_type: str = "seq2seq",
-    random_init: bool = False,
-    tie_embeddings: bool = False,
     output_dir: str = "./output/",
     tf32: bool = True,
-    torch_compile: bool = True,
     tokenizer_class: str = "MeanScaleUniformBins",
     tokenizer_kwargs: str = "{'low_limit': -15.0, 'high_limit': 15.0}",
     n_tokens: int = 4096,
@@ -67,8 +49,6 @@ def main(
     pad_token_id: int = 0,
     eos_token_id: int = 1,
     use_eos_token: bool = True,
-    lr_scheduler_type: str = "linear",
-    warmup_ratio: float = 0.0,
     dataloader_num_workers: int = 1,
     max_missing_prop: float = 0.9,
     num_samples: int = 20,
@@ -110,6 +90,8 @@ def main(
         assert isinstance(extra_train_data_paths, list)
         train_data_paths += extra_train_data_paths
     train_data_paths = ["/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-0.arrow"]
+    
+    print("train data paths: ", train_data_paths)
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(probability, str):
@@ -176,17 +158,6 @@ def main(
         top_k=top_k,
         top_p=top_p,
     )
-
-    # # This actually makes things slower, but doesnt throw errors at least
-    # # torch distributed training, for torchrun (Elastic Launch)
-    # local_rank = int(os.environ['LOCAL_RANK'])
-    # torch.cuda.set_device(local_rank)    
-    # # Initialize the distributed environment with Gloo backend
-    # dist.init_process_group(backend='gloo')
-    # # move it to the ROCm device
-    # model = model.to(torch.device(f'cuda:{local_rank}'))
-    # # Wrap model with DistributedDataParallel
-    # model = DDP(model, device_ids=[local_rank])
 
     shuffled_train_dataset = RandomAffineDataset(
         10,
