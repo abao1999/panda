@@ -1,8 +1,4 @@
 import os
-import numpy as np
-
-import pyarrow.dataset as ds
-
 import matplotlib.pyplot as plt
 import argparse
 from pathlib import Path
@@ -47,20 +43,6 @@ def get_dyst_filepath(dyst_name):
 
     print(f"Found Arrow file: {filepath}")
     return filepath
-
-def read_arrow_ds(filepath):
-    """
-    Read data using pyarrow dataset
-    """
-    # Load the dataset from the Arrow file
-    dataset = ds.dataset(filepath, format="arrow")
-    # Convert the dataset to a Table
-    table = dataset.to_table()
-    # Convert the Table to a Pandas DataFrame if needed
-    df = table.to_pandas()
-    # Display the DataFrame
-    print(df.head())
-    return df
 
 
 def plot_trajs_univariate(dyst_data, plot_name=None):
