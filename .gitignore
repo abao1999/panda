@@ -1,3 +1,6 @@
+# some test scripts
+tests/playground.py
+
 # data directory and files
 data/
 *.arrow

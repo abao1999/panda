@@ -75,30 +75,36 @@ def read_arrow_direct(filepath):
     return df
 
 
-def plot_trajs(dyst_data):
+def plot_trajs_multivariate(dyst_data, plot_name=None):
+    num_ics = dyst_data.shape[0]
+    num_ics_to_plot = 5 if num_ics > 5 else num_ics
+    if plot_name is None:
+        plot_name = "dyst"
     # Plot the trajectories
     plt.figure(figsize=(6,6))
-    for ic_idx in range(5):
-        plt.plot(dyst_data[ic_idx, :, 0], dyst_data[ic_idx, :, 1], alpha=0.5, linewidth=1)
-        plt.scatter(*dyst_data[ic_idx, 0, :2], marker="*", s=100, alpha=0.5)
+    for ic_idx in range(num_ics_to_plot):
+        # plot x and y
+        plt.plot(dyst_data[ic_idx, 0, :], dyst_data[ic_idx, 1, :], alpha=0.5, linewidth=1)
+        plt.scatter(*dyst_data[ic_idx, :2, 0], marker="*", s=100, alpha=0.5)
     plt.xlabel('X')
     plt.ylabel('Y')
-    plt.title(f"{args.dyst_name} Y and X")
-    plt.savefig(f"tests/{args.dyst_name}.png", dpi=300)
+    plt.title(plot_name)
+    plt.savefig(f"tests/{plot_name}.png", dpi=300)
     plt.close()
 
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111, projection='3d')
-    for ic_idx in range(5):
-        ax.plot(dyst_data[ic_idx, : , 0], dyst_data[ic_idx, :, 1], dyst_data[ic_idx, :, 2], alpha=0.5, linewidth=1)  # X,Y,Z
-        ax.scatter(*dyst_data[ic_idx, 0, :], marker="*", s=100, alpha=0.5)
+    for ic_idx in range(num_ics_to_plot):
+        # plot x and y and z
+        ax.plot(dyst_data[ic_idx, 0, :], dyst_data[ic_idx, 1, :], dyst_data[ic_idx, 2, :], alpha=0.5, linewidth=1)  # X,Y,Z
+        ax.scatter(*dyst_data[ic_idx, :, 0], marker="*", s=100, alpha=0.5)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
     ax.ticklabel_format(style='sci', scilimits=(0,0), axis='both')
-    plt.title(args.dyst_name)
-    plt.savefig(f"tests/{args.dyst_name}_3D.png", dpi=300)
+    plt.title(plot_name)
+    plt.savefig(f"tests/{plot_name}_3D.png", dpi=300)
     plt.close()
 
 
@@ -133,5 +139,5 @@ if __name__ == "__main__":
     print(type(dyst_data))
     print(dyst_data.shape)
 
-    # # plot the trajectories
-    # plot_trajs(dyst_data)
+    # plot the trajectories
+    plot_trajs_multivariate(dyst_data, plot_name=args.dyst_name)

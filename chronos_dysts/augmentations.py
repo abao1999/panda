@@ -122,8 +122,8 @@ class RandomProjectedSkewTransform:
         pair_inds = self.rng.choice(num_total_pairs, size=self.num_skew_pairs, replace=False)
         all_pairs = list(combinations(range(len(datasets)), 2))
         sampled_pairs = [all_pairs[i] for i in pair_inds]
-        return [self.random_project(datasets[i], datasets[j]) for i,j in sampled_pairs]
-
+        # return [self.random_project(datasets[i], datasets[j]) for i,j in sampled_pairs]
+        return {(i,j): self.random_project(datasets[i], datasets[j]) for i,j in sampled_pairs}
         
 
 
