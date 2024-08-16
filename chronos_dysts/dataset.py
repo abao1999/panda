@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 import itertools
 from functools import partial
-from typing import List, Iterator, Optional
+from typing import List, Iterator, Optional, Iterable
 
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset, get_worker_info
 
+from dataclasses import dataclass
+from gluonts.dataset.common import ListDataset, FileDataset
 from gluonts.itertools import Cyclic, Map
 from gluonts.transform import (
     FilterTransformation,
@@ -260,7 +262,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             )
             for dataset in self.datasets
         ]
-        
+
         if self.mode == "training":
             iterables = [
                 self.create_training_data(dataset) for dataset in preprocessed_datasets

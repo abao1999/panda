@@ -8,12 +8,14 @@ from functools import partial
 from typing import Optional
 
 import typer
+import numpy as np
 from typer_config import use_yaml_config
 import torch
 import transformers
-from gluonts.dataset.common import FileDataset
-from gluonts.itertools import Filter
+from gluonts.dataset.common import FileDataset, ListDataset
+from gluonts.itertools import Filter, Map
 from gluonts.transform import LastValueImputation
+
 from chronos_dysts.tokenizer import ChronosConfig
 from chronos_dysts.utils import (
     log_on_main,
@@ -26,6 +28,30 @@ from chronos_dysts.augmentations import (
     RandomConvexCombinationTransform,
     RandomProjectedSkewTransform
 )
+
+
+def get_deep_size(obj, seen=None):
+    """Recursively finds size of objects, including referenced objects."""
+    import sys
+    from collections import deque
+    size = sys.getsizeof(obj)
+    if seen is None:
+        seen = set()
+    
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0  # Avoid infinite recursion for self-referencing objects
+    seen.add(obj_id)
+    
+    if isinstance(obj, dict):
+        size += sum([get_deep_size(v, seen) for v in obj.values()])
+        size += sum([get_deep_size(k, seen) for k in obj.keys()])
+    elif hasattr(obj, '__dict__'):
+        size += get_deep_size(vars(obj), seen)
+    elif isinstance(obj, (list, tuple, set, frozenset, deque)):
+        size += sum([get_deep_size(i, seen) for i in obj])
+    
+    return size
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -81,19 +107,9 @@ def main(
     # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
     train_data_paths = []
     if train_data_dir is not None:
-        train_data_paths = list(str(path) for path in Path(train_data_dir).rglob("*"))[0:1]
-
-    # add any additional arrow data filepaths specified to our training set
-    if extra_train_data_paths is not None:
-        extra_train_data_paths = ast.literal_eval(extra_train_data_paths)
-        assert isinstance(extra_train_data_paths, list)
-        train_data_paths += extra_train_data_paths
-    train_data_paths = [
-        "/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-0.arrow",
-        "/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-1.arrow",
-        "/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-2.arrow",
-    ]
-    
+        train_data_paths = list(
+            filter(lambda file: file.is_file(), Path(train_data_dir).rglob('*'))
+        )
     print("train data paths: ", train_data_paths)
 
     if isinstance(tokenizer_kwargs, str):
@@ -111,6 +127,26 @@ def main(
         logger,
     )
 
+    def make_coord_iterator(dataset):
+        yield from next(iter(dataset))["target"]
+
+    class CoordIterator:
+
+        def __init__(self, dataset):
+            self.dataset = dataset
+
+        def __iter__(self):
+            return self._Generator(self.dataset)
+
+        class _Generator:
+
+            def __init__(self, dataset):
+                self.data = next(iter(dataset))
+
+            def __iter__(self):
+
+                yield {}
+
     train_datasets = [
         Filter(
             partial(
@@ -118,26 +154,29 @@ def main(
                 min_length=min_past + prediction_length,
                 max_missing_prop=max_missing_prop,
             ),
-            FileDataset(path=Path(data_path), freq="h"),
+            FileDataset(path=data_path, freq='h', one_dim_target=False)
         )
         for data_path in train_data_paths
     ]
-    
-    # various augmentations
-    train_datasets.extend([
-        RandomAffineTransform(10, 0.2, 999)(dataset)
-        for dataset in train_datasets[:len(train_data_paths)]
-    ])
-    train_datasets.extend([
-        RandomConvexCombinationTransform(10, 0.2, 999)(dataset)
-        for dataset in train_datasets[:len(train_data_paths)]
-    ])
-    train_datasets.extend(
-        RandomProjectedSkewTransform(2, 5, scale=0.1, random_seed=9809)(
-            train_datasets[:len(train_data_paths)] 
-        )
-    )
 
+
+    train_datasets = [
+        make_coord_iterator(dataset)
+        for dataset in train_datasets
+    ]
+    print(train_datasets[0])
+    print(get_deep_size(train_datasets[0]))
+    print(get_deep_size([i for i in train_datasets[0]]))
+    for i in train_datasets[0]:
+        print(i)
+
+    fsdfsadfsdf
+
+    # train_datasets=[
+    #     RandomConvexCombinationTransform(10, 1, 999)(dataset)
+    #     for dataset in train_datasets[:len(train_data_paths)]
+    # ]
+    
     # set probabilities (how we weight draws from each data file)
     if isinstance(probability, str):
         probability = ast.literal_eval(probability)
@@ -191,7 +230,8 @@ def main(
 
     
     for i, x in enumerate(shuffled_train_dataset):
-        print(i, x)
+        # print(i, x)
+        pass
     
 
 if __name__ == "__main__":
