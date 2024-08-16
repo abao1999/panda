@@ -18,7 +18,6 @@ $ pip install -e .
 + Error propagation to explain why long context beats precision limit of numerical integration
 
 ## TODO
-+ Make a training script that samples dynamical systems and creates training data on the fly
 + Think of some "physics based" data augmentation strategies. Random affine transforms of time series are still valid dynamical systems, as well as random transcendental functions.
 + Functionality to add random values to the parameters of each attractor, while checking that the system didn't bifurcate or diverge. Could just run an ADFuller stationarity test, as well as rule out constant and extremely large values
 + Make model configs more efficient i.e. hydra config, since all the model yaml files repeat each other except for model name.
