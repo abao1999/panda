@@ -46,30 +46,31 @@ class RandomConvexCombinationTransform:
         combos = coeffs@coordinates
         return iter([{"start": metadata[0], "target": combination} for combination in combos])
 
+
 @dataclass
 class RandomAffineTransform:
     pass
-#     """Random affine transformations of coordinates with coefficients sampled from a zero-mean Gaussian
+    """Random affine transformations of coordinates with coefficients sampled from a zero-mean Gaussian
 
-#     NOTE: this augmentation is on the system scale (across coordinates)
+    NOTE: this augmentation is on the system scale (across coordinates)
 
-#     :param out_dim: output dimension of the linear map
-#     :param scale: gaussian distribution scale
-#     :param random_seed: RNG seed
-#     """
-#     out_dim: int
-#     scale: float
-#     random_seed: Optional[int] = 0
+    :param out_dim: output dimension of the linear map
+    :param scale: gaussian distribution scale
+    :param random_seed: RNG seed
+    """
+    out_dim: int
+    scale: float
+    random_seed: Optional[int] = 0
 
-#     def __post_init__(self) -> None:
-#         self.rng = np.random.default_rng(self.random_seed)
+    def __post_init__(self) -> None:
+        self.rng = np.random.default_rng(self.random_seed)
 
-#     def __call__(self, dataset: Dataset) -> List[Dict[str, Any]]:
-#         coordinates, metadata = stack_and_extract_metadata(dataset)
-#         affine_transform = self.rng.normal(scale=self.scale, size=(self.out_dim, 1+coordinates.shape[0]))
-#         combos = affine_transform[:, :-1]@coordinates + affine_transform[:, -1, np.newaxis]
-#         data = ({"start": metadata[0], "target": combination} for combination in combos)
-#         return ListDataset(data, freq='h')
+    def __call__(self, dataset: Dataset) -> List[Dict[str, Any]]:
+        coordinates, metadata = stack_and_extract_metadata(dataset)
+        affine_transform = self.rng.normal(scale=self.scale, size=(self.out_dim, 1+coordinates.shape[0]))
+        combos = affine_transform[:, :-1]@coordinates + affine_transform[:, -1, np.newaxis]
+        data = ({"start": metadata[0], "target": combination} for combination in combos)
+        return ListDataset(data, freq='h')
         
 
 @dataclass
@@ -106,7 +107,6 @@ class RandomProjectedSkewTransform:
         pair_inds = self.rng.choice(num_total_pairs, size=self.num_skew_pairs, replace=False)
         all_pairs = list(combinations(range(len(datasets)), 2))
         sampled_pairs = [all_pairs[i] for i in pair_inds]
-        # return [self.random_project(datasets[i], datasets[j]) for i,j in sampled_pairs]
         return {(i,j): self.random_project(datasets[i], datasets[j]) for i,j in sampled_pairs}
         
 

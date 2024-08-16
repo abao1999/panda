@@ -254,6 +254,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             "labels": labels.squeeze(0),
         }
 
+   
     def __iter__(self) -> Iterator:
         preprocessed_datasets = [
             Map(
@@ -295,7 +296,8 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             while True:
                 idx = np.random.choice(range(len(iterators)), p=probs)
                 try:
-                    yield self.to_hf_format(next(iterators[idx]))
+                    data = next(iterators[idx])
+                    yield self.to_hf_format(data)
                 except StopIteration:
                     probs[idx] = 0
                     if sum(probs) == 0:

@@ -127,26 +127,6 @@ def main(
         logger,
     )
 
-    def make_coord_iterator(dataset):
-        yield from next(iter(dataset))["target"]
-
-    class CoordIterator:
-
-        def __init__(self, dataset):
-            self.dataset = dataset
-
-        def __iter__(self):
-            return self._Generator(self.dataset)
-
-        class _Generator:
-
-            def __init__(self, dataset):
-                self.data = next(iter(dataset))
-
-            def __iter__(self):
-
-                yield {}
-
     train_datasets = [
         Filter(
             partial(
@@ -154,28 +134,10 @@ def main(
                 min_length=min_past + prediction_length,
                 max_missing_prop=max_missing_prop,
             ),
-            FileDataset(path=data_path, freq='h', one_dim_target=False)
+            FileDataset(path=data_path, freq='h')
         )
         for data_path in train_data_paths
     ]
-
-
-    train_datasets = [
-        make_coord_iterator(dataset)
-        for dataset in train_datasets
-    ]
-    print(train_datasets[0])
-    print(get_deep_size(train_datasets[0]))
-    print(get_deep_size([i for i in train_datasets[0]]))
-    for i in train_datasets[0]:
-        print(i)
-
-    fsdfsadfsdf
-
-    # train_datasets=[
-    #     RandomConvexCombinationTransform(10, 1, 999)(dataset)
-    #     for dataset in train_datasets[:len(train_data_paths)]
-    # ]
     
     # set probabilities (how we weight draws from each data file)
     if isinstance(probability, str):
@@ -225,13 +187,12 @@ def main(
         min_past=min_past,
         model_type=model_type,
         imputation_method=LastValueImputation() if model_type == "causal" else None,
-        mode="training",
+        mode="train",
     ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
 
     
     for i, x in enumerate(shuffled_train_dataset):
-        # print(i, x)
-        pass
+        print(i, x)
     
 
 if __name__ == "__main__":
