@@ -254,18 +254,6 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             "labels": labels.squeeze(0),
         }
 
-    def preprocess_data(self, dataset):
-        dataset = Map(
-            partial(self.preprocess_entry, mode=self.mode),
-            dataset,
-        )
-        dataset = {
-            'train': self.create_training_data,
-            'test': self.create_test_data,
-            'validation': self.create_validation_data
-        }[self.mode]()
- 
-    
     def __iter__(self) -> Iterator:
         preprocessed_datasets = [
             Map(
