@@ -26,34 +26,12 @@ from chronos_dysts.dataset import ChronosDataset
 from chronos_dysts.augmentations import (
     RandomAffineTransform, 
     RandomConvexCombinationTransform,
-    RandomProjectedSkewTransform
+    RandomProjectedSkewTransform,
+    sample_index_pairs
 )
 
-
-def get_deep_size(obj, seen=None):
-    """Recursively finds size of objects, including referenced objects."""
-    import sys
-    from collections import deque
-    size = sys.getsizeof(obj)
-    if seen is None:
-        seen = set()
-    
-    obj_id = id(obj)
-    if obj_id in seen:
-        return 0  # Avoid infinite recursion for self-referencing objects
-    seen.add(obj_id)
-    
-    if isinstance(obj, dict):
-        size += sum([get_deep_size(v, seen) for v in obj.values()])
-        size += sum([get_deep_size(k, seen) for k in obj.keys()])
-    elif hasattr(obj, '__dict__'):
-        size += get_deep_size(vars(obj), seen)
-    elif isinstance(obj, (list, tuple, set, frozenset, deque)):
-        size += sum([get_deep_size(i, seen) for i in obj])
-    
-    return size
-
 app = typer.Typer(pretty_exceptions_enable=False)
+
 
 @app.command()
 @use_yaml_config(param_name="config")
@@ -138,7 +116,38 @@ def main(
         )
         for data_path in train_data_paths
     ]
-    
+
+    # augmentations
+    train_datasets.extend([
+        partial(
+            RandomAffineTransform,
+            out_dim=5, 
+            scale=0.5,
+            random_seed=seed
+        )(ds)
+        for ds in train_datasets[:len(train_data_paths)]
+    ])
+    train_datasets.extend([
+        partial(
+            RandomConvexCombinationTransform,
+            num_combinations=5, 
+            alpha=0.5,
+            random_seed=seed
+        )(ds)
+        for ds in train_datasets[:len(train_data_paths)]
+    ])
+    train_datasets.extend([
+        partial(
+            RandomProjectedSkewTransform,
+            embedding_dim=10,
+            scale=0.8,
+            random_seed=seed
+        )(
+            train_datasets[i], train_datasets[j]
+        )
+        for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
+    ])
+
     # set probabilities (how we weight draws from each data file)
     if isinstance(probability, str):
         probability = ast.literal_eval(probability)
@@ -190,7 +199,6 @@ def main(
         mode="train",
     ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
 
-    
     for i, x in enumerate(shuffled_train_dataset):
         print(i, x)
     
