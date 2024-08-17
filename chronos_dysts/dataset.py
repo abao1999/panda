@@ -113,13 +113,13 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         min_past: Optional[int] = None,
         model_type: str = "seq2seq",
         imputation_method: Optional[MissingValueImputation] = None,
-        mode: str = "training",
+        mode: str = "train",
         np_dtype: np.dtype = np.float32,
     ) -> None:
         super().__init__()
 
         assert len(probabilities) == len(datasets)
-        assert mode in ("training", "validation", "test")
+        assert mode in ("train", "validation", "test")
         assert model_type in ("seq2seq", "causal")
 
         self.datasets = datasets
@@ -144,7 +144,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             # recommended to use an imputation method, e.g., LastValueImputation
             entry["target"] = self.imputation_method(entry["target"])
 
-        if mode == "training" and self.drop_prob > 0:
+        if mode == "train" and self.drop_prob > 0:
             target = entry["target"].copy()
             drop_p = np.random.uniform(low=0.0, high=self.drop_prob)
             mask = np.random.choice(
@@ -156,10 +156,10 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         return entry
 
     def _create_instance_splitter(self, mode: str):
-        assert mode in ["training", "test", "validation"]
+        assert mode in ["train", "test", "validation"]
 
         instance_sampler = {
-            "training": ExpectedNumInstanceSampler(
+            "train": ExpectedNumInstanceSampler(
                 num_instances=1.0,
                 min_instances=1,
                 min_past=self.min_past,
@@ -183,7 +183,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
     def create_training_data(self, data):
         data = Cyclic(data)
         split_transform = self._create_instance_splitter(
-            "training"
+            "train"
         ) + FilterTransformation(
             condition=lambda entry: (~np.isnan(entry["past_target"])).sum() > 0
         )
@@ -254,7 +254,6 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             "labels": labels.squeeze(0),
         }
 
-   
     def __iter__(self) -> Iterator:
         preprocessed_datasets = [
             Map(
@@ -264,7 +263,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             for dataset in self.datasets
         ]
 
-        if self.mode == "training":
+        if self.mode == "train":
             iterables = [
                 self.create_training_data(dataset) for dataset in preprocessed_datasets
             ]
@@ -292,7 +291,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         probs = [prob / sum(probs) for prob in probs]
 
         iterators = list(map(iter, iterables))
-        if self.mode == "training":
+        if self.mode == "train":
             while True:
                 idx = np.random.choice(range(len(iterators)), p=probs)
                 try:

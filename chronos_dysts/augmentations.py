@@ -8,7 +8,6 @@ TODO: maybe add augmentations at different scales
 import numpy as np
 
 from itertools import combinations
-from abc import abstractmethod
 from gluonts.dataset import Dataset
 from gluonts.dataset.common import ListDataset
 from dataclasses import dataclass
@@ -24,7 +23,7 @@ def stack_and_extract_metadata(dataset: Dataset) -> Tuple[np.ndarray, Tuple[Any]
 
 
 @dataclass
-class RandomConvexCombinationTransform:
+class RandomConvexCombinationTransform(Dataset):
     """Random convex combinations of coordinates with coefficients sampled from a dirichlet distribution
 
     NOTE: this augmentation is on the system scale (across coordinates)
@@ -33,6 +32,7 @@ class RandomConvexCombinationTransform:
     :param alpha: dirichlet distribution scale
     :param random_seed: RNG seed
     """
+    dataset: Dataset
     num_combinations: int
     alpha: float
     random_seed: Optional[int] = 0
@@ -40,15 +40,14 @@ class RandomConvexCombinationTransform:
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng(self.random_seed)
 
-    def __call__(self, dataset: Dataset) -> Iterator:
-        coordinates, metadata = stack_and_extract_metadata(dataset)
+    def __iter__(self) -> Iterator:
+        coordinates, metadata = stack_and_extract_metadata(self.dataset)
         coeffs = self.rng.dirichlet(self.alpha*np.ones(coordinates.shape[0]), size=self.num_combinations)
-        combos = coeffs@coordinates
-        return iter([{"start": metadata[0], "target": combination} for combination in combos])
+        return ({"start": metadata[0], "target": combo} for combo in coeffs@coordinates)
 
 
 @dataclass
-class RandomAffineTransform:
+class RandomAffineTransform(Dataset):
     pass
     """Random affine transformations of coordinates with coefficients sampled from a zero-mean Gaussian
 
@@ -58,6 +57,7 @@ class RandomAffineTransform:
     :param scale: gaussian distribution scale
     :param random_seed: RNG seed
     """
+    dataset: Dataset
     out_dim: int
     scale: float
     random_seed: Optional[int] = 0
@@ -65,14 +65,29 @@ class RandomAffineTransform:
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng(self.random_seed)
 
-    def __call__(self, dataset: Dataset) -> List[Dict[str, Any]]:
-        coordinates, metadata = stack_and_extract_metadata(dataset)
+    def __iter__(self) -> Iterator:
+        coordinates, metadata = stack_and_extract_metadata(self.dataset)
         affine_transform = self.rng.normal(scale=self.scale, size=(self.out_dim, 1+coordinates.shape[0]))
         combos = affine_transform[:, :-1]@coordinates + affine_transform[:, -1, np.newaxis]
-        data = ({"start": metadata[0], "target": combination} for combination in combos)
-        return ListDataset(data, freq='h')
+        return ({"start": metadata[0], "target": combination} for combination in combos)
         
 
+def sample_index_pairs(
+    size: int, num_pairs: int, rng: Optional[np.random.Generator] = None
+) -> Iterator:
+    """Sample pairs from an arbitrary sequence
+    
+    TODO: this is a pretty general util, move to utils
+    """
+    num_total_pairs = size*(size-1)//2
+    assert num_pairs < num_total_pairs, (
+        "Cannot sample more pairs than unique pairs."
+    )
+    sampled_pairs = (rng or np.random).choice(num_total_pairs, size=num_pairs, replace=False)
+    all_pairs = list(combinations(range(size), 2))
+    return (all_pairs[i] for i in sampled_pairs) 
+
+     
 @dataclass
 class RandomProjectedSkewTransform:
     """
@@ -81,7 +96,8 @@ class RandomProjectedSkewTransform:
 
     NOTE: this is an example of an ensemble-scale transformation
     """
-    num_skew_pairs: int  # number of pairs of systems to sample
+    dataset1: Dataset
+    dataset2: Dataset
     embedding_dim: int  # embedding dimension for the skew projection
     scale: float  # scale for the gaussian random projection matrices
     random_seed: Optional[int] = 0
@@ -89,25 +105,14 @@ class RandomProjectedSkewTransform:
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng(self.random_seed)
 
-    def random_project(self, sys1: Dataset, sys2: Dataset) -> List[Dict[str, Any]]:
-        coords1, metadata = stack_and_extract_metadata(sys1)
-        coords2, _ = stack_and_extract_metadata(sys2)
+    def __iter__(self) -> Iterator:
+        coords1, metadata = stack_and_extract_metadata(self.dataset1)
+        coords2, _ = stack_and_extract_metadata(self.dataset2)
         proj1 = self.rng.normal(scale=self.scale, size=(self.embedding_dim, coords1.shape[0]))
         proj2 = self.rng.normal(scale=self.scale, size=(self.embedding_dim, coords2.shape[0]))
         transformed = proj1@coords1 + proj2@coords2
-        data = ({"start": metadata[0], "target": coord} for coord in transformed)
-        return ListDataset(data, freq='h')
+        return ({"start": metadata[0], "target": coord} for coord in transformed)
 
-    def __call__(self, datasets: Sequence[Dataset]) -> List[ListDataset]:
-        num_total_pairs = len(datasets)*(len(datasets)-1)//2
-        assert self.num_skew_pairs < num_total_pairs, (
-            "Cannot sample more skew pairs than unique pairs."
-        )
-
-        pair_inds = self.rng.choice(num_total_pairs, size=self.num_skew_pairs, replace=False)
-        all_pairs = list(combinations(range(len(datasets)), 2))
-        sampled_pairs = [all_pairs[i] for i in pair_inds]
-        return {(i,j): self.random_project(datasets[i], datasets[j]) for i,j in sampled_pairs}
         
 
 
