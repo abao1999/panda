@@ -8,36 +8,33 @@ import pyarrow.dataset as ds
 import matplotlib.pyplot as plt
 import argparse
 
+from gluonts.dataset.common import FileDataset, ListDataset
+from pathlib import Path
+
+from chronos_dysts.augmentations import stack_and_extract_metadata
+from typing import List
 
 WORK_DIR = os.getenv('WORK')
 
-def get_dyst_filepath(dyst_name):
+def get_dyst_filepaths(dyst_name: str) -> List[str]:
     """ 
     [dyst_name].arrow could either be in data/train or data/test
     Check if [dyst_name].arrow is in either data/train or data/test
     """
-    filepath_train = os.path.join(WORK_DIR, 'data/train', f"{dyst_name}.arrow")
-    filepath_test = os.path.join(WORK_DIR, 'data/test', f"{dyst_name}.arrow")
+    possible_train_dir = os.path.join(WORK_DIR, 'data/train', dyst_name)
+    possible_test_dir = os.path.join(WORK_DIR, 'data/test', dyst_name)
 
-    if os.path.exists(filepath_train):
-        filepath = filepath_train
-    elif os.path.exists(filepath_test):
-        filepath = filepath_test
+    if os.path.exists(possible_train_dir):
+        dyst_dir = possible_train_dir
+    elif os.path.exists(possible_test_dir):
+        dyst_dir = possible_test_dir
     else:
-        train_dir = os.path.join(WORK_DIR, 'data/train')
-        test_dir = os.path.join(WORK_DIR, 'data/test')
-        available_files = []
-        
-        if os.path.exists(train_dir):
-            available_files += os.listdir(train_dir)
-        
-        if os.path.exists(test_dir):
-            available_files += os.listdir(test_dir)
-        
-        raise FileNotFoundError(f"File {dyst_name}.arrow does not exist. Available files: {available_files}")
+        raise Exception(f"Directory {dyst_name} does not exist in data/train or data/test.")
 
-    print(f"Found Arrow file: {filepath}")
-    return filepath
+    print(f"Found dyst directory: {dyst_dir}")
+    filepaths = list(Path(dyst_dir).glob("*.arrow"))
+    print(f"Found {len(filepaths)} files in {dyst_dir}")
+    return filepaths
 
 def read_arrow_ds(filepath):
     """
@@ -112,32 +109,29 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
     args = parser.parse_args()
-    filepath = get_dyst_filepath(args.dyst_name)
-    # with ipc.open_file(filepath) as reader:
-    #     df = reader.read_pandas()
 
-    # read arrow file into pandas dataframe
-    dyst_df = read_arrow_ds(filepath)
-    print(dyst_df.columns)
+    filepaths = get_dyst_filepaths(args.dyst_name)
 
-    # print(dyst_df['target'][0].shape) # this confirms that gluonts in writing the arrow file concatenates dimensions i.e. (1024, 3) -> (3073,)
+    dyst_coords_samples = []
+    for filepath in filepaths:
+        # # read arrow file into pandas dataframe
+        # dyst_df = read_arrow_ds(filepath)
+        # print(dyst_df.columns)
+        # # stack
+        # dyst_coords = np.stack(dyst_df['target'], axis=0)
+        # print(dyst_coords.shape)
 
-    # stack
-    dyst_data = np.stack(dyst_df['target'], axis=0)
+        # create dataset by reading directly from filepath into FileDataset
+        gts_dataset = FileDataset(path=Path(filepath), freq="h", one_dim_target=True) # TODO: consider other frequencies?
 
-    # if we have 3 dimensions
-    if 'target._np_shape' in dyst_df.columns:
-        # NOTE: we are assuming no jagged arrays i.e. every row of target._np_shape is the same
-        target_shape = dyst_df['target._np_shape'][0]
-        print(target_shape)
-        assert len(target_shape) == 2, "incorrect number of dimensions!"
-        # reshape
-        dyst_data = dyst_data.reshape(-1, target_shape[0], target_shape[1])
+        # extract the coordinates
+        dyst_coords, metadata = stack_and_extract_metadata(gts_dataset)
+        dyst_coords_samples.append(dyst_coords)
 
-    assert dyst_data.shape[0] == dyst_df.shape[0], "shapes are messed up"
-    
-    print(type(dyst_data))
-    print(dyst_data.shape)
+        print("original data shape: ", dyst_coords.shape)
 
-    # plot the trajectories
-    plot_trajs_multivariate(dyst_data, plot_name=args.dyst_name)
+    dyst_coords_samples = np.array(dyst_coords_samples)
+    print(dyst_coords_samples.shape)
+
+    # # plot the trajectories
+    plot_trajs_multivariate(dyst_coords_samples, plot_name=args.dyst_name)

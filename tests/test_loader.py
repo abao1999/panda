@@ -2,13 +2,11 @@
 import ast
 import logging
 import random
-from copy import deepcopy
 from pathlib import Path
 from functools import partial
 from typing import Optional
 
 import typer
-import numpy as np
 from typer_config import use_yaml_config
 import torch
 import transformers

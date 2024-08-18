@@ -9,11 +9,12 @@ import typer
 import yaml
 import os
 
+# TODO: attractor error metrics that consider forecasts for all dimensions jointly
 from gluonts.ev.metrics import MASE, MeanWeightedSumQuantileLoss
 from gluonts.model.evaluation import evaluate_forecasts
 
 from chronos_dysts.pipeline import ChronosPipeline
-from chronos_dysts.utils import load_and_split_dataset, generate_sample_forecasts
+from chronos_dysts.utils import load_and_split_dataset_from_arrow, generate_sample_forecasts
 
 
 app = typer.Typer(pretty_exceptions_enable=False)
@@ -46,54 +47,71 @@ def main(
         torch_dtype=torch_dtype,
     )
 
-    print("Pipeline")
-    print(vars(pipeline))
+    # print("Pipeline")
+    # print(vars(pipeline))
 
     # Load backtest configs
     with open(config_path) as fp:
         backtest_configs = yaml.safe_load(fp)
 
-    print("Backtest configs")
-    print(backtest_configs)
+    data_dir = backtest_configs["data_dir"]
+    dysts_configs = backtest_configs["dysts"]
+    print("Dysts configs: ", dysts_configs)
 
     result_rows = []
-    for config in backtest_configs:
-        print("config: ", config)
-        dyst_name = config["name"]
+    for dyst_config in dysts_configs:
+        # get dyst config
+        print("config: ", dyst_config)
+        dyst_name = dyst_config["name"]
         print("dyst name: ", dyst_name)
-        prediction_length = config["prediction_length"]
 
-        logger.info(f"Loading {dyst_name}")
-        test_data = load_and_split_dataset(backtest_config=config)
-        logger.info(
-            f"Generating forecasts for {dyst_name} "
-            f"({len(test_data.input)} time series)"
-        )
-        sample_forecasts = generate_sample_forecasts(
-            test_data.input,
-            pipeline=pipeline,
-            prediction_length=prediction_length,
-            batch_size=batch_size,
-            num_samples=num_samples,
-            temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
-        )
+        data_dir = os.path.join(data_dir, dyst_name)
+        if not os.path.exists(data_dir):
+            continue
+            # raise Exception(f"Directory {data_dir} does not exist.")
+        filepaths = list(Path(data_dir).glob("*.arrow"))
 
-        logger.info(f"Evaluating forecasts for {dyst_name}")
-        metrics = (
-            evaluate_forecasts(
-                sample_forecasts,
-                test_data=test_data,
-                metrics=[
-                    MASE(),
-                    MeanWeightedSumQuantileLoss(np.arange(0.1, 1.0, 0.1)),
-                ],
-                batch_size=5000,
+        for filepath in filepaths[:1]: # TODO: iterate over all files in directory... for now we only do one file to prototype
+            prediction_length = dyst_config["prediction_length"]
+
+            # load dataset test split from Arrow file
+            logger.info(f"Loading {dyst_name} from directory {data_dir}")
+            test_data = load_and_split_dataset_from_arrow(dyst_config, filepath)
+
+            # generate forecasts for all dimensions of a single sample instance
+            logger.info(
+                f"Generating forecasts for {dyst_name} "
+                f"({len(test_data.input)} time series)"
             )
-            .reset_index(drop=True)
-            .to_dict(orient="records")
-        )
+            sample_forecasts = generate_sample_forecasts(
+                test_data.input,
+                pipeline=pipeline,
+                prediction_length=prediction_length,
+                batch_size=batch_size,
+                num_samples=num_samples,
+                temperature=temperature,
+                top_k=top_k,
+                top_p=top_p,
+            )
+
+            print ("Sample forecasts: ", sample_forecasts)
+            print(sample_forecasts.__class__.__name__)
+
+            logger.info(f"Evaluating forecasts for {dyst_name}")
+            metrics = (
+                evaluate_forecasts(
+                    sample_forecasts,
+                    test_data=test_data,
+                    metrics=[
+                        MASE(),
+                        MeanWeightedSumQuantileLoss(np.arange(0.1, 1.0, 0.1)),
+                    ],
+                    batch_size=5000,
+                )
+                .reset_index(drop=True)
+                .to_dict(orient="records")
+            )
+            # TODO: aggregate metrics in a smart way
         result_rows.append(
             {"dataset": dyst_name, "model": chronos_model_id, **metrics[0]}
         )

@@ -1,7 +1,10 @@
 # Adapted from https://github.com/amazon-science/chronos-forecasting
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
-# TODO: modify for dysts
+
+"""
+Evaluation pipeline for forecasting time series with Chronos.
+"""
 
 import warnings
 from dataclasses import dataclass
@@ -13,8 +16,11 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForSeq2SeqLM,
 )
-from chronos_dysts.utils import ChronosTokenizerType, ChronosModelType
-from chronos_dysts.utils import left_pad_and_stack_1D
+from chronos_dysts.utils import (
+    ChronosTokenizerType, 
+    ChronosModelType,
+    left_pad_and_stack_1D,
+)
 from chronos_dysts.model import ChronosModel, ChronosConfig
 
 @dataclass
@@ -186,7 +192,6 @@ class ChronosPipeline:
         Supports the same arguments as ``AutoConfig`` and ``AutoModel``
         from ``transformers``.
         """
-
         config = AutoConfig.from_pretrained(*args, **kwargs)
 
         assert hasattr(config, "chronos_config"), "Not a Chronos config file"

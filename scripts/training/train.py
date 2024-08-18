@@ -22,7 +22,13 @@ from gluonts.transform import LastValueImputation
 # from torch.nn.parallel import DistributedDataParallel as DDP
 # from chronos import ChronosConfig
 from chronos_dysts.tokenizer import ChronosConfig
-
+from chronos_dysts.dataset import ChronosDataset
+from chronos_dysts.augmentations import (
+    RandomAffineTransform, 
+    RandomConvexCombinationTransform,
+    RandomProjectedSkewTransform,
+    sample_index_pairs
+)
 from chronos_dysts.utils import (
     is_main_process,
     log_on_main,
@@ -32,7 +38,7 @@ from chronos_dysts.utils import (
     has_enough_observations,
     ensure_contiguous,
 )
-from chronos_dysts.dataset import ChronosDataset
+
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -77,6 +83,7 @@ def main(
     top_p: float = 1.0,
     seed: Optional[int] = None,
 ):
+    # set floating point precision
     if tf32 and not (
         torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
     ):
@@ -90,50 +97,39 @@ def main(
         )
         tf32 = False
 
+    # set random seed
     if seed is None:
         seed = random.randint(0, 2**32)
-
     log_on_main(f"Using SEED: {seed}", logger)
     transformers.set_seed(seed=seed)
 
+    # set training config
     raw_training_config = deepcopy(locals())
-    output_dir = Path(output_dir)
 
-    # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
-    train_data_paths = []
-    if train_data_dir is not None:
-        train_data_paths = list(str(path) for path in Path(train_data_dir).rglob("*"))
-
-    # add any additional arrow data filepaths specified to our training set
-    if extra_train_data_paths is not None:
-        extra_train_data_paths = ast.literal_eval(extra_train_data_paths)
-        assert isinstance(extra_train_data_paths, list)
-        train_data_paths += extra_train_data_paths
-
-    # set probabilities (how we weight draws from each data file)
-    if isinstance(probability, str):
-        probability = ast.literal_eval(probability)
-    elif probability is None:
-        probability = [1.0 / len(train_data_paths)] * len(train_data_paths)
-    assert isinstance(probability, list)
-
-    assert len(train_data_paths) == len(probability)
-
-    if dataloader_num_workers > len(train_data_paths):
-        log_on_main(
-            f"Setting the number of data loader workers to {len(train_data_paths)}, "
-            f"instead of {dataloader_num_workers}.",
-            logger,
-        )
-        dataloader_num_workers = len(train_data_paths)
-
+    # check tokenizer_kwargs is a dict
     if isinstance(tokenizer_kwargs, str):
         tokenizer_kwargs = ast.literal_eval(tokenizer_kwargs)
     assert isinstance(tokenizer_kwargs, dict)
 
+    # check model type is valid
     assert model_type in ["seq2seq", "causal"]
 
-    output_dir = get_next_path("run", base_dir=output_dir, file_type="")
+    # Get list of files to use for training
+    # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
+    train_data_paths = []
+    if train_data_dir is not None:
+        train_data_paths = list(
+            filter(lambda file: file.is_file(), Path(train_data_dir).rglob('*'))
+        )
+
+    # add any additional arrow data filepaths specified to our training set
+    if extra_train_data_paths is not None:
+        extra_train_data_paths = [Path(file) for file in extra_train_data_paths if Path(file).is_file()]
+        assert isinstance(extra_train_data_paths, list), "extra_train_data_paths be a list literal"
+        train_data_paths.extend(extra_train_data_paths)
+
+    # create a new output directory to save results
+    output_dir = get_next_path("run", base_dir=Path(output_dir), file_type="")
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
@@ -142,11 +138,7 @@ def main(
         logger,
     )
 
-    log_on_main(
-        f"Mixing probabilities: {probability}",
-        logger,
-    )
-
+    # load datasets and apply loading filters on the fly
     train_datasets = [
         Filter(
             partial(
@@ -158,6 +150,62 @@ def main(
         )
         for data_path in train_data_paths
     ]
+
+    # apply augmentations on the fly
+    log_on_main("Applying RandomAffineTransform", logger)
+    train_datasets.extend([
+        partial(
+            RandomAffineTransform,
+            out_dim=5, 
+            scale=0.5,
+            random_seed=seed
+        )(ds)
+        for ds in train_datasets[:len(train_data_paths)]
+    ])
+    log_on_main("Applying RandomConvexCombinationTransform", logger)
+    train_datasets.extend([
+        partial(
+            RandomConvexCombinationTransform,
+            num_combinations=5, 
+            alpha=0.5,
+            random_seed=seed
+        )(ds)
+        for ds in train_datasets[:len(train_data_paths)]
+    ])
+    log_on_main("Applying RandomProjectedSkewTransform", logger)
+    train_datasets.extend([
+        partial(
+            RandomProjectedSkewTransform,
+            embedding_dim=10,
+            scale=0.8,
+            random_seed=seed
+        )(
+            train_datasets[i], train_datasets[j]
+        )
+        for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
+    ])
+
+    # set probabilities (how we weight draws from each data file)
+    if isinstance(probability, str):
+        probability = ast.literal_eval(probability)
+    elif probability is None:
+        probability = [1.0 / len(train_datasets)] * len(train_datasets)
+    assert isinstance(probability, list)
+
+    assert len(train_datasets) == len(probability)
+
+    if dataloader_num_workers > len(train_datasets):
+        log_on_main(
+            f"Setting the number of data loader workers to {len(train_datasets)}, "
+            f"instead of {dataloader_num_workers}.",
+            logger,
+        )
+        dataloader_num_workers = len(train_datasets)
+
+    log_on_main(
+        f"Mixing probabilities: {probability}",
+        logger,
+    )
 
     log_on_main("Initializing model", logger)
 
@@ -191,17 +239,6 @@ def main(
     # Add extra items to model config so that it's saved in the ckpt
     model.config.chronos_config = chronos_config.__dict__
 
-    # # This actually makes things slower, but doesnt throw errors at least
-    # # torch distributed training, for torchrun (Elastic Launch)
-    # local_rank = int(os.environ['LOCAL_RANK'])
-    # torch.cuda.set_device(local_rank)    
-    # # Initialize the distributed environment with Gloo backend
-    # dist.init_process_group(backend='gloo')
-    # # move it to the ROCm device
-    # model = model.to(torch.device(f'cuda:{local_rank}'))
-    # # Wrap model with DistributedDataParallel
-    # model = DDP(model, device_ids=[local_rank])
-
     shuffled_train_dataset = ChronosDataset(
         datasets=train_datasets,
         probabilities=probability,
@@ -211,7 +248,7 @@ def main(
         min_past=min_past,
         model_type=model_type,
         imputation_method=LastValueImputation() if model_type == "causal" else None,
-        mode="training",
+        mode="train",
     ).shuffle(shuffle_buffer_length=shuffle_buffer_length)
 
     # Define training args
@@ -237,16 +274,17 @@ def main(
         remove_unused_columns=False,
     )
 
+    # check if model weights are contiguous in memory; if not, make them contiguous tensors. 
+    # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
-    # Create Trainer instance
+
+    # Create Trainer instance and start training
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
     )
     log_on_main("Training", logger)
-
-    print("TRAINING")
     trainer.train()
 
     if is_main_process():

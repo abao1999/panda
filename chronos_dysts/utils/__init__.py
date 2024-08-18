@@ -1,3 +1,10 @@
+from .type_aliases import (
+    FloatOrFloatSequence,
+    ChronosTokenizerType,
+    ChronosModelType,
+    ChronosConfigType,
+)
+
 from .train_utils import (
     is_main_process,
     log_on_main,
@@ -7,10 +14,6 @@ from .train_utils import (
     load_model,
     has_enough_observations,
     ensure_contiguous,
-)
-
-from .data_utils import (
-    left_pad_and_stack_1D,
 )
 
 from .typechecks import (
@@ -24,14 +27,8 @@ from .typechecks import (
     is_valid_vector,
 )
 
-from .type_aliases import (
-    FloatOrFloatSequence,
-    ChronosTokenizerType,
-    ChronosModelType,
-    ChronosConfigType,
-)
-
 from .eval_utils import (
     generate_sample_forecasts,
-    load_and_split_dataset,
+    load_and_split_dataset_from_arrow,
+    left_pad_and_stack_1D,
 )

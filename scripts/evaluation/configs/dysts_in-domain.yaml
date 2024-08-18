@@ -1,8 +1,19 @@
 # Backtest configs for the "in-domain" dynamical systems used for fine-tuning
-# TODO: decide how we want to structure this
-
+data_dir: "/stor/work/AMDG_Gilpin_Summer2024/data/train/"
+dysts:
 - name: Lorenz
-  prediction_length: 32
-  offset: 32
+  prediction_length: 64
+  offset: 64
   num_rolls: 1
-  data_filepath: "/stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz_dim-0.arrow"
+- name: Lorenz96
+  prediction_length: 64
+  offset: 64
+  num_rolls: 1
+- name: SprottD
+  prediction_length: 64
+  offset: 64
+  num_rolls: 1
+- name: Thomas
+  prediction_length: 64
+  offset: 64
+  num_rolls: 1

@@ -1,7 +1,6 @@
-# utils for evaluation script from original Chronos repo. To test if our modified chronos_dysts evaluation script
-# Currently, we do not load from hugginface repo/dataset
-# TODO: add functionality to load from huggingface repo/dataset
-
+"""
+utils for Chronos Pipeline (evaluation) and evaluation scripts
+"""
 from typing import Iterable
 
 import numpy as np
@@ -12,33 +11,46 @@ from gluonts.model.forecast import SampleForecast
 from gluonts.dataset.common import FileDataset
 from pathlib import Path
 
-import pyarrow.dataset as ds
-
 from tqdm.auto import tqdm
-from typing import Optional
+from typing import Optional, List
 
-# # TODO: fix this circular import thing, only used for typing though
-# from chronos_dysts.pipeline import ChronosPipeline
 
-def load_and_split_dataset(backtest_config: dict, verbose: Optional[bool] = False):
+def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:
     """
-    Takes in a config for a dyst system and loads the corresponding
-    Arrow file into GluonTS FileDataset https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.common.html 
-    And then uses GluonTS split https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.split.html
-    to generate test instances from windows of original timeseries
-    NOTE: only works for separate dimension files, should be straightforward to extend
+    Left pad a list of 1D tensors to the same length and stack them. 
+    Used in pipeline, if given context is a list of tensors.
     """
-    dyst_name = backtest_config["name"]
-    filepath = backtest_config["data_filepath"]
-    offset = backtest_config["offset"]
-    prediction_length = backtest_config["prediction_length"]
-    num_rolls = backtest_config["num_rolls"]
+    max_len = max(len(c) for c in tensors)
+    padded = []
+    for c in tensors:
+        assert isinstance(c, torch.Tensor)
+        assert c.ndim == 1
+        padding = torch.full(
+            size=(max_len - len(c),), fill_value=torch.nan, device=c.device
+        )
+        padded.append(torch.concat((padding, c), dim=-1))
+    return torch.stack(padded)
 
+
+def load_and_split_dataset_from_arrow(dyst_backtest_config: dict, filepath: str, verbose: Optional[bool] = False):
+    """
+    Takes in a config for a dyst system and directly loads Arrow file into GluonTS FileDataset
+        https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.common.html 
+    And then uses GluonTS split to generate test instances from windows of original timeseries
+        https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.split.html
+    """
+    dyst_name = dyst_backtest_config["name"]
+    # TODO: load selected dimensions for dyst system config, so we can have separate forecast for each univariate trajectory
+    offset = dyst_backtest_config["offset"]
+    prediction_length = dyst_backtest_config["prediction_length"]
+    num_rolls = dyst_backtest_config["num_rolls"]
+    
     if verbose:
-        print(f"Loading {dyst_name} from {filepath}")
+        print("filepath: ", filepath)
         print(f"Splitting timeseries by creating {num_rolls} non-overlapping windows")
         print(f"And using offset {offset} and prediction length {prediction_length}")
 
+    print("loading ", filepath)
     gts_dataset = FileDataset(path=Path(filepath), freq="h") # TODO: consider other frequencies?
 
     # Split dataset for evaluation
@@ -57,7 +69,7 @@ def generate_sample_forecasts(
     **predict_kwargs,
 ):
     """
-    Generates forecast samples using GluonTS batcher to batch the generated instances from FileDataset
+    Generates forecast samples using GluonTS batcher to batch the test instances generated from FileDataset
     """
     forecast_samples = []
     for batch in tqdm(batcher(test_data_input, batch_size=batch_size)):
