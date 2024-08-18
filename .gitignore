@@ -20,6 +20,7 @@ logs/
 **/run/
 **/.ipynb_checkpoints/*
 **/figures/*
+**/figs*
 **/logs/*
 **/outputs/*
 **/metrics/*

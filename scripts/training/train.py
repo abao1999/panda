@@ -152,6 +152,12 @@ def main(
     ]
 
     # apply augmentations on the fly
+    # TODO: understand the fine-tuning details more. Do we want to aggregate the samples together, on the fly?
+    # TODO: also will probably need to re-weight probabilities to take into account the type of augmentation
+    #    - say original data is (3,1024) and augmented is (10,1024). Then each entry in the augmented would have less probability under current scheme
+    #    - essentially, the training datasets is jagged arrays of different lengths
+    #    - (also, if we're doing a skew transform, we might want to weight the original data more heavily?)
+
     log_on_main("Applying RandomAffineTransform", logger)
     train_datasets.extend([
         partial(

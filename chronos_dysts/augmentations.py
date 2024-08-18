@@ -78,9 +78,10 @@ def sample_index_pairs(
     """Sample pairs from an arbitrary sequence
     
     TODO: this is a pretty general util, move to utils
+    TODO: add option to filter by dyst_name for sampled pairs?
     """
     num_total_pairs = size*(size-1)//2
-    assert num_pairs < num_total_pairs, (
+    assert num_pairs <= num_total_pairs, (
         "Cannot sample more pairs than unique pairs."
     )
     sampled_pairs = (rng or np.random).choice(num_total_pairs, size=num_pairs, replace=False)
