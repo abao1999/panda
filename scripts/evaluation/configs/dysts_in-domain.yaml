@@ -9,11 +9,11 @@ dysts:
   prediction_length: 64
   offset: 64
   num_rolls: 1
-- name: SprottD
-  prediction_length: 64
-  offset: 64
-  num_rolls: 1
-- name: Thomas
-  prediction_length: 64
-  offset: 64
-  num_rolls: 1
+# - name: SprottD
+#   prediction_length: 64
+#   offset: 64
+#   num_rolls: 1
+# - name: Thomas
+#   prediction_length: 64
+#   offset: 64
+#   num_rolls: 1

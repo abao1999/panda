@@ -7,19 +7,10 @@ TODO: maybe add augmentations at different scales
 """
 import numpy as np
 
-from itertools import combinations
 from gluonts.dataset import Dataset
-from gluonts.dataset.common import ListDataset
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any, Sequence, Tuple, Iterator
-
-
-def stack_and_extract_metadata(dataset: Dataset) -> Tuple[np.ndarray, Tuple[Any]]:
-    """Utility for unpacking gluonts dataset into array and extracting metadata
-    """
-    coords, metadata = zip(*[(coord["target"], coord["start"]) for coord in dataset])
-    coordinates = np.stack(coords)
-    return coordinates, metadata
+from typing import Optional, Iterator
+from chronos_dysts.utils import stack_and_extract_metadata
 
 
 @dataclass
@@ -70,23 +61,6 @@ class RandomAffineTransform(Dataset):
         affine_transform = self.rng.normal(scale=self.scale, size=(self.out_dim, 1+coordinates.shape[0]))
         combos = affine_transform[:, :-1]@coordinates + affine_transform[:, -1, np.newaxis]
         return ({"start": metadata[0], "target": combination} for combination in combos)
-        
-
-def sample_index_pairs(
-    size: int, num_pairs: int, rng: Optional[np.random.Generator] = None
-) -> Iterator:
-    """Sample pairs from an arbitrary sequence
-    
-    TODO: this is a pretty general util, move to utils
-    TODO: add option to filter by dyst_name for sampled pairs?
-    """
-    num_total_pairs = size*(size-1)//2
-    assert num_pairs <= num_total_pairs, (
-        "Cannot sample more pairs than unique pairs."
-    )
-    sampled_pairs = (rng or np.random).choice(num_total_pairs, size=num_pairs, replace=False)
-    all_pairs = list(combinations(range(size), 2))
-    return (all_pairs[i] for i in sampled_pairs) 
 
      
 @dataclass

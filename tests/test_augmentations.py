@@ -1,83 +1,57 @@
 import numpy as np
 import argparse
-from pathlib import Path
 from functools import partial
-from typing import List
+from typing import List, Dict
 
-from gluonts.dataset.common import FileDataset, ListDataset
+from gluonts.dataset import Dataset
 
 import importlib
-from collections import defaultdict
-from chronos_dysts.augmentations import stack_and_extract_metadata, sample_index_pairs
 from chronos_dysts.utils import (
-    get_dyst_filepaths, 
+    stack_and_extract_metadata,
+    sample_index_pairs,
+    get_dysts_datasets_dict,
+    accumulate_dyst_samples,
     plot_trajs_univariate, 
     plot_trajs_multivariate,
 )
 
-
 # list of augmentation classes to apply
-augmentation_cls_dict = {
+AUG_CLS_DICT = {
     "system_scale": ["RandomConvexCombinationTransform", "RandomAffineTransform"],
     "ensemble_scale": ["RandomProjectedSkewTransform"],
 }
-
-augmentation_cls_kwargs = {
+# kwargs associated with each augmentation class
+AUG_CLS_KWARGS = {
     "RandomConvexCombinationTransform": {"num_combinations": 10, "alpha": 0.6, "random_seed": 0},
     "RandomAffineTransform": {"out_dim": 10, "scale": 1e-2, "random_seed": 0},
-    "RandomProjectedSkewTransform": {"embedding_dim": 10, "scale": 1e-2, "random_seed": 0},
+    "RandomProjectedSkewTransform": {"embedding_dim": 5, "scale": 1e-2, "random_seed": 0},
 }
+# augmentations module, for dynamic imports
+AUG_MODULE = importlib.import_module("chronos_dysts.augmentations")
 
-augmentations_module = importlib.import_module("chronos_dysts.augmentations")
 
-
-def apply_augmentations_system(dysts_names: List[str]):
+def apply_augmentations_system(dysts_names: List[str]) -> None:
     """
     Apply augmentations on the system scale
     """
-    print(dysts_names)
-    num_systems = len(dysts_names)
-    gts_datasets_dict = defaultdict(list)
-
-    # for every dyst
-    for i in range(num_systems):
-
-        # load dyst data from corresponding filepath
-        dyst_name = dysts_names[i]
-        filepaths = get_dyst_filepaths(dyst_name)
-        
-        # for every file in the directory
-        for filepath in filepaths:
-            # create dataset by reading directly from filepath into FileDataset
-            gts_dataset = FileDataset(path=Path(filepath), freq="h", one_dim_target=True) # TODO: consider other frequencies?
-            # TODO: make this a dictionary, and also option to add augmented data to the dictionary for ensemble-scale transformation?
-            gts_datasets_dict[dyst_name].append(gts_dataset) # save for ensemble-scale transformations
-
+    gts_datasets_dict = get_dysts_datasets_dict(dysts_names)
+    for dyst_name in dysts_names:
         # for every system-scale augmentation
-        for augmentation_cls_name in augmentation_cls_dict["system_scale"]:
+        for augmentation_cls_name in AUG_CLS_DICT["system_scale"]:
             print(augmentation_cls_name)
-            augmentation_cls = getattr(augmentations_module, augmentation_cls_name)
+            augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
             print("Applying system-scale augmentation: ", augmentation_cls.__name__)
-            kwargs = augmentation_cls_kwargs[augmentation_cls_name]
+            kwargs = AUG_CLS_KWARGS[augmentation_cls_name]
             print("kwargs: ", kwargs)
 
-            dyst_coords_samples = []
-            # loop through all sample files for dyst_name system
-            for gts_dataset in gts_datasets_dict[dyst_name]:
-                # Apply augmentation, which takes in GluonTS Dataset and returns ListDataset
-                gts_dataset_augmented = partial(
-                    augmentation_cls,
-                    **kwargs,
-                )(gts_dataset)
-
-                # extract the coordinates
-                dyst_coords, _ = stack_and_extract_metadata(gts_dataset_augmented)
-                dyst_coords_samples.append(dyst_coords)
-
-                print("augmented data shape: ", dyst_coords.shape)
-
-            dyst_coords_samples = np.array(dyst_coords_samples)
-            print(dyst_coords_samples.shape)
+            # build augmentation partial function
+            augmentation_fn = partial(augmentation_cls, **kwargs)
+            # accumulate coords in sample dimension, while applying augmentation to each coords
+            dyst_coords_samples = accumulate_dyst_samples(
+                dyst_name, 
+                gts_datasets_dict,
+                augmentation_fn
+            )
 
             # Plot the univariate timeseries after augmentation
             plot_trajs_univariate(
@@ -92,34 +66,32 @@ def apply_augmentations_system(dysts_names: List[str]):
                 save_dir = "tests/figs", 
                 plot_name = f"{dyst_name}_{augmentation_cls_name}"
             )
-    return gts_datasets_dict
 
 
-
-if __name__ == "__main__":
-    # NOTE: augmentations so far are only on univariate trajectories
-    parser = argparse.ArgumentParser()
-    parser.add_argument("dysts_names", help="Name of the dynamical system", nargs="+", type=str)
-    args = parser.parse_args()
-
-    dysts_names = args.dysts_names
-
-    print("Applying system-scale transformations")
-    gts_datasets_dict = apply_augmentations_system(dysts_names)
-    assert list(gts_datasets_dict.keys()) == dysts_names, "Mismatch in dyst names"
-
-    print("Applying ensemble-scale transformations")
-    print("Avaialble data files for ensemble-scale transform: ", gts_datasets_dict)
+def apply_augmentations_ensemble(
+        gts_datasets_dict: Dict[str, List[Dataset]],
+        num_pairs_dysts: int = 1,
+) -> None:
+    """
+    Apply augmentations on the ensemble scale, given dict that maps dyst_name to list of all associated datasets
+    Restriction to only combining pairs of dysts, and only along sample dimension
+        i.e. dyst1 sample i combined with dyst2 sample i
+                where sample i is assumed to be consistent (e.g. same initial conditions, parameter perturbs) across all dysts
+    """
     # for every ensemble-scale augmentation
-    for augmentation_cls_name in augmentation_cls_dict["ensemble_scale"]:
+    for augmentation_cls_name in AUG_CLS_DICT["ensemble_scale"]:
         print(augmentation_cls_name)
-        augmentation_cls = getattr(augmentations_module, augmentation_cls_name)
+        augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
         print("Applying ensemble-scale augmentation: ", augmentation_cls.__name__)
-        kwargs = augmentation_cls_kwargs[augmentation_cls_name]
+        kwargs = AUG_CLS_KWARGS[augmentation_cls_name]
         print("kwargs: ", kwargs)
 
+        # build augmentation partial function
+        augmentation_fn = partial(augmentation_cls, **kwargs)
+        
         # for every pair of dysts
-        for i, j in sample_index_pairs(len(dysts_names), num_pairs=1):
+        for i, j in sample_index_pairs(len(dysts_names), num_pairs=num_pairs_dysts):
+            # TODO: wrap this in a helper function
             dyst1, dyst2 = dysts_names[i], dysts_names[j]
             print(f"Applying ensemble-scale augmentation to {dyst1} and {dyst2}")
             num_samples = min(len(gts_datasets_dict[dyst1]), len(gts_datasets_dict[dyst2]))
@@ -127,10 +99,7 @@ if __name__ == "__main__":
             dyst_pair_coords_samples = []
             for sample_idx in range(num_samples):
                 print(f"Augmenting sample index {sample_idx}")
-                gts_dataset = partial(
-                    augmentation_cls,
-                    **kwargs,
-                )(
+                gts_dataset = augmentation_fn(
                     gts_datasets_dict[dyst1][sample_idx], 
                     gts_datasets_dict[dyst2][sample_idx]
                 )
@@ -153,3 +122,19 @@ if __name__ == "__main__":
                 save_dir = "tests/figs", 
                 plot_name = f"{'_'.join([dyst1, dyst2])}_{augmentation_cls_name}"
             )
+
+if __name__ == "__main__":
+    # NOTE: augmentations so far are only on univariate trajectories
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dysts_names", help="Name of the dynamical system", nargs="+", type=str)
+    args = parser.parse_args()
+
+    dysts_names = args.dysts_names
+
+    print("Applying system-scale transformations")
+    apply_augmentations_system(dysts_names)
+
+    print("Applying ensemble-scale transformations")
+    gts_datasets_dict = get_dysts_datasets_dict(dysts_names) # repeated computation, but for simplicity
+    print("Avaialble data files for ensemble-scale transform: ", gts_datasets_dict)
+    apply_augmentations_ensemble(gts_datasets_dict, num_pairs_dysts=1)

@@ -1,8 +1,13 @@
+import numpy as np
 import os
 from pathlib import Path
-from typing import List
 import matplotlib.pyplot as plt
 
+# for type hints
+from typing import Optional, List, Dict, Callable
+from gluonts.dataset import Dataset
+
+from chronos_dysts.utils import stack_and_extract_metadata
 
 WORK_DIR = os.getenv('WORK')
 
@@ -28,8 +33,66 @@ def get_dyst_filepaths(dyst_name: str) -> List[str]:
     return filepaths
 
 
+from collections import defaultdict
+from gluonts.dataset.common import FileDataset
+def get_dyst_datasets(dyst_name: str) -> List[Dataset]:
+    """
+    Returns list of datasets associated with dyst_name, converted to FileDataset
+    """
+    filepaths = get_dyst_filepaths(dyst_name)
+    
+    gts_datasets_list = []
+    # for every file in the directory
+    for filepath in filepaths:
+        # create dataset by reading directly from filepath into FileDataset
+        gts_dataset = FileDataset(path=Path(filepath), freq="h", one_dim_target=True) # TODO: consider other frequencies?
+        gts_datasets_list.append(gts_dataset)
+    return gts_datasets_list
+
+def get_dysts_datasets_dict(dysts_names: List[str]) -> Dict[str, List[Dataset]]:
+    """
+    Returns a dictionary with key as dyst_name and value as list of FileDatasets loaded from that dyst_name folder
+    """
+    gts_datasets_dict = defaultdict(list)
+    for dyst_name in dysts_names:
+        gts_datasets_dict[dyst_name] = get_dyst_datasets(dyst_name)
+    assert list(gts_datasets_dict.keys()) == dysts_names, "Mismatch in dyst names"
+    return gts_datasets_dict
+
+
+def accumulate_dyst_samples(
+        dyst_name: str, 
+        gts_datasets_dict: Dict[str, List[Dataset]],
+        augmentation_fn: Optional[Callable[[Dataset], Dataset]] = None,
+    ) -> np.ndarray:
+    """
+    Accumulate samples from all datasets associated with dyst_name
+    Params:
+        augmentation_fn: System-scale augmentation function that takes in GluonTS Dataset and returns Iterator
+    Returns a numpy array of shape (num_samples, num_dims, num_timesteps)
+    """
+    dyst_coords_samples = []
+    # loop through all sample files for dyst_name system
+    for gts_dataset in gts_datasets_dict[dyst_name]:
+        
+        if augmentation_fn is not None:
+            # Apply augmentation, which takes in GluonTS Dataset and returns ListDataset
+            gts_dataset = augmentation_fn(gts_dataset)
+
+        # extract the coordinates
+        dyst_coords, _ = stack_and_extract_metadata(gts_dataset)
+        dyst_coords_samples.append(dyst_coords)
+        print("data shape: ", dyst_coords.shape)
+
+    dyst_coords_samples = np.array(dyst_coords_samples)
+    print(dyst_coords_samples.shape)
+    return dyst_coords_samples
+
 # Plotting utils
 def plot_trajs_univariate(dyst_data, selected_dim=0, save_dir="tests/figs", plot_name=None):
+    """
+    Plot univariate timeseries from dyst_data
+    """
     os.makedirs(save_dir, exist_ok=True)
     num_samples = dyst_data.shape[0]
     # limit plotting to at most 5 samples
@@ -51,6 +114,9 @@ def plot_trajs_univariate(dyst_data, selected_dim=0, save_dir="tests/figs", plot
 
 
 def plot_trajs_multivariate(dyst_data, save_dir="tests/figs", plot_name=None):
+    """
+    Plot multivariate timeseries from dyst_data
+    """
     os.makedirs(save_dir, exist_ok=True)
     num_samples = dyst_data.shape[0]
     # limit plotting to at most 5 samples
@@ -90,8 +156,6 @@ def plot_trajs_multivariate(dyst_data, save_dir="tests/figs", plot_name=None):
         plt.title(plot_name)
         plt.savefig(save_path, dpi=300)
         plt.close()
-
-
 
 
 def read_arrow_ds(filepath):

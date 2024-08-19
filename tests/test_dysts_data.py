@@ -2,11 +2,14 @@ import numpy as np
 
 import argparse
 
-from gluonts.dataset.common import FileDataset, ListDataset
+from gluonts.dataset.common import FileDataset
 from pathlib import Path
 
-from chronos_dysts.augmentations import stack_and_extract_metadata
-from chronos_dysts.utils import get_dyst_filepaths, plot_trajs_multivariate
+from chronos_dysts.utils import (
+    stack_and_extract_metadata,
+    get_dyst_filepaths, 
+    plot_trajs_multivariate
+)
 
 
 if __name__ == "__main__":
@@ -16,6 +19,7 @@ if __name__ == "__main__":
 
     filepaths = get_dyst_filepaths(args.dyst_name)
 
+    # NOTE: this is same as accumulate_dyst_samples in tests/test_augmentations.py
     dyst_coords_samples = []
     for filepath in filepaths:
         # create dataset by reading directly from filepath into FileDataset

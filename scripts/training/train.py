@@ -27,7 +27,6 @@ from chronos_dysts.augmentations import (
     RandomAffineTransform, 
     RandomConvexCombinationTransform,
     RandomProjectedSkewTransform,
-    sample_index_pairs
 )
 from chronos_dysts.utils import (
     is_main_process,
@@ -37,6 +36,7 @@ from chronos_dysts.utils import (
     load_model,
     has_enough_observations,
     ensure_contiguous,
+    sample_index_pairs,
 )
 
 
