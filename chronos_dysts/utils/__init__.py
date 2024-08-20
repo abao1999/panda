@@ -48,5 +48,6 @@ from .typechecks import (
     is_positive_float,
     is_nonnegative_int,
     is_power_of_two,
+    is_float_or_sequence_of_floats,
     is_valid_vector,
 )

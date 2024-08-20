@@ -27,6 +27,26 @@ def is_power_of_two(n):
     else:
         return False
     
+from collections.abc import Sequence
+def is_float_or_sequence_of_floats(obj):
+    # Check if the object is a float
+    if isinstance(obj, float):
+        return True
+    
+    # Check if the object is a numpy array
+    if isinstance(obj, np.ndarray):
+        # Check if the numpy array has a float data type
+        return np.issubdtype(obj.dtype, np.floating)
+    
+    # Check if the object is a sequence (but not a string or bytes)
+    if isinstance(obj, Sequence) and not isinstance(obj, (str, bytes)):
+        # Check if all elements in the sequence are floats
+        return all(isinstance(item, float) for item in obj)
+    
+    # If neither, return False
+    return False
+
+
 def is_valid_vector(
         x: np.ndarray, 
         bound: Optional[FloatOrFloatSequence] = 1e-3
