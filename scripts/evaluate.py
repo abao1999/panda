@@ -1,13 +1,12 @@
 import logging
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
 import torch
-import typer
-import yaml
 import os
+import hydra
+
 from tqdm.auto import tqdm
 
 from collections import defaultdict
@@ -24,51 +23,41 @@ from chronos_dysts.utils import (
 )
 
 
-app = typer.Typer(pretty_exceptions_enable=False)
-
-@app.command()
-def main(
-    config_path: Path,
-    metrics_path: Path,
-    chronos_model_id: str = "amazon/chronos-t5-small",
-    device: str = "cuda",
-    torch_dtype: str = "bfloat16",
-    batch_size: int = 32,
-    num_samples: int = 20,
-    temperature: Optional[float] = None,
-    top_k: Optional[int] = None,
-    top_p: Optional[float] = None,
-):
-    print("Config path: ", config_path)
-    print("Metrics (save) path: ", metrics_path)
+@hydra.main(config_path='../config', config_name='config', version_base=None)
+def main(cfg):
+    # create save path for evaluation metrics
+    metrics_path = os.path.join(cfg.eval.output_dir, f"{cfg.eval.split}_metrics.csv")
     os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
 
-    if isinstance(torch_dtype, str):
-        torch_dtype = getattr(torch, torch_dtype)
+    # set floatinig point precision
+    torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
 
     # Load Chronos
     pipeline = ChronosPipeline.from_pretrained(
-        chronos_model_id,
-        device_map=device,
+        cfg.eval.model_id,
+        device_map=cfg.eval.device,
         torch_dtype=torch_dtype,
     )
 
-    # Load backtest configs
-    with open(config_path) as fp:
-        backtest_configs = yaml.safe_load(fp)
-
-    data_dir = backtest_configs["data_dir"]
-    dysts_configs = backtest_configs["dysts"]
+    data_dir = cfg.eval.data_dir
+    # TODO: eventually we want to just get all files from data_dir
+    dysts_configs = getattr(cfg.eval.dysts, cfg.eval.split)
+    default_prediction_length = cfg.eval.prediction_length
+    default_offset = cfg.eval.offset
+    default_num_rolls = cfg.eval.num_rolls
     print("Dysts configs: ", dysts_configs)
 
     result_rows = []
     # for each dynamical system
     for dyst_config in dysts_configs:
+
         # get dyst config
         logger.info("config: ", dyst_config)
         dyst_name = dyst_config["name"]
-        prediction_length = dyst_config["prediction_length"]
+        prediction_length = dyst_config.get("prediction_length", default_prediction_length)
+        offset = dyst_config.get("offset", default_offset)
+        num_rolls = dyst_config.get("num_rolls", default_num_rolls)
         # check if data directory exists
         dyst_data_dir = os.path.join(data_dir, dyst_name)
         if not os.path.exists(dyst_data_dir):
@@ -76,13 +65,19 @@ def main(
             # raise Exception(f"Directory {dyst_data_dir} does not exist.")
         print(f"Evaluating {dyst_name} with prediction length {prediction_length}")
 
+
         # get list of all dataset Arrow files associated with dyst_name
         filepaths = list(Path(dyst_data_dir).glob("*.arrow"))
         metrics_all_samples = defaultdict(lambda: defaultdict(list))
-        for sample_idx, filepath in tqdm(enumerate(filepaths), desc=f"evaluating metrics for all dataset files of {dyst_name}"):
+        for sample_idx, filepath in tqdm(enumerate(filepaths)): #, desc=f"evaluating metrics for all dataset files of {dyst_name}"):
             # load dataset test split from Arrow file
             logger.info(f"Loading sample index {sample_idx}, from {filepath}")
-            test_data = load_and_split_dataset_from_arrow(dyst_config, filepath)
+            test_data = load_and_split_dataset_from_arrow(
+                prediction_length=prediction_length,
+                offset=offset,
+                num_rolls=num_rolls, 
+                filepath=filepath,
+            )
 
             # generate forecasts for all dimensions of a single sample instance
             logger.info(
@@ -93,11 +88,11 @@ def main(
                 test_data.input,
                 pipeline=pipeline,
                 prediction_length=prediction_length,
-                batch_size=batch_size,
-                num_samples=num_samples,
-                temperature=temperature,
-                top_k=top_k,
-                top_p=top_p,
+                batch_size=cfg.eval.batch_size,
+                num_samples=cfg.eval.num_samples,
+                temperature=cfg.eval.temperature,
+                top_k=cfg.eval.top_k,
+                top_p=cfg.eval.top_p,
             )
 
             # TODO: add option to plot forecasts
@@ -106,7 +101,8 @@ def main(
 
             # see gluonts metrics: https://github.com/awslabs/gluonts/blob/dev/src/gluonts/ev/metrics.py
             # this returns a pandas DataFrame
-            #    - need axis=1, aggregate along time dimension, see: https://ts.gluon.ai/stable/_modules/gluonts/model/evaluation.html#evaluate_forecasts
+            #    - if axis=None, aggregate along all dimensions
+            #    - if axis=1, aggregate along time dimension, see: https://ts.gluon.ai/stable/_modules/gluonts/model/evaluation.html#evaluate_forecasts
             #    - Can also aggregate test_data before metrics call so we can use gluonts api with axis=0 
             metrics = (
                 evaluate_forecasts(
@@ -119,14 +115,12 @@ def main(
                         MeanWeightedSumQuantileLoss(np.arange(0.1, 1.0, 0.1)),
                     ],
                     batch_size=5000,
-                    axis=1, # aggregate along time dimension
+                    axis=cfg.eval.agg_axis, # aggregation axis
                 )
                 .reset_index(drop=True)
                 .to_dict(orient="records")
             )
             # metrics is list of dicts, each dict is a metric for a dimension
-            print(len(metrics)) # TODO: check if dimension is correct, matched dysts dimension
-
             # Verify that all dictionaries in metrics have the same keys
             keys = metrics[0].keys()
             if not all(m.keys() == keys for m in metrics):
@@ -139,14 +133,24 @@ def main(
     
         # aggregate metrics across all samples of each dyst dim
         #   i.e. each dim has its own dict that contains averaged values across all samples for that dim
-        print(metrics_all_samples)
+        logger.info(metrics_all_samples)
         metrics_all_samples = average_nested_dict(metrics_all_samples)
-        print(metrics_all_samples)
-        # aggregate metrics across all samples of a dyst by dimension
-        for dim_idx in range(len(metrics)):
+        logger.info(metrics_all_samples)
+
+        # aggregate metrics across all samples and dimensions of a dyst (average the errors across dimensions)
+        if cfg.eval.agg_axis is None:
+            assert len(metrics) == 1, "Expected only one dimension for axis=None aggregation"
             result_rows.append(
-                {"dataset": dyst_name, "dimension": dim_idx, "model": chronos_model_id, **metrics_all_samples[dim_idx]}
+                {"dataset": dyst_name, "model": cfg.eval.model_id, **metrics_all_samples[0]}
             )
+        # aggregate metrics across all samples of a dyst by dimension
+        elif cfg.eval.agg_axis == 1:
+            result_rows.extend(
+                {"dataset": dyst_name, "dimension": dim_idx, "model": cfg.eval.model_id, **metrics_all_samples[dim_idx]}
+                for dim_idx in range(len(metrics))
+            )
+        else:
+            raise ValueError(f"Invalid aggregation axis: {cfg.eval.agg_axis}") # axis 0 and 2 are also allowed but we don't want them
 
     # Save results to a CSV file
     results_df = (
@@ -170,7 +174,7 @@ def main(
 
 if __name__ == "__main__":
     logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    logger = logging.getLogger("Chronos Evaluation")
+    # TODO: need to log_on_main to activate logger
+    logger = logging.getLogger(__file__)
     logger.setLevel(logging.INFO)
-    app()
-    print(typer.get_command(app))
+    main()

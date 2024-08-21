@@ -1,8 +1,0 @@
-# Backtest configs for the holdout dynamical systems not seen during fine-tuning/training
-# TODO: decide how we want to structure this
-
-- name: SprottG
-  prediction_length: 32
-  offset: 32
-  num_rolls: 1
-  data_filepath: "/stor/work/AMDG_Gilpin_Summer2024/data/train/SprottG_dim-0.arrow"

@@ -13,7 +13,7 @@ tie_embeddings: true
 # for dataset and config
 context_length: 512
 prediction_length: 64
-num_samples: 20 # TODO: what is this? should we change it to match our number of samples?
+num_samples: 20 # TODO: thi is not actually being used. should we change it to match our number of samples?
 
 # vocab (tokens)
 n_tokens: 4096

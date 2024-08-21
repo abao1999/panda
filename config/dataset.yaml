@@ -12,5 +12,25 @@ min_past: 60
 max_missing_prop: 0.9
 
 # augmentations
-system_augmentations: ["RandomAffineTransform", "RandomConvexCombinationTransform"]
-ensemble_augmentations:  ["RandomProjectedSkewTransform"]
+augmentations:
+  system: # system-scale augmentations
+    - "RandomAffineTransform"
+    - "RandomConvexCombinationTransform"
+  ensemble: # ensemble-scale augmentations
+    - "RandomProjectedSkewTransform"
+  
+  # augmentation parameters
+  RandomConvexCombinationTransform_kwargs:
+    num_combinations: 10
+    alpha: 0.6
+    random_seed: 0
+  
+  RandomAffineTransform_kwargs:
+    out_dim: 10
+    scale: 1e-2
+    random_seed: 0
+  
+  RandomProjectedSkewTransform_kwargs:
+    embedding_dim: 5
+    scale: 1e-2
+    random_seed: 0

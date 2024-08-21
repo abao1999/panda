@@ -1,11 +1,10 @@
 """
-Training script, adapted from chronos-forecasting
+Training/fine-tuning script, adapted from chronos-forecasting
 """
 
 import logging
 from pathlib import Path
 from functools import partial
-import os
 import hydra
 
 import torch
@@ -17,11 +16,7 @@ from gluonts.transform import LastValueImputation
 
 from chronos_dysts.tokenizer import ChronosConfig
 from chronos_dysts.dataset import ChronosDataset
-from chronos_dysts.augmentations import (
-    RandomAffineTransform, 
-    RandomConvexCombinationTransform,
-    RandomProjectedSkewTransform,
-)
+
 from chronos_dysts.utils import (
     is_main_process,
     log_on_main,
@@ -32,16 +27,32 @@ from chronos_dysts.utils import (
     ensure_contiguous,
     sample_index_pairs,
 )
+import importlib
+import wandb
 
+# os.environ["WANDB_PROJECT"] = "chronos-dysts"  # name of W&B project
+# os.environ["WANDB_LOG_MODEL"] = "checkpoint"  # log all model checkpoints
 
-os.environ["WANDB_PROJECT"] = "chronos-dysts"  # name of W&B project
-os.environ["WANDB_LOG_MODEL"] = "checkpoint"  # log all model checkpoints
-
+# augmentations module, for dynamic imports based on augmentations specified in config
+AUG_MODULE = importlib.import_module("chronos_dysts.augmentations")
 
 @hydra.main(config_path='../config', config_name='config', version_base=None)
 def main(cfg):
+
+    # set up wandb project and logging if enabled
+    if cfg.wandb.log:
+        run = wandb.init(
+            project=cfg.wandb.project_name,
+            name=cfg.run_name,
+            config=dict(cfg),
+            sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
+            group="fine-tuning",
+            tags=[],
+            resume=cfg.wandb.resume
+        )
+
     # set floating point precision
-    use_tf32 = cfg.tf32
+    use_tf32 = cfg.train.tf32
     if use_tf32 and not (
         torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
     ):
@@ -56,10 +67,10 @@ def main(cfg):
         use_tf32 = False
 
     # set random seed
-    log_on_main(f"Using SEED: {cfg.seed}", logger)
-    transformers.set_seed(seed=cfg.seed)
+    log_on_main(f"Using SEED: {cfg.train.seed}", logger)
+    transformers.set_seed(seed=cfg.train.seed)
 
-    # check tokenizer_kwargs is a dict
+    # get tokenizer kwargs dict
     tokenizer_kwargs = dict(cfg.tokenizer_kwargs)
 
     # check model type is valid
@@ -80,7 +91,7 @@ def main(cfg):
         train_data_paths.extend(extra_paths)
 
     # create a new output directory to save results
-    output_dir = get_next_path("run", base_dir=Path(cfg.output_dir), file_type="")
+    output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
@@ -109,38 +120,29 @@ def main(cfg):
     #    - essentially, the training datasets is jagged arrays of different lengths
     #    - (also, if we're doing a skew transform, we might want to weight the original data more heavily?)
 
-    log_on_main("Applying RandomAffineTransform", logger)
-    train_datasets.extend([
-        partial(
-            RandomAffineTransform,
-            out_dim=5, 
-            scale=0.5,
-            random_seed=cfg.seed
-        )(ds)
-        for ds in train_datasets[:len(train_data_paths)]
-    ])
-    log_on_main("Applying RandomConvexCombinationTransform", logger)
-    train_datasets.extend([
-        partial(
-            RandomConvexCombinationTransform,
-            num_combinations=5, 
-            alpha=0.5,
-            random_seed=cfg.seed
-        )(ds)
-        for ds in train_datasets[:len(train_data_paths)]
-    ])
-    log_on_main("Applying RandomProjectedSkewTransform", logger)
-    train_datasets.extend([
-        partial(
-            RandomProjectedSkewTransform,
-            embedding_dim=10,
-            scale=0.8,
-            random_seed=cfg.seed
-        )(
-            train_datasets[i], train_datasets[j]
-        )
-        for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
-    ])
+    # system-scale augmentations
+    log_on_main("Applying system-scale augmentations", logger)
+    for augmentation_cls_name in cfg.augmentations.system:
+        augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
+        log_on_main(f"Applying {augmentation_cls.__name__} system-scale augmentation", logger)
+        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
+        augmentation_fn = partial(augmentation_cls, **kwargs)
+        train_datasets.extend([
+            augmentation_fn(ds)
+            for ds in train_datasets[:len(train_data_paths)]
+        ])
+
+    # ensemble-scale augmentations
+    log_on_main("Applying ensemble-scale augmentations", logger)
+    for augmentation_cls_name in cfg.augmentations.ensemble:
+        augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
+        log_on_main(f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger)
+        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
+        augmentation_fn = partial(augmentation_cls, **kwargs)
+        train_datasets.extend([
+            augmentation_fn(train_datasets[i], train_datasets[j])
+            for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
+        ])
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -152,7 +154,7 @@ def main(cfg):
     assert len(train_datasets) == len(probability)
 
     # adapt number of workers to the number of datasets if there are more workers than datasets
-    dataloader_num_workers = cfg.dataloader_num_workers
+    dataloader_num_workers = cfg.train.dataloader_num_workers
     if dataloader_num_workers > len(train_datasets):
         log_on_main(
             f"Setting the number of data loader workers to {len(train_datasets)}, "
@@ -212,25 +214,25 @@ def main(cfg):
 
     # Define training args
     training_args = TrainingArguments(
-        output_dir=str(output_dir),
-        per_device_train_batch_size=cfg.per_device_train_batch_size,
-        learning_rate=cfg.learning_rate,
-        lr_scheduler_type=cfg.lr_scheduler_type,
-        warmup_ratio=cfg.warmup_ratio,
-        optim=cfg.optim,
-        logging_dir=str(output_dir / "logs"),
+        output_dir=f"wandb/tbruns/{run.name}_{run.id}" if cfg.wandb.log else str(output_dir),
+        per_device_train_batch_size=cfg.train.per_device_train_batch_size,
+        learning_rate=cfg.train.learning_rate,
+        lr_scheduler_type=cfg.train.lr_scheduler_type,
+        warmup_ratio=cfg.train.warmup_ratio,
+        optim=cfg.train.optim,
+        logging_dir=f"wandb/tbruns/{run.name}_{run.id}/logs" if cfg.wandb.log else str(output_dir / "logs"),
         logging_strategy="steps",
-        logging_steps=cfg.log_steps,
+        logging_steps=cfg.train.log_steps,
         save_strategy="steps",
-        save_steps=cfg.save_steps,
+        save_steps=cfg.train.save_steps,
         report_to=["tensorboard", "wandb"] if cfg.wandb.log else ["tensorboard"],
-        max_steps=cfg.max_steps,
-        gradient_accumulation_steps=cfg.gradient_accumulation_steps,
+        max_steps=cfg.train.max_steps,
+        gradient_accumulation_steps=cfg.train.gradient_accumulation_steps,
         dataloader_num_workers=dataloader_num_workers,
         tf32=use_tf32,  # remove this if not using Ampere GPUs (e.g., A100)
-        torch_compile=cfg.torch_compile,
-        ddp_find_unused_parameters=False,
-        remove_unused_columns=False,
+        torch_compile=cfg.train.torch_compile,
+        ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
+        remove_unused_columns=cfg.train.remove_unused_columns,
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors. 

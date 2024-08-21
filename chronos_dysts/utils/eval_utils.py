@@ -33,21 +33,19 @@ def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:
 
 
 def load_and_split_dataset_from_arrow(
-        dyst_backtest_config: dict, 
+        prediction_length: int,
+        offset: int,
+        num_rolls: int, 
         filepath: str, 
         verbose: Optional[bool] = False
 ) -> TestData:
     """
-    Takes in a config for a dyst system and directly loads Arrow file into GluonTS FileDataset
+    Directly loads Arrow file into GluonTS FileDataset
         https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.common.html 
     And then uses GluonTS split to generate test instances from windows of original timeseries
         https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.split.html
     """
     # TODO: load selected dimensions for dyst system config, so we can have separate forecast for each univariate trajectory
-    offset = dyst_backtest_config["offset"]
-    prediction_length = dyst_backtest_config["prediction_length"]
-    num_rolls = dyst_backtest_config["num_rolls"]
-    
     if verbose:
         print("filepath: ", filepath)
         print(f"Splitting timeseries by creating {num_rolls} non-overlapping windows")

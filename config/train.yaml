@@ -1,25 +1,26 @@
-seed: 99
+train:
+  seed: 99
 
-# train, checkpoint, log steps
-max_steps: 2_000
-save_steps: 2_000
-log_steps: 100
+  # train, checkpoint, log steps
+  max_steps: 2_000
+  save_steps: 2_000
+  log_steps: 100
 
-per_device_train_batch_size: 32
-gradient_accumulation_steps: 1
-dataloader_num_workers: 1
+  per_device_train_batch_size: 32
+  gradient_accumulation_steps: 1
+  dataloader_num_workers: 1
 
-tf32: false # NOTE: tf32 requires Ampere or a newer GPU arch, cuda>=11 and torch>=1.7
-torch_compile: true
+  tf32: false # NOTE: tf32 requires Ampere or a newer GPU arch, cuda>=11 and torch>=1.7
+  torch_compile: true
 
-# optimizer
-optim: adamw_torch_fused
-learning_rate: 1e-3
-lr_scheduler_type: linear
-warmup_ratio: 0.0
+  # optimizer
+  optim: adamw_torch_fused
+  learning_rate: 1e-3
+  lr_scheduler_type: linear
+  warmup_ratio: 0.0
 
-output_dir: ./output/
+  output_dir: ./output/
 
-# not currently used, but part of TrainingArguments
-ddp_find_unused_parameters: false
-remove_unused_columns: false
+  # not currently used, but part of TrainingArguments
+  ddp_find_unused_parameters: false
+  remove_unused_columns: false
