@@ -1,0 +1,34 @@
+model_id: amazon/chronos-t5-small
+# model_id: google/t5-efficient-small
+# model_id: google/t5-efficient-large
+# model_id: google/t5-efficient-base
+# model_id: google/t5-efficient-mini
+# model_id: google/t5-efficient-tiny
+model_type: seq2seq
+
+# model params
+random_init: false # NOTE: set to false for fine-tuning, very important!
+tie_embeddings: true
+
+# for dataset and config
+context_length: 512
+prediction_length: 64
+num_samples: 20 # TODO: what is this? should we change it to match our number of samples?
+
+# vocab (tokens)
+n_tokens: 4096
+n_special_tokens: 2
+pad_token_id: 0
+eos_token_id: 1
+use_eos_token: true
+
+# tokenizer
+tokenizer_class: "MeanScaleUniformBins"
+tokenizer_kwargs:
+  low_limit: -15.0
+  high_limit: 15.0
+
+# more params for chronos config
+temperature: 1.0
+top_k: 50
+top_p: 1.0

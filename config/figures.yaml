@@ -1,0 +1,22 @@
+visualization:
+
+  figure_size: [10, 10]
+  colormap: magma
+
+  # fontsizes
+  text_fs: 20
+  num_fs: 20
+  cbar_fs: 15
+  legend_fs: 15
+
+  num_ticks: 5
+  scatter_marker_size: 100
+
+  # 0 for standard scale, 1 for log scale, 2 for loglog
+  log_scale: 0
+
+  # figure saving format
+  save_format: png
+  bbox: 'tight'
+
+  dpi: 300

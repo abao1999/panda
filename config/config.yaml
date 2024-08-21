@@ -1,0 +1,24 @@
+defaults:
+  - _self_
+  - model
+  - train
+  - evaluation
+  - dataset
+  - figures
+  - override hydra/job_logging: disabled 
+  - override hydra/hydra_logging: disabled 
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+# string identifier for wandb runs and generic I/O
+run_name: null
+
+# wandb parameters
+wandb:
+  log: False
+  project_name: chronos-dysts
+  group_name: null
+  resume: False

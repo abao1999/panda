@@ -1,0 +1,16 @@
+# directory containing files used for training data
+train_data_dir: "/stor/work/AMDG_Gilpin_Summer2024/data/train/"
+# additional files to add to training data set
+extra_train_data_paths: null
+probability: null
+
+shuffle_buffer_length: 2_000
+
+# minimum number of past points to use for training
+min_past: 60
+
+max_missing_prop: 0.9
+
+# augmentations
+system_augmentations: ["RandomAffineTransform", "RandomConvexCombinationTransform"]
+ensemble_augmentations:  ["RandomProjectedSkewTransform"]
