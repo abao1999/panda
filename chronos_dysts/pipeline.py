@@ -21,7 +21,9 @@ from chronos_dysts.utils import (
     ChronosModelType,
     left_pad_and_stack_1D,
 )
-from chronos_dysts.model import ChronosModel, ChronosConfig
+from chronos_dysts.model import ChronosModel
+from chronos_dysts.tokenizer import ChronosConfig
+
 
 @dataclass
 class ChronosPipeline:

@@ -1,7 +1,6 @@
 # Adapted from https://github.com/amazon-science/chronos-forecasting
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
-# TODO: modify for dysts
 
 import torch
 import torch.nn as nn
@@ -11,7 +10,6 @@ from transformers import (
 )
 from typing import Optional
 from chronos_dysts.tokenizer import ChronosConfig
-# from chronos_dysts.utils import ChronosConfigType # this fails because circular import
 
 
 class ChronosModel(nn.Module):

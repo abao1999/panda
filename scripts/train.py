@@ -5,11 +5,15 @@ Training/fine-tuning script, adapted from chronos-forecasting
 import logging
 from pathlib import Path
 from functools import partial
+import os
 import hydra
+from omegaconf import OmegaConf
 
 import torch
 import transformers
 from transformers import Trainer, TrainingArguments
+from transformers.integrations import WandbCallback
+
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
@@ -30,8 +34,8 @@ from chronos_dysts.utils import (
 import importlib
 import wandb
 
-# os.environ["WANDB_PROJECT"] = "chronos-dysts"  # name of W&B project
-# os.environ["WANDB_LOG_MODEL"] = "checkpoint"  # log all model checkpoints
+os.environ["WANDB_PROJECT"] = "chronos-dysts"  # name of W&B project, right now hard-coded even though also in cfg
+os.environ["WANDB_LOG_MODEL"] = "checkpoint"  # log all model checkpoints to W&B automatically
 
 # augmentations module, for dynamic imports based on augmentations specified in config
 AUG_MODULE = importlib.import_module("chronos_dysts.augmentations")
@@ -45,7 +49,7 @@ def main(cfg):
             project=cfg.wandb.project_name,
             name=cfg.run_name,
             config=dict(cfg),
-            sync_tensorboard=True,  # auto-upload sb3's tensorboard metrics
+            sync_tensorboard=False,  # auto-upload tensorboard metrics
             group="fine-tuning",
             tags=[],
             resume=cfg.wandb.resume
@@ -92,6 +96,7 @@ def main(cfg):
 
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
+    print("output_dir: ", output_dir)
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
@@ -214,7 +219,8 @@ def main(cfg):
 
     # Define training args
     training_args = TrainingArguments(
-        output_dir=f"wandb/tbruns/{run.name}_{run.id}" if cfg.wandb.log else str(output_dir),
+        run_name=cfg.run_name,
+        output_dir=str(output_dir),
         per_device_train_batch_size=cfg.train.per_device_train_batch_size,
         learning_rate=cfg.train.learning_rate,
         lr_scheduler_type=cfg.train.lr_scheduler_type,
@@ -225,7 +231,7 @@ def main(cfg):
         logging_steps=cfg.train.log_steps,
         save_strategy="steps",
         save_steps=cfg.train.save_steps,
-        report_to=["tensorboard", "wandb"] if cfg.wandb.log else ["tensorboard"],
+        report_to=["wandb"] if cfg.wandb.log else ["tensorboard"],
         max_steps=cfg.train.max_steps,
         gradient_accumulation_steps=cfg.train.gradient_accumulation_steps,
         dataloader_num_workers=dataloader_num_workers,
@@ -240,24 +246,36 @@ def main(cfg):
     ensure_contiguous(model)
 
     # Create Trainer instance and start training
+    # TODO: utilize custom callbacks https://huggingface.co/docs/transformers/v4.44.2/en/main_classes/callback#transformers.integrations.WandbCallback
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
+        callbacks=[] # if not cfg.wandb.log else [WandbCallback()], # this duplicates our current logging. Try using custom callback instead
     )
-    log_on_main("Training", logger)
-    trainer.train()
 
+    log_on_main("Training", logger)
+    trainer.train() # Transformers trainer will save model checkpoints automatically
+
+    # terminate wandb run after training
+    if cfg.wandb.log:
+        # wandb.log(results) # log results to wandb
+        run.finish()
+
+    # save final model checkpoint and training info locally
     if is_main_process():
         # ensure_contiguous(model)
         model.save_pretrained(output_dir / "checkpoint-final")
         save_training_info(
-            output_dir / "checkpoint-final", training_config=cfg
+            output_dir / "checkpoint-final",
+            model_config=vars(chronos_config), # use dataclass asdict for more complex dataclasses
+            training_config=OmegaConf.to_container(cfg.train, resolve=True),
         )
     
 
 if __name__ == "__main__":
     logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    logger = logging.getLogger(__file__)
+    # TODO: logging doesnt work anymore, figure out why, wrong level?
+    logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
     main()

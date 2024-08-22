@@ -79,14 +79,18 @@ def get_training_job_info() -> Dict: # not currently used
     return job_info
 
 
-def save_training_info(ckpt_path: Path, training_config: Dict):
+def save_training_info(ckpt_path: Path, model_config: Dict, training_config: Dict):
     """
     Save info about this training job in a json file for documentation.
     """
     assert ckpt_path.is_dir()
     with open(ckpt_path / "training_info.json", "w") as fp:
         json.dump(
-            {"training_config": training_config, "job_info": get_training_job_info()},
+            {
+                "model_config": model_config, 
+                "training_config": training_config, 
+                "job_info": get_training_job_info()
+            },
             fp,
             indent=4,
         )
