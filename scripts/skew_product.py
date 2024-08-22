@@ -16,6 +16,9 @@ from chronos_dysts.utils import FloatOrFloatSequence, is_float_or_sequence_of_fl
 import matplotlib.pyplot as plt
 import os
 import time
+import argparse
+
+from dyst_data import process_trajs
 
 
 def pad_array(arr: np.ndarray, n2: int, m2: int) -> np.ndarray:
@@ -86,6 +89,7 @@ def apply_affine_map(A: np.ndarray, x: np.ndarray, y: np.ndarray) -> List[np.nda
 def get_coupling(sys_driver, sys_response) -> np.ndarray:
     """
     Compute the coupling constants per dimension between the driver and response systems
+    TODO: after making dyst_data, we have a folder of trajectories, we can use this to compute coupling strength by reading from arrow file instead of generating trajectories
     """
     print(f"Computing coupling strength between {sys_driver.name} and {sys_response.name}")
     n_driver, n_response = len(sys_driver.ic), len(sys_response.ic)
@@ -119,16 +123,16 @@ def skew_sys(sys_driver, sys_response, affine_map):
         # Split the combined initial conditions into driver and response systems
         x_driver, x_response = combined_ics[:n_driver], combined_ics[n_driver: n_driver + n_response] 
         
-        # # Method 1
-        # _, _, x_response = apply_affine_map(affine_map, x_driver, x_response)
-        # assert len(x_response) == n_response
+        # Method 1
+        _, _, x_response = apply_affine_map(affine_map, x_driver, x_response)
+        assert len(x_response) == n_response
 
         # Compute the flow of the driver and response systems
         flow_driver = sys_driver.rhs(x_driver, t)
         flow_response = sys_response.rhs(x_response, t)
 
-        # Method 2 - this seems like a weird thing to do
-        flow_driver, _, flow_response = apply_affine_map(affine_map, flow_driver, flow_response)
+        # # Method 2 - this seems like a weird thing to do
+        # flow_driver, _, flow_response = apply_affine_map(affine_map, flow_driver, flow_response)
 
         skew_flow = np.concatenate([flow_driver, flow_response])
         return skew_flow
@@ -147,10 +151,12 @@ def run_skew_product_system(sys_driver, sys_response):
     # # TODO: Check if the following line is correct
     # sys_response.ic = ic
 
+    # combine initial conditions of driver and response system
     combined_ics = np.concatenate([np.array(sys_driver.ic), np.array(sys_response.ic)])
+    # get integration arguments from comparing the driver and response systems
     dt = min(sys_driver.dt, sys_response.dt)
-    tlim = 5 * max(sys_driver.period, sys_response.period)
-    tpts = np.linspace(0, tlim, 6000)
+    tlim = 10 * max(sys_driver.period, sys_response.period)
+    tpts = np.linspace(0, tlim, 10_000)
     
     # construct affine maps
     kappa = get_coupling(sys_driver, sys_response)
@@ -183,7 +189,7 @@ def run_skew_product_system(sys_driver, sys_response):
     return [sol_driver, sol_response]
 
 
-def test():
+def test_map():
     """
     Simple test for affine map construction and application
     """
@@ -196,19 +202,28 @@ def test():
     print(res)
     print(np.concatenate(res))
 
-if __name__ == "__main__":
-    # test()
 
-    driver_name, response_name = "Rossler", "SprottD"
+if __name__ == "__main__":
+    # test_map()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dysts_names", help="Names of the dynamical systems", nargs="+", type=str)
+    args = parser.parse_args()
+    dysts_names = args.dysts_names
+    
+    assert len(dysts_names) == 2, "Must provide exactly two dynamical system names for now (TODO: generalize to n systems)"
+    driver_name, response_name = dysts_names
     driver_sys = getattr(dfl, driver_name)()
     response_sys = getattr(dfl, response_name)()
 
     # get_coupling(driver_sys, response_sys)
 
+    # TODO: wrap this in loops to sample initial conditions and parameter perturbations
     res = run_skew_product_system(driver_sys, response_sys)
     print(res)
     sol_response = res[1]
     print("response solution shape: ", sol_response.shape)
+
 
     save_dir = "figs"
     os.makedirs(save_dir, exist_ok=True)
@@ -219,13 +234,22 @@ if __name__ == "__main__":
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111, projection='3d')
     # plot x and y and z
-    ax.plot(sol_response[0, :], sol_response[1, :], sol_response[2, :], alpha=0.5, linewidth=1)  # X,Y,Z
+    ax.plot(sol_response[0, :], sol_response[1, :], sol_response[2, :], alpha=0.8, linewidth=1)  # X,Y,Z
     ax.scatter(*sol_response[:3, 0], marker="*", s=100, alpha=0.5)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
     ax.ticklabel_format(style='sci', scilimits=(0,0), axis='both')
-    plt.title(plot_name)
+    plt.title(plot_name.replace('_', ' '))
     plt.savefig(save_path, dpi=300)
     plt.close()
+
+
+    work_dir = os.getenv('WORK')
+    traj_save_path = os.path.join(work_dir, "data", "skew_systems")
+    print("Saving trajectories to ", traj_save_path)
+
+    skew_name = f"{driver_name}_{response_name}"
+    skew_dict = {skew_name: np.expand_dims(sol_response, axis=0)} # we have only one sample (ic + param perturbation)
+    process_trajs(traj_save_path, skew_dict, verbose=True)

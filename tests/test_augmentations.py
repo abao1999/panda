@@ -126,7 +126,7 @@ def apply_augmentations_ensemble(
 if __name__ == "__main__":
     # NOTE: augmentations so far are only on univariate trajectories
     parser = argparse.ArgumentParser()
-    parser.add_argument("dysts_names", help="Name of the dynamical system", nargs="+", type=str)
+    parser.add_argument("dysts_names", help="Names of the dynamical systems", nargs="+", type=str)
     args = parser.parse_args()
 
     dysts_names = args.dysts_names

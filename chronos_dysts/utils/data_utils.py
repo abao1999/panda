@@ -25,3 +25,5 @@ def sample_index_pairs(
     sampled_pairs = (rng or np.random).choice(num_total_pairs, size=num_pairs, replace=False)
     all_pairs = list(combinations(range(size), 2))
     return (all_pairs[i] for i in sampled_pairs) 
+
+# stationarity tests

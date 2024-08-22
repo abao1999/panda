@@ -12,7 +12,7 @@ from omegaconf import OmegaConf
 import torch
 import transformers
 from transformers import Trainer, TrainingArguments
-from transformers.integrations import WandbCallback
+# from transformers.integrations import WandbCallback
 
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter

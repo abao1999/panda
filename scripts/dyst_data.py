@@ -6,7 +6,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from dysts.base import get_attractor_list, make_trajectory_ensemble, init_cond_sampler
 from gluonts.dataset.arrow import ArrowWriter
-from typing import List, Union, Dict, Iterable
+from typing import List, Union, Dict, Iterable, Optional
 
 WORK_DIR = os.getenv('WORK')
 
@@ -47,13 +47,16 @@ def convert_to_arrow(
     )
 
 
-def process_trajs(base_dir: str, timeseries: Dict[str, np.ndarray]) -> None:
+def process_trajs(base_dir: str, timeseries: Dict[str, np.ndarray], verbose: Optional[bool] = False) -> None:
     """Saves each trajectory in timeseries ensemble to a separate directory
     """
     for sys_name, trajectories in timeseries.items():
         system_folder = os.path.join(base_dir, sys_name)
         os.makedirs(system_folder, exist_ok=True)
         for i, trajectory in enumerate(trajectories): 
+            if verbose:
+                print(f"Saving {sys_name} trajectory {i}")
+                print(trajectory.shape)
             path = os.path.join(system_folder, f"{i}_T-{trajectory.shape[-1]}.arrow")
             convert_to_arrow(path, trajectory)
 
