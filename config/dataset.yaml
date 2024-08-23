@@ -21,16 +21,16 @@ augmentations:
   
   # augmentation parameters
   RandomConvexCombinationTransform_kwargs:
-    num_combinations: 10
+    num_combinations: 6
     alpha: 0.6
     random_seed: 0
   
   RandomAffineTransform_kwargs:
-    out_dim: 10
-    scale: 1e-2
+    out_dim: 6
+    scale: 5e-1
     random_seed: 0
   
   RandomProjectedSkewTransform_kwargs:
-    embedding_dim: 5
-    scale: 1e-2
+    embedding_dim: 6
+    scale: 5e-1
     random_seed: 0

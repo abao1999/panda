@@ -23,8 +23,8 @@ AUG_CLS_DICT = {
 # kwargs associated with each augmentation class
 AUG_CLS_KWARGS = {
     "RandomConvexCombinationTransform": {"num_combinations": 10, "alpha": 0.6, "random_seed": 0},
-    "RandomAffineTransform": {"out_dim": 10, "scale": 1e-2, "random_seed": 0},
-    "RandomProjectedSkewTransform": {"embedding_dim": 5, "scale": 1e-2, "random_seed": 0},
+    "RandomAffineTransform": {"out_dim": 6, "scale": 5e-1, "random_seed": 0},
+    "RandomProjectedSkewTransform": {"embedding_dim": 6, "scale": 5e-1, "random_seed": 0},
 }
 # augmentations module, for dynamic imports
 AUG_MODULE = importlib.import_module("chronos_dysts.augmentations")
