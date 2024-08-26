@@ -13,6 +13,13 @@ $ pip install -e .
 ## Generating Dyst Dataset
 We structure our Arrow files as multivariate trajectories saved per sample instance, with default `1024` numerical integration timesteps. Each sample instance is a specific parameter perturbation and initial condition. For example, each Arrow file `[SAMPLE_IDX]_T-1024.arrow` within `[DATA_DIR]/train/Lorenz` corresponds to a single sample instance of the Lorenz system, and contains trajectories for all coordinates (dimensions) i.e. a numpy array of shape (3, 1024) for the Lorenz system.  
 
+We provide several on-the-fly dataset augmentations compatible with the GluonTS framework, in [chronos_dysts/augmentations.py](chronos_dysts.augmentations). By default, all of these augmentations are used during training, but the choice of augmentations can be directly specified in the [dataset config](config/dataset.yaml).
+
+Currently implemented data augmentations:
+- RandomAffineTransform
+- RandomConvexCombinationTransform
+- RandomProjectedSkewTransform
+
 We provide a script [dyst_data.py](scripts/dyst_data.py) for dataset generation. By default, this randomly splits all dysts into a 0.3 test/train split. You can manually specify your desired subset. Run `python scripts/dyst_data.py`. You can test the generated data and the data augmentations using our test scripts, e.g. `python tests/test_dyst_data.py Lorenz` and `python tests/test_augmentations.py Lorenz Rossler`.
 
 We provide a script [skew_product.py](scripts/skew_product.py) to generate trajectories for pairs dynamical systems, where the first system (the driver) is driving the second system (the response). TODO: work in progress
@@ -34,24 +41,22 @@ python scripts/train.py \
 
 ```
 torchrun --nproc-per-node=6 scripts/train.py \
+        model_id=amazon/chronos-t5-large \
+        n_tokens=4096 \
+        context_length=512 \
+        prediction_length=64 \
         run_name=finetune_large \
         wandb.log=True \
         wandb.group_name=finetune_large \
         train.max_steps=100_000 \
         train.save_steps=10_000 \
         train.log_steps=100 \
+        train.per_device_train_batch_size=8 \
 ```
 
 The torchrun launcher provides capability for distributed data-parallel (DDP) training. You can also try Huggingface's [accelerate](https://huggingface.co/docs/transformers/en/accelerate) launcher. For model-parallel training, see HF's [transformers model parallelism](https://huggingface.co/docs/transformers/v4.15.0/en/parallelism) guide.
 
 We are fine-tuning [Chronos](https://github.com/amazon-science/chronos-forecasting) on trajectories from dynamical systems. Chronos is itself a variation of the [T5 architecture](https://huggingface.co/docs/transformers/en/model_doc/t5) fine-tuned on various benchmark univariate timeseries datasets. Specifically, Chronos fine-tunes an deep-narrow [efficient T5](https://huggingface.co/google/t5-efficient-large).
-
-We provide several on-the-fly dataset augmentations compatible with the GluonTS framework, in [chronos_dysts/augmentations.py](chronos_dysts.augmentations). By default, all of these augmentations are used during training, but the choice of augmentations can be directly specified in the [dataset config](config/dataset.yaml).
-
-Currently implemented data augmentations:
-- RandomAffineTransform
-- RandomConvexCombinationTransform
-- RandomProjectedSkewTransform
 
 ## Evaluation
 To evalute the performance of a fine-tuned model, run `python scripts/evaluate.py` after setting the appropriate configuration in `configs/evaluation.yaml`. In particular, set `model_id` to point to the directory of your saved fine-tuned model checkpoint. The list of dynamical systems used for evaluation is also set in the configuration, but will default to using the test/train split.
