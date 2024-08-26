@@ -50,7 +50,7 @@ def main(cfg):
             name=cfg.run_name,
             config=dict(cfg),
             sync_tensorboard=False,  # auto-upload tensorboard metrics
-            group="fine-tuning",
+            group=cfg.wandb.group_name,
             tags=[],
             resume=cfg.wandb.resume
         )

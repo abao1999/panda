@@ -1,5 +1,5 @@
 # configuration for model and tokenizer
-model_id: amazon/chronos-t5-small
+model_id: amazon/chronos-t5-large
 # model_id: google/t5-efficient-small
 # model_id: google/t5-efficient-large
 # model_id: google/t5-efficient-base

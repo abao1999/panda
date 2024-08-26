@@ -4,7 +4,7 @@ train_data_dir: "/stor/work/AMDG_Gilpin_Summer2024/data/train/"
 extra_train_data_paths: null
 probability: null
 
-shuffle_buffer_length: 2_000
+shuffle_buffer_length: 100_000
 
 # minimum number of past points to use for training
 min_past: 60

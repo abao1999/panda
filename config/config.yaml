@@ -20,5 +20,5 @@ run_name: null
 wandb:
   log: False
   project_name: chronos-dysts
-  group_name: null
+  group_name: fine-tuning
   resume: False
