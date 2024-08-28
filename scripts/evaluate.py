@@ -33,41 +33,61 @@ def main(cfg):
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
 
+    # default eval configs per dyst
+    default_prediction_length = cfg.eval.prediction_length
+    default_offset = cfg.eval.offset
+    default_num_rolls = cfg.eval.num_rolls
+
+    # get list of all dyst directories
+    data_dir = os.path.join(cfg.eval.data_dir, cfg.eval.split)
+    if not os.path.isdir(data_dir):
+        raise Exception(f"Directory {data_dir} does not exist.")
+    eval_dysts_names = []
+    if data_dir is not None:
+        eval_dysts_names = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
+
+    # get custom dyst configs
+    custom_dysts_config_lst = cfg.eval.custom_dysts
+    custom_dysts_dict = {}
+    print("Custom dysts configs: ", custom_dysts_config_lst)
+    if custom_dysts_config_lst is not None:
+        for d in custom_dysts_config_lst:
+            dyst_name = d["name"]
+            try:
+                dyst_dir = d["path"]
+            except KeyError:
+                raise Exception(f"Custom dyst config for {dyst_name} does not contain a 'path' key.")
+            if not os.path.isdir(dyst_dir):
+                # continue
+                raise Exception(f"Directory {dyst_dir} does not exist.")
+            custom_dysts_dict[dyst_name] = {
+                "path": dyst_dir,
+                "prediction_length": d.get("prediction_length", default_prediction_length),
+                "offset": d.get("offset", default_offset),
+                "num_rolls": d.get("num_rolls", default_num_rolls),
+                }
+
+    eval_dysts_names.extend([d for d in custom_dysts_dict.keys() if d not in eval_dysts_names])
+    print("Eval dyst dirs: ", eval_dysts_names)
+
     # Load Chronos
+    print(f"Loading Chronos checkpoint: {cfg.eval.model_id} onto device: {cfg.eval.device}")
     pipeline = ChronosPipeline.from_pretrained(
         cfg.eval.model_id,
         device_map=cfg.eval.device,
         torch_dtype=torch_dtype,
     )
 
-    data_dir = cfg.eval.data_dir
-    # TODO: eventually we want to just get all files from data_dir
-    dysts_configs = getattr(cfg.eval.dysts, cfg.eval.split)
-    default_prediction_length = cfg.eval.prediction_length
-    default_offset = cfg.eval.offset
-    default_num_rolls = cfg.eval.num_rolls
-    print("Dysts configs: ", dysts_configs)
-
     result_rows = []
-    # for each dynamical system
-    for dyst_config in dysts_configs:
-
-        # get dyst config
-        logger.info("config: ", dyst_config)
-        dyst_name = dyst_config["name"]
-        prediction_length = dyst_config.get("prediction_length", default_prediction_length)
-        offset = dyst_config.get("offset", default_offset)
-        num_rolls = dyst_config.get("num_rolls", default_num_rolls)
-        # check if data directory exists
-        dyst_data_dir = os.path.join(data_dir, dyst_name)
-        if not os.path.exists(dyst_data_dir):
-            continue
-            # raise Exception(f"Directory {dyst_data_dir} does not exist.")
-        print(f"Evaluating {dyst_name} with prediction length {prediction_length}")
-
-
+    for dyst_name in tqdm(eval_dysts_names[:10]):
+        dyst_dir = custom_dysts_dict.get(dyst_name, {}).get("path", os.path.join(data_dir, dyst_name))
+        dyst_config = custom_dysts_dict.get(dyst_name, {"prediction_length": default_prediction_length, "offset": default_offset, "num_rolls": default_num_rolls})
+        prediction_length = dyst_config["prediction_length"]
+        offset = dyst_config["offset"]
+        num_rolls = dyst_config["num_rolls"]
+        print(f"Evaluating {dyst_name} from {dyst_dir} with prediction length {prediction_length} and offset {offset}")
         # get list of all dataset Arrow files associated with dyst_name
-        filepaths = list(Path(dyst_data_dir).glob("*.arrow"))
+        filepaths = list(Path(dyst_dir).glob("*.arrow"))
         metrics_all_samples = defaultdict(lambda: defaultdict(list))
         for sample_idx, filepath in tqdm(enumerate(filepaths)): #, desc=f"evaluating metrics for all dataset files of {dyst_name}"):
             # load dataset test split from Arrow file
@@ -133,9 +153,8 @@ def main(cfg):
     
         # aggregate metrics across all samples of each dyst dim
         #   i.e. each dim has its own dict that contains averaged values across all samples for that dim
-        logger.info(metrics_all_samples)
         metrics_all_samples = average_nested_dict(metrics_all_samples)
-        logger.info(metrics_all_samples)
+        # logger.info(metrics_all_samples)
 
         # aggregate metrics across all samples and dimensions of a dyst (average the errors across dimensions)
         if cfg.eval.agg_axis is None:

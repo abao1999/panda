@@ -1,8 +1,9 @@
 eval:
-  data_dir: "/stor/work/AMDG_Gilpin_Summer2024/data/train/"
+  data_dir: /stor/work/AMDG_Gilpin_Summer2024/data
+  split: train
   output_dir: ./eval_results
-  model_id: output/run-10/checkpoint-final
-  device: cuda:0
+  model_id: /stor/work/AMDG_Gilpin_Summer2024/checkpoints/checkpoint-80000
+  device: cuda:7
   torch_dtype: bfloat16 # float32?
   batch_size: 32
   num_samples: 20
@@ -17,18 +18,12 @@ eval:
   offset: 64
   num_rolls: 1
 
-  # two splits: in_domain and holdout ("zero-shot")
-  split: in_domain
 
   # this is only useful, as opposed to reading all systems from data_dir, if we want to havve
   # customizable prediction_length, offset, num_rolls, etc. for each system
-  dysts:
-    in_domain:
-    - name: Lorenz
-    - name: Lorenz96
-    - name: SprottD
-    - name: Thomas
-
-    # "zero-shot"
-    holdout:
-    - name: SprottG
+  custom_dysts: null
+  # - name: Lorenz96
+  #   path: /stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz96
+  #   prediction_length: 64
+  #   offset: 64
+  #   num_rolls: 1

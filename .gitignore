@@ -8,6 +8,8 @@ data/
 *.png
 *.jpg
 *.jpeg
+*.out
+nohup.out
 
 # output and logging files
 output/

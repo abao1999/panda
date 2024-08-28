@@ -123,16 +123,33 @@ def skew_sys(sys_driver, sys_response, affine_map):
         # Split the combined initial conditions into driver and response systems
         x_driver, x_response = combined_ics[:n_driver], combined_ics[n_driver: n_driver + n_response] 
         
-        # Method 1
-        _, _, x_response = apply_affine_map(affine_map, x_driver, x_response)
-        assert len(x_response) == n_response
+        # # Method 1
+        # _, _, x_response = apply_affine_map(affine_map, x_driver, x_response)
+        # # assert len(x_response) == n_response
 
         # Compute the flow of the driver and response systems
-        flow_driver = sys_driver.rhs(x_driver, t)
-        flow_response = sys_response.rhs(x_response, t)
+        flow_driver = np.array(sys_driver.rhs(x_driver, t))
+        flow_response = np.array(sys_response.rhs(x_response, t))
 
         # # Method 2 - this seems like a weird thing to do
         # flow_driver, _, flow_response = apply_affine_map(affine_map, flow_driver, flow_response)
+
+        # Method 3 - normalize flow rhs on the fly, both to unit norm
+        # kappa = np.linalg.norm(flow_response) / np.linalg.norm(flow_driver)
+        kappa_driver = 1 / np.linalg.norm(flow_driver)
+        kappa_response = 1 / np.linalg.norm(flow_response)
+        # affine_map = construct_basic_affine_map(n_driver, n_response, kappa)
+        flow_response = (kappa_driver * flow_driver) + (kappa_response * flow_response)
+
+        # kappa = np.linalg.norm(flow_response) / np.linalg.norm(flow_driver)
+        # print("kappa: ", kappa)
+        # # affine_map = construct_basic_affine_map(n_driver, n_response, kappa)
+        # flow_response = 0.5 * (kappa * flow_driver) + 0.5 * (flow_response)
+
+        # kappa = 1 / np.linalg.norm(flow_response + flow_driver)
+        # print("kappa: ", kappa)
+        # # affine_map = construct_basic_affine_map(n_driver, n_response, kappa)
+        # flow_response = kappa * (flow_driver + flow_response)
 
         skew_flow = np.concatenate([flow_driver, flow_response])
         return skew_flow
@@ -155,11 +172,12 @@ def run_skew_product_system(sys_driver, sys_response):
     combined_ics = np.concatenate([np.array(sys_driver.ic), np.array(sys_response.ic)])
     # get integration arguments from comparing the driver and response systems
     dt = min(sys_driver.dt, sys_response.dt)
-    tlim = 10 * max(sys_driver.period, sys_response.period)
+    tlim = 20 * max(sys_driver.period, sys_response.period)
     tpts = np.linspace(0, tlim, 10_000)
     
-    # construct affine maps
-    kappa = get_coupling(sys_driver, sys_response)
+    # # construct affine maps
+    # kappa = get_coupling(sys_driver, sys_response)
+    kappa = np.ones(n_response) # dummy to avoid computing coupling strength
     basic_affine_map = construct_basic_affine_map(n_driver, n_response, kappa)
     print("Affine map:")
     print(basic_affine_map)

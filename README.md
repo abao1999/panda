@@ -2,7 +2,7 @@
 Chronos fine-tuned on Dynamical Systems
 
 ## Setup
-Install the development (dev) branch of [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts@dev`
+Install [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`
 
 To setup, run:
 ```
