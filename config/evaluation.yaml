@@ -2,6 +2,8 @@ eval:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data
   split: train
   output_dir: ./eval_results
+  output_fname: null
+  overwrite: false
   model_id: /stor/work/AMDG_Gilpin_Summer2024/checkpoints/checkpoint-80000
   device: cuda:7
   torch_dtype: bfloat16 # float32?

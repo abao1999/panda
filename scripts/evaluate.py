@@ -11,8 +11,8 @@ from tqdm.auto import tqdm
 
 from collections import defaultdict
 
-# TODO: attractor error metrics that consider forecasts for all dimensions jointly
 from gluonts.ev.metrics import SMAPE, MASE, RMSE, MeanWeightedSumQuantileLoss
+# from gluonts.evaluation.metrics import smape, mase, rmse, wql
 from gluonts.model.evaluation import evaluate_forecasts
 
 from chronos_dysts.pipeline import ChronosPipeline
@@ -26,10 +26,15 @@ from chronos_dysts.utils import (
 @hydra.main(config_path='../config', config_name='config', version_base=None)
 def main(cfg):
     # create save path for evaluation metrics
-    metrics_path = os.path.join(cfg.eval.output_dir, f"{cfg.eval.split}_metrics.csv")
+    metrics_fname = cfg.eval.output_fname
+    if metrics_fname is None:
+        metrics_fname = f"{cfg.eval.split}_metrics.csv"
+    metrics_path = os.path.join(cfg.eval.output_dir, metrics_fname)
+    print("Saving metrics to: ", metrics_path)
+
     os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
 
-    # set floatinig point precision
+    # set floating point precision
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
 
@@ -70,7 +75,7 @@ def main(cfg):
     eval_dysts_names.extend([d for d in custom_dysts_dict.keys() if d not in eval_dysts_names])
     print("Eval dyst dirs: ", eval_dysts_names)
 
-    # Load Chronos
+    # Load model from checkpoint
     print(f"Loading Chronos checkpoint: {cfg.eval.model_id} onto device: {cfg.eval.device}")
     pipeline = ChronosPipeline.from_pretrained(
         cfg.eval.model_id,
@@ -79,7 +84,7 @@ def main(cfg):
     )
 
     result_rows = []
-    for dyst_name in tqdm(eval_dysts_names[:10]):
+    for dyst_name in tqdm(eval_dysts_names):
         dyst_dir = custom_dysts_dict.get(dyst_name, {}).get("path", os.path.join(data_dir, dyst_name))
         dyst_config = custom_dysts_dict.get(dyst_name, {"prediction_length": default_prediction_length, "offset": default_offset, "num_rolls": default_num_rolls})
         prediction_length = dyst_config["prediction_length"]
@@ -185,6 +190,9 @@ def main(cfg):
         )
         .sort_values(by="dataset")
     )
+    if os.path.isfile(metrics_path) and not cfg.eval.overwrite:
+        existing_df = pd.read_csv(metrics_path)
+        results_df = pd.concat([existing_df, results_df], ignore_index=True)
     results_df.to_csv(metrics_path, index=False)
 
     # TODO: embeddings, tokenizer_state = pipeline.embed(context)
