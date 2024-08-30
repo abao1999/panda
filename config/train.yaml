@@ -19,7 +19,7 @@ train:
   lr_scheduler_type: linear
   warmup_ratio: 0.0
 
-  output_dir: ./output/
+  output_dir: /stor/work/AMDG_Gilpin_Summer2024/checkpoints/
 
   # not currently used, but part of TrainingArguments
   ddp_find_unused_parameters: false

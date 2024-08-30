@@ -92,7 +92,8 @@ def main(cfg):
         num_rolls = dyst_config["num_rolls"]
         print(f"Evaluating {dyst_name} from {dyst_dir} with prediction length {prediction_length} and offset {offset}")
         # get list of all dataset Arrow files associated with dyst_name
-        filepaths = list(Path(dyst_dir).glob("*.arrow"))
+        # filepaths = list(Path(dyst_dir).glob("*.arrow"))
+        filepaths = sorted(list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0]))
         metrics_all_samples = defaultdict(lambda: defaultdict(list))
         for sample_idx, filepath in tqdm(enumerate(filepaths)): #, desc=f"evaluating metrics for all dataset files of {dyst_name}"):
             # load dataset test split from Arrow file
@@ -109,12 +110,20 @@ def main(cfg):
                 f"Generating forecasts for {dyst_name} sample {sample_idx} "
                 f"with ({len(test_data.input)} time series)"
             )
+            
+            forecast_save_path = None
+            if cfg.eval.save_forecasts_to_npy and cfg.eval.forecast_save_dir is not None:
+                forecast_save_path = os.path.join(cfg.eval.forecast_save_dir, dyst_name, f"{filepath.stem}.npy")
+            
             sample_forecasts = generate_sample_forecasts(
                 test_data.input,
                 pipeline=pipeline,
                 prediction_length=prediction_length,
                 batch_size=cfg.eval.batch_size,
                 num_samples=cfg.eval.num_samples,
+                limit_prediction_length=cfg.eval.limit_prediction_length,
+                save_to_npy=cfg.eval.save_forecasts_to_npy,
+                save_path=forecast_save_path,
                 temperature=cfg.eval.temperature,
                 top_k=cfg.eval.top_k,
                 top_p=cfg.eval.top_p,

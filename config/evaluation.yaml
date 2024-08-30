@@ -13,11 +13,15 @@ eval:
   top_k: null
   top_p: null
 
+  save_forecasts_to_npy: false
+  forecast_save_dir: null
+
   agg_axis: null
 
   # for generating forecasts and getting test split
+  limit_prediction_length: true
   prediction_length: 64
-  offset: 64
+  offset: -64
   num_rolls: 1
 
 

@@ -35,7 +35,7 @@ import importlib
 import wandb
 
 os.environ["WANDB_PROJECT"] = "chronos-dysts"  # name of W&B project, right now hard-coded even though also in cfg
-os.environ["WANDB_LOG_MODEL"] = "checkpoint"  # log all model checkpoints to W&B automatically
+# os.environ["WANDB_LOG_MODEL"] = "checkpoint"  # log all model checkpoints to W&B automatically
 
 # augmentations module, for dynamic imports based on augmentations specified in config
 AUG_MODULE = importlib.import_module("chronos_dysts.augmentations")

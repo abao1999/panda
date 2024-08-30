@@ -2,7 +2,7 @@
 utils for Chronos Pipeline (evaluation) and evaluation scripts
 """
 from typing import Iterable
-
+import os
 import numpy as np
 import torch
 from gluonts.dataset.split import split, TestData
@@ -44,6 +44,13 @@ def load_and_split_dataset_from_arrow(
         https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.common.html 
     And then uses GluonTS split to generate test instances from windows of original timeseries
         https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.split.html
+
+    Load and split a dataset from an Arrow file, applies split to generate test instances
+    Returns:
+      ``TestData`` object.
+            Elements of a ``TestData`` object are pairs ``(input, label)``, where
+            ``input`` is input data for models, while ``label`` is the future
+            ground truth that models are supposed to predict.
     """
     # TODO: load selected dimensions for dyst system config, so we can have separate forecast for each univariate trajectory
     if verbose:
@@ -70,6 +77,9 @@ def generate_sample_forecasts(
     prediction_length: int,
     batch_size: int,
     num_samples: int,
+    limit_prediction_length: Optional[bool] = True,
+    save_to_npy: Optional[bool] = False,
+    save_path: Optional[str] = None,
     **predict_kwargs,
 ) -> Iterable[Forecast]:
     """
@@ -84,12 +94,20 @@ def generate_sample_forecasts(
                 context,
                 prediction_length=prediction_length,
                 num_samples=num_samples,
+                limit_prediction_length=limit_prediction_length,
                 **predict_kwargs,
             ).numpy()
         )
     forecast_samples = np.concatenate(forecast_samples)
     print("Forecast Samples shape: ", forecast_samples.shape)
+    if save_to_npy and save_path is not None:
+        save_path = Path(save_path)
+        print(f"Saving forecast samples to {save_path}")
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        np.save(save_path, forecast_samples)
 
+    # TODO: wrap previous so we can return and work with forecast_samples np array
+    # and in evaluate.py pool them together to plot or save to arrow files
     # Convert forecast samples into gluonts SampleForecast objects
     sample_forecasts = []
     for item, ts in zip(forecast_samples, test_data_input):

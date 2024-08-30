@@ -35,6 +35,8 @@ from .test_utils import (
     accumulate_dyst_samples,
     plot_trajs_univariate,
     plot_trajs_multivariate,
+    plot_forecast_trajs_multivariate,
+    plot_forecast_gt_trajs_multivariate,
     read_arrow_ds,
     read_arrow_direct,
 )

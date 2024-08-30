@@ -25,58 +25,78 @@ checkpoint_dir=$WORK/checkpoints
 run_job_bg scripts/evaluate.py \
         eval.model_id=amazon/chronos-t5-large \
         eval.data_dir=$WORK/data \
-        eval.split=train \
+        eval.split=test \
+        eval.limit_prediction_length=false \
+        eval.prediction_length=512 \
+        eval.offset=-512 \
         eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=train_base_metrics.csv \
-        eval.overwrite=True \
+        eval.output_fname=test_base_metrics.csv \
+        eval.overwrite=false \
         eval.device=cuda:6 \
 
 # fine-tuned chronos-dysts large model, intermediate checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-20000 \
         eval.data_dir=$WORK/data \
-        eval.split=train \
+        eval.split=test \
+        eval.limit_prediction_length=false \
+        eval.prediction_length=512 \
+        eval.offset=-512 \
         eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=train_20000_metrics.csv \
-        eval.overwrite=True \
+        eval.output_fname=test_20000_metrics.csv \
+        eval.overwrite=false \
         eval.device=cuda:5 \
 
 # fine-tuned chronos-dysts large model, intermediate checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-40000 \
         eval.data_dir=$WORK/data \
-        eval.split=train \
+        eval.split=test \
+        eval.limit_prediction_length=false \
+        eval.prediction_length=512 \
+        eval.offset=-512 \
         eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=train_40000_metrics.csv \
-        eval.overwrite=True \
+        eval.output_fname=test_40000_metrics.csv \
+        eval.overwrite=false \
         eval.device=cuda:4 \
 
 # fine-tuned chronos-dysts large model, intermediate checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-60000 \
         eval.data_dir=$WORK/data \
-        eval.split=train \
+        eval.split=test \
+        eval.limit_prediction_length=false \
+        eval.prediction_length=512 \
+        eval.offset=-512 \
         eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=train_60000_metrics.csv \
-        eval.overwrite=True \
+        eval.output_fname=test_60000_metrics.csv \
+        eval.overwrite=false \
         eval.device=cuda:3 \
 
 # fine-tuned chronos-dysts large model, intermediate checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-80000 \
         eval.data_dir=$WORK/data \
-        eval.split=train \
+        eval.split=test \
+        eval.limit_prediction_length=false \
+        eval.prediction_length=512 \
+        eval.offset=-512 \
         eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=train_80000_metrics.csv \
-        eval.overwrite=True \
+        eval.output_fname=test_80000_metrics.csv \
+        eval.overwrite=false \
         eval.device=cuda:2 \
 
 # fine-tuned chronos-dysts large model, final checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-final \
         eval.data_dir=$WORK/data \
-        eval.split=train \
+        eval.split=test \
+        eval.limit_prediction_length=false \
+        eval.prediction_length=512 \
+        eval.offset=-512 \
+        eval.save_forecasts_to_npy=true \
+        eval.forecast_save_dir=$WORK/data/forecasts \
         eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=train_100000_metrics.csv \
-        eval.overwrite=True \
+        eval.output_fname=test_100000_metrics.csv \
+        eval.overwrite=false \
         eval.device=cuda:1 \
