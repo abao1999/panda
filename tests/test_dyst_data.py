@@ -18,6 +18,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     filepaths = get_dyst_filepaths(args.dyst_name)
+    print(f"{args.dyst_name} filepaths: ", filepaths)
 
     # NOTE: this is same as accumulate_dyst_samples in tests/test_augmentations.py
     dyst_coords_samples = []
@@ -30,6 +31,8 @@ if __name__ == "__main__":
         dyst_coords_samples.append(dyst_coords)
 
         print("data shape: ", dyst_coords.shape)
+        print("metadata: ", metadata)
+        print("IC: ", dyst_coords[:, 0])
 
     dyst_coords_samples = np.array(dyst_coords_samples)
     print(dyst_coords_samples.shape)

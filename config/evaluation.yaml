@@ -16,7 +16,7 @@ eval:
   save_forecasts_to_npy: false
   forecast_save_dir: null
 
-  agg_axis: null
+  agg_axis: null # 1 to keep dimensions separate
 
   # for generating forecasts and getting test split
   limit_prediction_length: true

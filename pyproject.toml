@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chronos-dysts"
+description = "Chronos Fine-Tuned on Dynamical Systems"
+version = "0.1.0"
+readme = "README.md"
+license = { text = "MIT" }  # SPDX license identifier
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+exclude = [
+    "scripts", 
+    "tests", 
+    "notebooks", 
+    "output", 
+    "wandb", 
+    "figs",
+    "eval_results"
+]

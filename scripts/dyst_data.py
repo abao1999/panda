@@ -10,6 +10,7 @@ from typing import List, Union, Dict, Optional, Tuple
 
 from tqdm import trange
 
+
 WORK_DIR = os.getenv('WORK')
 DELAY_SYSTEMS = ['MackeyGlass', 'IkedaDelay', 'SprottDelay', 'VossDelay', 'ScrollDelay', 'PiecewiseCircuit']
 # FORCED_SYSTEMS = ['ForcedFitzHughNagumo', 'ForcedBrusselator', 'ForcedVanDerPol']
@@ -88,7 +89,6 @@ def process_trajs(base_dir: str, timeseries: Dict[str, np.ndarray], verbose: Opt
             path = os.path.join(system_folder, f"{curr_sample_idx}_T-{trajectory.shape[-1]}.arrow")
             convert_to_arrow(path, trajectory)
 
-
 @dataclass
 class ParamPerturb:
 
@@ -121,7 +121,7 @@ class TimeLimitEvent:
 # Event function to detect instability
 def instability_event(t, y):
     # Example criterion: If the solution's magnitude exceeds a large threshold
-    if np.any(np.abs(y) > 1e6):
+    if np.any(np.abs(y) > 1e3): # reasonable threshold, since we are standardizing trajectories
         print("y: ", y)
         print("Integration stopped due to instability.")
         return 0  # Trigger the event
@@ -135,87 +135,91 @@ def filter_dict(d: Dict[str, np.ndarray]) -> Tuple[Dict[str, np.ndarray], List[s
         if d[key] is None: # or d[key].shape[0] < req_num_vals:
             excluded_keys.append(key)  # Collect the key
             del d[key]            # Remove the key from the dictionary
-    print("Keys with insufficent data:", excluded_keys)
     return d, excluded_keys
 
-def main():
-    rseed = 999
-    num_periods = 5
-    num_points = 1024
-    num_ics = 6
-    num_param_perturbations = 1
-
-    # interval for saving trajectory samples to arrow files
-    samples_save_interal = 1
-
-    test, train = split_systems(0.3, seed=rseed, excluded_systems=DELAY_SYSTEMS) # + FORCED_SYSTEMS)
-    print(f"{len(train)} train systems: \n {train}")
-    print(f"{len(test)} test systems: \n {test}")
-
-    # events for solve_ivp
-    time_limit_event = TimeLimitEvent(max_duration=60)  # 1 min time limit
-    time_limit_event.terminal = True  # Stop the integration when the event is triggered
-    instability_event.terminal = True  # Stop the integration when the event is triggered
+def save_dyst_ensemble(
+    dysts_names: List[str] = ['Lorenz'],
+    split: str = "train",
+    rseed: int = 999,
+    num_periods: int = 5,
+    num_points: int = 1024,
+    num_ics: int = 3,
+    num_param_perturbations: int = 1,
+    samples_save_interval: int = 1,
+    events: Optional[List] = None,
+):
+    print(f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}")
     
-    train_ic_sampler = init_cond_sampler(subset=train, random_seed=rseed)
-    test_ic_sampler = init_cond_sampler(subset=test, random_seed=rseed)
+    ic_sampler = init_cond_sampler(subset=dysts_names, random_seed=rseed)
     param_sampler = ParamPerturb(scale=1e-3, random_seed=rseed)
 
     num_total_samples = num_param_perturbations * num_ics
-    train_ensemble_list = []
-    test_ensemble_list = []
+    ensemble_list = []
 
     # TODO: for random parameter perturbations, need to check validity, as we currently get nans, which throws error at the dysts level
     for i in range(num_param_perturbations):
         for j in trange(num_ics):
             sample_idx = i + j
 
-            print("Making TRAIN ENSEMBLE for sample ", sample_idx)
+            print("Making ensemble for sample ", sample_idx)
             # each ensemble is of type Dict[str, [ndarray]]
-            train_ensemble = make_trajectory_ensemble(
-                num_points, subset=train, use_multiprocessing=True, 
-                init_conds=train_ic_sampler(scale=1e-1), param_transform=param_sampler if num_param_perturbations > 1 else None,
+            ensemble = make_trajectory_ensemble(
+                num_points, subset=dysts_names, use_multiprocessing=True, 
+                init_conds=ic_sampler(scale=1e-1), param_transform=param_sampler if num_param_perturbations > 1 else None,
                 use_tqdm=True, standardize=True, pts_per_period=num_points//num_periods,
-                events=[time_limit_event, instability_event],
+                events=events,
             )
-            train_ensemble, excluded_keys = filter_dict(train_ensemble) #, req_num_vals=num_points)
+            ensemble, excluded_keys = filter_dict(ensemble) #, req_num_vals=num_points)
             print("INTEGRATION FAILED FOR:", excluded_keys)
 
-            print("Making TEST ENSEMBLE for sample ", sample_idx)
-            test_ensemble = make_trajectory_ensemble(
-                num_points, subset=test, use_multiprocessing=True, 
-                init_conds=test_ic_sampler(scale=1e-1), param_transform=param_sampler if num_param_perturbations > 1 else None,
-                use_tqdm=True, standardize=True, pts_per_period=num_points//num_periods,
-                events=[time_limit_event, instability_event],
-            )
-            test_ensemble, excluded_keys = filter_dict(test_ensemble) #, req_num_vals=num_points)
-            print("INTEGRATION FAILED FOR:", excluded_keys)
-            # NOTE: should only use time_limit_event with multiprocessing=True       
-
-            train_ensemble_list.append(train_ensemble)
-            test_ensemble_list.append(test_ensemble)
+            ensemble_list.append(ensemble)
 
             # save samples of trajectory ensembles to arrow files and clear list of ensembles
-            if ((sample_idx + 1) % samples_save_interal) == 0 or (sample_idx + 1) == num_total_samples:
-                assert len(train_ensemble_list) == len(test_ensemble_list), "Train and test ensemble lists should have same length"
+            if ((sample_idx + 1) % samples_save_interval) == 0 or (sample_idx + 1) == num_total_samples:
+                print(f"Saving {len(ensemble_list)} sampled trajectoies to arrow files")
                 # transpose and stack to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
-                # TODO: need to handle case when a dyst make_trajectory is successful for not all samples, combine elegantly with missing dict keys
-                train_ensemble = {key: np.stack([d[key].T for d in train_ensemble_list], axis=0) for key in train_ensemble_list[0]}
-                test_ensemble = {key: np.stack([d[key].T for d in test_ensemble_list], axis=0) for key in test_ensemble_list[0]}
-                print(f"Saving {len(train_ensemble_list)} sampled train and test trajectories to arrow files")
-                for split, ensemble in [('train', train_ensemble), ('test', test_ensemble)]:
-                    data_dir = os.path.join(WORK_DIR, f'data/{split}')
-                    os.makedirs(data_dir, exist_ok=True)
-                    process_trajs(data_dir, ensemble, verbose=True)
+                ensemble_keys = set().union(*[d.keys() for d in ensemble_list])
+                ensemble = {key: np.stack([d[key] for d in ensemble_list if key in d], axis=0).transpose(0, 2, 1) for key in ensemble_keys}
+                
+                data_dir = os.path.join(WORK_DIR, f'data/{split}')
+                os.makedirs(data_dir, exist_ok=True)
+                process_trajs(data_dir, ensemble, verbose=True)
                 # reset lists of ensembles
-                train_ensemble_list = []
-                test_ensemble_list = []
+                ensemble_list = []
 
 if __name__ == '__main__':
-    main()
 
+    # set random seed
+    rseed = 999 # we are using same seed for split and ic and param samplers
 
-"""
-INTEGRATION FAILED FOR: ['DoublePendulum', 'ArnoldWeb', 'DoubleGyre']
-INTEGRATION FAILED FOR: ['SprottL', 'MacArthur', 'TurchinHanski']
-"""
+    # generate split of dynamical systems
+    test, train = split_systems(0.3, seed=rseed, excluded_systems=DELAY_SYSTEMS) # + FORCED_SYSTEMS)
+
+    # events for solve_ivp
+    time_limit_event = TimeLimitEvent(max_duration=120)  # 2 min time limit
+    time_limit_event.terminal = True
+    instability_event.terminal = True
+
+    # make the train split
+    save_dyst_ensemble(
+        train, 
+        split="train", 
+        rseed=rseed,
+        num_periods=5,
+        num_points=1024,
+        num_ics=5,
+        num_param_perturbations=1,
+        events=[time_limit_event, instability_event],
+    )
+
+    # make the test split
+    save_dyst_ensemble(
+        test, 
+        split="test", 
+        rseed=rseed,
+        num_periods=5,
+        num_points=1024,
+        num_ics=5,
+        num_param_perturbations=1,
+        events=[time_limit_event, instability_event],
+    )

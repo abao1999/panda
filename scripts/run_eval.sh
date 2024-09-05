@@ -25,7 +25,7 @@ checkpoint_dir=$WORK/checkpoints
 run_job_bg scripts/evaluate.py \
         eval.model_id=amazon/chronos-t5-large \
         eval.data_dir=$WORK/data \
-        eval.split=test \
+        eval.split=train \
         eval.limit_prediction_length=false \
         eval.prediction_length=512 \
         eval.offset=-512 \
@@ -38,7 +38,7 @@ run_job_bg scripts/evaluate.py \
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-20000 \
         eval.data_dir=$WORK/data \
-        eval.split=test \
+        eval.split=train \
         eval.limit_prediction_length=false \
         eval.prediction_length=512 \
         eval.offset=-512 \
@@ -51,7 +51,7 @@ run_job_bg scripts/evaluate.py \
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-40000 \
         eval.data_dir=$WORK/data \
-        eval.split=test \
+        eval.split=train \
         eval.limit_prediction_length=false \
         eval.prediction_length=512 \
         eval.offset=-512 \
@@ -64,7 +64,7 @@ run_job_bg scripts/evaluate.py \
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-60000 \
         eval.data_dir=$WORK/data \
-        eval.split=test \
+        eval.split=train \
         eval.limit_prediction_length=false \
         eval.prediction_length=512 \
         eval.offset=-512 \
@@ -77,7 +77,7 @@ run_job_bg scripts/evaluate.py \
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-80000 \
         eval.data_dir=$WORK/data \
-        eval.split=test \
+        eval.split=train \
         eval.limit_prediction_length=false \
         eval.prediction_length=512 \
         eval.offset=-512 \
@@ -90,7 +90,7 @@ run_job_bg scripts/evaluate.py \
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-final \
         eval.data_dir=$WORK/data \
-        eval.split=test \
+        eval.split=train \
         eval.limit_prediction_length=false \
         eval.prediction_length=512 \
         eval.offset=-512 \
