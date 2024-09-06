@@ -6,6 +6,10 @@ from .type_aliases import (
 )
 
 from .data_utils import (
+    split_systems,
+    filter_dict,
+    convert_to_arrow,
+    process_trajs,
     stack_and_extract_metadata,
     sample_index_pairs,
 )
