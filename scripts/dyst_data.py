@@ -84,7 +84,8 @@ def save_dyst_ensemble(
             # each ensemble is of type Dict[str, [ndarray]]
             ensemble = make_trajectory_ensemble(
                 num_points, subset=dysts_names, use_multiprocessing=True, 
-                init_conds=ic_sampler(scale=1e-1), param_transform=param_sampler if num_param_perturbations > 1 else None,
+                init_conds=ic_sampler(scale=1e-1) if num_ics > 1 else {}, 
+                param_transform=param_sampler if num_param_perturbations > 1 else None,
                 use_tqdm=True, standardize=True, pts_per_period=num_points//num_periods,
                 events=events,
             )

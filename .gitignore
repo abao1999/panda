@@ -1,5 +1,6 @@
 # some test scripts
 tests/playground.py
+tests/another_playground.py
 
 # data directory and files
 data/

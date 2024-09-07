@@ -6,7 +6,6 @@ from pathlib import Path
 from chronos_dysts.utils import (
     get_dyst_filepaths,
     stack_and_extract_metadata,
-    accumulate_dyst_samples,
     plot_trajs_multivariate,
     plot_forecast_trajs_multivariate,
     plot_forecast_gt_trajs_multivariate,
@@ -122,10 +121,3 @@ if __name__ == "__main__":
         plot_name=f"{dyst_name}_forecast_gt",
         num_samples_to_plot=4,
     )
-
-    
-    # dyst_filepath = dyst_filepaths[0]
-    # print(f"Loading {dyst_filepath}")
-
-
-    forecast_filepath = ""

@@ -1,12 +1,13 @@
-import os
+import torch
+import numpy as np
 import argparse
 
 from gluonts.dataset.common import ListDataset
-from gluonts.dataset.split import split, TestData
+from gluonts.itertools import batcher
+from gluonts.dataset.split import split
 from chronos_dysts.utils import (
     load_and_split_dataset_from_arrow,
     get_dyst_filepaths,
-    generate_sample_forecasts,
 )
 
 def simple_test_split():
@@ -84,6 +85,15 @@ def test_split_from_arrow(filepath):
         print("label shape: ", label_data.shape)
         idx += 1
 
+    return test_data
+
+def test_context(test_data_input, batch_size):
+    first_batch = next(batcher(test_data_input, batch_size=batch_size))
+    print("first batch num dims: ", len(first_batch))
+    print("first batch dim 0 shape: ", first_batch[0]["target"].shape)
+    context = [torch.tensor(entry["target"]) for entry in first_batch]
+    print("context shape: ", np.array(context).shape)
+    return context
 
 if __name__ == "__main__":
     simple_test_split()
@@ -96,4 +106,7 @@ if __name__ == "__main__":
     filepaths = get_dyst_filepaths(args.dyst_name)
     sample_filepath = filepaths.pop(args.sample_idx)
     print("sample filepath: ", sample_filepath)
-    test_split_from_arrow(sample_filepath)
+    test_data = test_split_from_arrow(sample_filepath)
+
+    context = test_context(test_data.input, batch_size=32)
+
