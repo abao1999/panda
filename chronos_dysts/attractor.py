@@ -39,17 +39,23 @@ class EnsembleCallbackHandler:
         print(f"ALL CHECKS PASSED for {dyst_name}.")
         return True
 
-    def plot_phase_space(self, ensemble: Dict[str, np.ndarray], save_dir="tests/figs"):
+    def plot_phase_space(
+            self, 
+            ensemble: Dict[str, np.ndarray], 
+            save_dir="tests/figs",
+            plot_univariate: bool = False,
+    ) -> None:
         for dyst_name, all_traj in ensemble.items():
-            plot_trajs_multivariate(all_traj, save_dir=save_dir, plot_name=dyst_name)
-            num_dims = all_traj.shape[1]
-            for dim_idx in range(3 if num_dims > 3 else num_dims):
-                plot_trajs_univariate(
-                    all_traj,
-                    selected_dim = dim_idx,
-                    save_dir = save_dir,
-                    plot_name = f"{dyst_name}_univariate_dim{dim_idx}"
-                )
+            plot_trajs_multivariate(all_traj, save_dir=save_dir, plot_name=dyst_name, plot_2d_slice=False)
+            if plot_univariate:
+                num_dims = all_traj.shape[1]
+                for dim_idx in range(3 if num_dims > 3 else num_dims):
+                    plot_trajs_univariate(
+                        all_traj,
+                        selected_dim = dim_idx,
+                        save_dir = save_dir,
+                        plot_name = f"{dyst_name}_univariate_dim{dim_idx}"
+                    )
 
 
     def execute_callbacks(self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0):

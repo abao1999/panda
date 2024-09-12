@@ -127,6 +127,7 @@ def plot_trajs_multivariate(
         save_dir="tests/figs", 
         plot_name=None, 
         num_samples_to_plot=None,
+        plot_2d_slice: bool = True,
 ) -> None:
     """
     Plot multivariate timeseries from dyst_data
@@ -139,19 +140,20 @@ def plot_trajs_multivariate(
     if plot_name is None:
         plot_name = "dyst"
 
-    # Plot the first two coordinates
-    save_path = os.path.join(save_dir, f"{plot_name}.png")
-    print("Plotting 2D trajectories and saving to ", save_path)
-    plt.figure(figsize=(6,6))
-    for sample_idx in range(num_samples_to_plot):
-        # plot x and y
-        plt.plot(dyst_data[sample_idx, 0, :], dyst_data[sample_idx, 1, :], alpha=0.5, linewidth=1)
-        plt.scatter(*dyst_data[sample_idx, :2, 0], marker="*", s=100, alpha=0.5)
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.title(plot_name.replace('_', ' '))
-    plt.savefig(save_path, dpi=300)
-    plt.close()
+    if plot_2d_slice:
+        # Plot the first two coordinates
+        save_path = os.path.join(save_dir, f"{plot_name}.png")
+        print("Plotting 2D trajectories and saving to ", save_path)
+        plt.figure(figsize=(6,6))
+        for sample_idx in range(num_samples_to_plot):
+            # plot x and y
+            plt.plot(dyst_data[sample_idx, 0, :], dyst_data[sample_idx, 1, :], alpha=0.5, linewidth=1)
+            plt.scatter(*dyst_data[sample_idx, :2, 0], marker="*", s=100, alpha=0.5)
+        plt.xlabel('X')
+        plt.ylabel('Y')
+        plt.title(plot_name.replace('_', ' '))
+        plt.savefig(save_path, dpi=300)
+        plt.close()
 
     # 3D plot (first three coordinates)
     save_path = os.path.join(save_dir, f"{plot_name}_3D.png")

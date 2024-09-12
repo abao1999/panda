@@ -25,6 +25,7 @@ import argparse
 
 
 WORK_DIR = os.getenv('WORK')
+DATA_DIR = os.path.join(WORK_DIR, 'data')
 DELAY_SYSTEMS = ['MackeyGlass', 'IkedaDelay', 'SprottDelay', 'VossDelay', 'ScrollDelay', 'PiecewiseCircuit']
 FIGS_SAVE_DIR = "tests/figs"
 
@@ -123,10 +124,14 @@ def save_dyst_ensemble(
                     print("Checking ensemble for attractor properties")
                     callback_handler.plot_phase_space(ensemble, save_dir=FIGS_SAVE_DIR)
                     callback_handler.execute_callbacks(ensemble, first_sample_idx=sample_idx + 1 - samples_save_interval) # first index of current batch of samples
-                    is_valid_attractor = callback_handler.check_status_all()
-                    if not is_valid_attractor:
-                        print("Attractor is not valid. Skipping, will not save to arrow files.")
+                    all_valid_attractors = callback_handler.check_status_all()
+                    if not all_valid_attractors:
+                        print("Attractors are not valid. Skipping, will not save to arrow files.")
                         continue
+
+                data_dir = os.path.join(DATA_DIR, 'param_perturb')
+                os.makedirs(data_dir, exist_ok=True)
+                process_trajs(data_dir, ensemble, verbose=True)
 
                 ensemble_list = []
 
@@ -135,15 +140,20 @@ def save_dyst_ensemble(
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("dysts_names", help="Names of the dynamical systems", nargs="+", type=str)
-    args = parser.parse_args()
+    # # For testing select systems
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("dysts_names", help="Names of the dynamical systems", nargs="+", type=str)
+    # args = parser.parse_args()
 
-    dysts_names = args.dysts_names
-    print("dysts_names: ", dysts_names)
+    # dysts_names = args.dysts_names
+    # print("dysts_names: ", dysts_names)
 
     # set random seed
     rseed = 999 # we are using same seed for split and ic and param samplers
+
+    # For bulk testing all systems
+    _, dysts_names = split_systems(0.3, seed=rseed, excluded_systems=DELAY_SYSTEMS) # + FORCED_SYSTEMS)
+    dyst_names = dysts_names[:20] # check just the first 20 systems
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=60)  # 1 min time limit
@@ -152,7 +162,7 @@ if __name__ == '__main__':
 
     print("Setting up callbacks for attractor properties")
     # callbacks to check attractor validity when creating traj ensemble of dysts
-    ens_callback_handler = EnsembleCallbackHandler(verbose=2)
+    ens_callback_handler = EnsembleCallbackHandler(verbose=0) # verbose=2
     ens_callback_handler.add_callback(check_no_nans)
     ens_callback_handler.add_callback(check_boundedness)
     ens_callback_handler.add_callback(check_not_fixed_point)
@@ -166,7 +176,7 @@ if __name__ == '__main__':
     ens_callback_handler.add_callback(
         partial(
             check_power_spectrum, 
-            plot_save_dir=FIGS_SAVE_DIR # NOTE: set to None when actually generating data so we don't plot thousands of times
+            plot_save_dir=None, # FIGS_SAVE_DIR # NOTE: set to None when actually generating data so we don't plot thousands of times
         )
     )
     ens_callback_handler.add_callback(
@@ -180,8 +190,8 @@ if __name__ == '__main__':
     save_dyst_ensemble(
         dysts_names,
         rseed=rseed,
-        num_periods=5, #*4,
-        num_points=1024, #*4,
+        num_periods=5*4,
+        num_points=1024*4,
         num_ics=1,
         num_param_perturbations=1,
         events=[time_limit_event, instability_event],
