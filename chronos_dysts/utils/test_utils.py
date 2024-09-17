@@ -2,7 +2,7 @@ import numpy as np
 import os
 from pathlib import Path
 import matplotlib.pyplot as plt
-# from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import Axes3D
 
 # for type hints
 from typing import Optional, List, Dict, Callable
@@ -10,10 +10,10 @@ from gluonts.dataset import Dataset
 
 from chronos_dysts.utils import stack_and_extract_metadata
 
-WORK_DIR = os.getenv('WORK')
+WORK_DIR = os.getenv('WORK', '')
 
 
-def get_dyst_filepaths(dyst_name: str) -> List[str]:
+def get_dyst_filepaths(dyst_name: str) -> List[Path]:
     """ 
     [dyst_name].arrow could either be in data/train or data/test
     Check if [dyst_name].arrow is in either data/train or data/test
@@ -62,10 +62,10 @@ def get_dysts_datasets_dict(dysts_names: List[str]) -> Dict[str, List[Dataset]]:
 
 
 def accumulate_dyst_samples(
-        dyst_name: str, 
-        gts_datasets_dict: Dict[str, List[Dataset]],
-        augmentation_fn: Optional[Callable[[Dataset], Dataset]] = None,
-    ) -> np.ndarray:
+    dyst_name: str, 
+    gts_datasets_dict: Dict[str, List[Dataset]],
+    augmentation_fn: Optional[Callable[[Dataset], Dataset]] = None,
+) -> np.ndarray:
     """
     Accumulate samples from all datasets associated with dyst_name
     Params:
@@ -92,11 +92,11 @@ def accumulate_dyst_samples(
 
 # Plotting utils
 def plot_trajs_univariate(
-        dyst_data, 
-        selected_dim=0, 
-        save_dir="tests/figs", 
-        plot_name=None,
-        num_samples_to_plot=None,
+    dyst_data: np.ndarray,
+    selected_dim: int = 0,
+    save_dir: str = "tests/figs",
+    plot_name: str = "dyst",
+    num_samples_to_plot: Optional[int] = None,
 ) -> None:
     """
     Plot univariate timeseries from dyst_data
@@ -106,9 +106,6 @@ def plot_trajs_univariate(
     if num_samples_to_plot is None:
         # limit plotting to at most 5 samples
         num_samples_to_plot = 5 if num_samples > 5 else num_samples
-    if plot_name is None:
-        plot_name = "dyst"
-
     # Plot the first coordinate
     save_path = os.path.join(save_dir, f"{plot_name}.png")
     print("Plotting 2D trajectories and saving to ", save_path)
@@ -121,13 +118,12 @@ def plot_trajs_univariate(
     plt.savefig(save_path, dpi=300)
     plt.close()
 
-
 def plot_trajs_multivariate(
-        dyst_data, 
-        save_dir="tests/figs", 
-        plot_name=None, 
-        num_samples_to_plot=None,
-        plot_2d_slice: bool = True,
+    dyst_data: np.ndarray,
+    save_dir: str = "tests/figs",
+    plot_name: str = "dyst",
+    num_samples_to_plot: Optional[int] = None,
+    plot_2d_slice: bool = True,
 ) -> None:
     """
     Plot multivariate timeseries from dyst_data
@@ -137,8 +133,6 @@ def plot_trajs_multivariate(
     if num_samples_to_plot is None:
         # limit plotting to at most 5 samples
         num_samples_to_plot = 5 if num_samples > 5 else num_samples
-    if plot_name is None:
-        plot_name = "dyst"
 
     if plot_2d_slice:
         # Plot the first two coordinates
@@ -167,20 +161,19 @@ def plot_trajs_multivariate(
             ax.scatter(*dyst_data[sample_idx, :3, 0], marker="*", s=100, alpha=0.5)
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
+        ax.set_zlabel('Z') # type: ignore
         ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
         ax.ticklabel_format(style='sci', scilimits=(0,0), axis='both')
         plt.title(plot_name.replace('_', ' '))
         plt.savefig(save_path, dpi=300)
         plt.close()
 
-
 def plot_forecast_trajs_multivariate(
-        dyst_data, 
-        context_length,
-        save_dir="tests/figs", 
-        plot_name=None, 
-        num_samples_to_plot=None,
+    dyst_data: np.ndarray,
+    context_length: int,
+    save_dir: str = "tests/figs",
+    plot_name: str = "dyst", 
+    num_samples_to_plot: Optional[int] = None,
 ) -> None:
     """
     Plot multivariate timeseries from dyst_data
@@ -192,8 +185,6 @@ def plot_forecast_trajs_multivariate(
     if num_samples_to_plot is None:
         # limit plotting to at most 5 samples
         num_samples_to_plot = 5 if num_samples > 5 else num_samples
-    if plot_name is None:
-        plot_name = "dyst"
 
     colors = plt.rcParams['axes.prop_cycle'] 
     colors = colors.by_key()['color']
@@ -255,21 +246,20 @@ def plot_forecast_trajs_multivariate(
             )
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
+        ax.set_zlabel('Z') # type: ignore
         ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
         ax.ticklabel_format(style='sci', scilimits=(0,0), axis='both')
         plt.title(f"{dyst_name} Forecast")
         plt.savefig(save_path, dpi=300)
         plt.close()
 
-
 def plot_forecast_gt_trajs_multivariate(
-        fc_data,
-        gt_data, 
-        context_length,
-        save_dir="tests/figs", 
-        plot_name=None, 
-        num_samples_to_plot=None,
+    fc_data: np.ndarray,
+    gt_data: np.ndarray,
+    context_length: int,
+    save_dir: str = "tests/figs",
+    plot_name: str = "dyst",
+    num_samples_to_plot: Optional[int] = None,
 ) -> None:
     """
     Plot multivariate timeseries from ground trugh and forecasted data
@@ -282,8 +272,6 @@ def plot_forecast_gt_trajs_multivariate(
     if num_samples_to_plot is None:
         # limit plotting to at most 5 samples
         num_samples_to_plot = 5 if num_samples > 5 else num_samples
-    if plot_name is None:
-        plot_name = "dyst"
 
     colors = plt.rcParams['axes.prop_cycle'] 
     colors = colors.by_key()['color']
@@ -352,56 +340,10 @@ def plot_forecast_gt_trajs_multivariate(
             )
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
+        ax.set_zlabel('Z') # type: ignore
         ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
         ax.ticklabel_format(style='sci', scilimits=(0,0), axis='both')
         plt.title(f"{dyst_name} Forecast vs Ground Truth")
         # plt.legend()
         plt.savefig(save_path, dpi=300)
         plt.close()
-
-
-
-def read_arrow_ds(filepath):
-    """
-    Read data using pyarrow dataset
-    Note: not used currently but could be useful util in the future
-    """
-    # imports only needed for this function
-    import pyarrow.dataset as ds
-
-    # Load the dataset from the Arrow file
-    dataset = ds.dataset(filepath, format="arrow")
-    # Convert the dataset to a Table
-    table = dataset.to_table()
-    # Convert the Table to a Pandas DataFrame if needed
-    df = table.to_pandas()
-    # Display the DataFrame
-    print(df.head())
-    return df
-
-def read_arrow_direct(filepath):
-    """
-    Read data directly from ArrowFile, default reader is ipc.RecordBatchFileReader
-    Note: not used currently but could be useful util in the future
-    """
-    # imports only needed for this function
-    import pyarrow as pa
-    import pyarrow.ipc as ipc
-
-    # Open the Arrow file
-    with pa.memory_map(filepath, 'r') as source:
-        # Initialize the ArrowFile reader
-        reader = ipc.RecordBatchFileReader(source)
-        # Iterate through the RecordBatches in the file
-        for i in range(reader.num_record_batches):
-            # Read each RecordBatch
-            batch = reader.get_record_batch(i)
-            # Convert RecordBatch to a PyArrow Table
-            table = pa.Table.from_batches([batch])
-            # Convert Table to a Pandas DataFrame if needed
-            df = table.to_pandas()
-            # Display the DataFrame
-            print(df.head())
-
-    return df

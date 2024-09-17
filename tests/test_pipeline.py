@@ -13,12 +13,15 @@ from gluonts.model.forecast import SampleForecast, Forecast
 from gluonts.dataset.common import FileDataset
 
 
+WORK_DIR = os.getenv('WORK', '')
+
+
 def load_and_split_dataset_from_arrow(
         prediction_length: int,
         offset: int,
         num_rolls: int, 
         filepath: str, 
-        verbose: Optional[bool] = False
+        verbose: bool = False
 ) -> TestData:
     """
     Directly loads Arrow file into GluonTS FileDataset
@@ -58,7 +61,7 @@ def generate_sample_forecasts(
     prediction_length: int,
     batch_size: int,
     num_samples: int,
-    limit_prediction_length: Optional[bool] = True,
+    limit_prediction_length: bool = True,
     save_path: Optional[str] = None,
     **predict_kwargs,
 ) -> Iterable[Forecast]:
@@ -81,7 +84,6 @@ def generate_sample_forecasts(
     forecast_samples = np.concatenate(forecast_samples)
     print("Forecast Samples shape: ", forecast_samples.shape)
     if save_path is not None:
-        save_path = Path(save_path)
         print(f"Saving forecast samples to {save_path}")
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         np.save(save_path, forecast_samples)
@@ -96,11 +98,9 @@ def generate_sample_forecasts(
         )
     return sample_forecasts
 
-
-
 class ChronosModel:
     """
-    A wrapper around the Chronos forecase model class that makes it easier to use in 
+    A wrapper around the Chronos forecast model class that makes it easier to use in 
     forecasting tasks.
 
     Attributes:
@@ -217,7 +217,7 @@ class ChronosModel:
                 prediction_length=prediction_length,
                 offset=offset,
                 num_rolls=num_rolls, 
-                filepath=filepath,
+                filepath=str(filepath),
             )
 
             # generate forecasts for all dimensions of a single sample instance
@@ -250,9 +250,8 @@ class ChronosModel:
 
 
 if __name__ == "__main__":
-    work_dir = os.getenv('WORK')
-    forecast_save_dir = os.path.join(work_dir, "forecasts")
-    dyst_dir = os.path.join(work_dir, "data/train", "Lorenz")
+    forecast_save_dir = os.path.join(WORK_DIR, "forecasts")
+    dyst_dir = os.path.join(WORK_DIR, "data/train", "Lorenz")
     
     model = ChronosModel(
         model="base",

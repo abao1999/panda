@@ -24,6 +24,17 @@ We provide a script [dyst_data.py](scripts/dyst_data.py) for dataset generation.
 
 We provide a script [skew_product.py](scripts/skew_product.py) to generate trajectories for pairs dynamical systems, where the first system (the driver) is driving the second system (the response). TODO: work in progress
 
+### Testing Parameter and IC Perturbations
+We provide a script [test_param_perturb.py](scripts/test_param_perturb.py) to test the effect of parameter perturbations on the generated trajectories from `dysts`. An example workflow:
+
+```
+python tests/test_param_perturb.py Lorenz
+python tests/test_dysts_data.py Lorenz
+```
+
+This will generate a trajectory ensemble for each parameter perturbation and save the trajectories to Arrow files.
+
+
 ## Training
 Our train and eval scripts use hydra for hierarchical config, and you can log experiments to wandb. You can simply run `CUDA_VISIBLE_DEVICES=0 python scripts/train.py` to run with the default configs. To run with custom configs, 
 
@@ -71,7 +82,12 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 + Encoder embeddings and token-level analysis
 + Ensure the fine-tuned model performance doesn't degrade on the timeseries it was previously trained on
 
+## Development Goals
++ Add support for PatchTST
++ Add support for custom tokenizer and model architecture
+
 ## TODO
-+ Validate the current augmentation strategies
++ Make dysts data under parameter and ic perturbations
++ Check attractor validity for parameter perturbations
++ Check attractor validity for skew system generation
 + For parameter perturbations and skew system generation, need to check that the system didn't bifurcate or diverge. Could just run an ADFuller stationarity test, as well as rule out constant and extremely large values. Make sure our heuristic tests covers all the bases.
-+ Custom tokenizer and model architecture

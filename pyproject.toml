@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,14 +9,17 @@ version = "0.1.0"
 readme = "README.md"
 license = { text = "MIT" }  # SPDX license identifier
 requires-python = ">=3.10"
-
-[tool.setuptools.packages.find]
-exclude = [
-    "scripts", 
-    "tests", 
-    "notebooks", 
-    "output", 
-    "wandb", 
-    "figs",
-    "eval_results"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
 ]
+dependencies = ["numpy", "torch", "scipy"]
+
+# # Optional dependencies
+# [project.optional-dependencies]
+# benchmarks = ["darts", "torch", "scikit-learn", "pandas", "tsfresh", "nolds"]
+
+# Package data
+[tool.setuptools]
+packages = ["chronos_dysts"]

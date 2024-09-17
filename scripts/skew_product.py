@@ -4,14 +4,12 @@ Search for valid skew-product dynamical sytems and generate trajectory datasets
 import numpy as np
 
 import dysts.flows as dfl
-from dysts.base import get_attractor_list
-from dysts.flows import *
 
 # from dysts.analysis import sample_initial_conditions
 from scipy.integrate import solve_ivp
 
-from typing import Optional, List
-from chronos_dysts.utils import FloatOrFloatSequence, is_float_or_sequence_of_floats
+from typing import List, Union, Sequence
+from chronos_dysts.utils import is_float_or_sequence_of_floats
 
 import matplotlib.pyplot as plt
 import os
@@ -19,6 +17,9 @@ import time
 import argparse
 
 from dyst_data import process_trajs
+
+
+WORK_DIR = os.getenv('WORK', '')
 
 
 def pad_array(arr: np.ndarray, n2: int, m2: int) -> np.ndarray:
@@ -41,7 +42,7 @@ def pad_array(arr: np.ndarray, n2: int, m2: int) -> np.ndarray:
 def construct_basic_affine_map(
         n: int, 
         m: int, 
-        kappa: Optional[FloatOrFloatSequence] = 1.
+        kappa: Union[float, Sequence[float]] = 1.0,
     ) -> np.ndarray:
     """
     Construct an affine map that sends (x, y, 1) -> (x, y, x + y)
@@ -64,7 +65,7 @@ def construct_basic_affine_map(
         bottom_block = np.hstack([kappa * pad_array(I_n if n < m else I_m, m, n), I_m, np.zeros((m, 1))])
     else: # kappa is a list of floats
         k = min(n, m)
-        assert len(kappa) == k, "coupling strength kappa must be of length min(n, m)"
+        assert len(kappa) == k, "coupling strength kappa must be of length min(n, m)" # type: ignore
         bottom_block = np.hstack([pad_array(np.diag(kappa), m, n), I_m, np.zeros((m, 1))])
 
     top_block = np.hstack([I_n, np.zeros((n, m)), np.zeros((n, 1)) ])
@@ -263,9 +264,7 @@ if __name__ == "__main__":
     plt.savefig(save_path, dpi=300)
     plt.close()
 
-
-    work_dir = os.getenv('WORK')
-    traj_save_path = os.path.join(work_dir, "data", "skew_systems")
+    traj_save_path = os.path.join(WORK_DIR, "data", "skew_systems")
     print("Saving trajectories to ", traj_save_path)
 
     skew_name = f"{driver_name}_{response_name}"

@@ -3,22 +3,11 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 from itertools import combinations
-from typing import List, Union, Dict, Optional, Tuple, Iterator, Any
+from typing import List, Union, Dict, Optional, Tuple, Iterator, Any, Literal
 
-from dysts.base import get_attractor_list
+from dysts.systems import get_attractor_list
 from gluonts.dataset import Dataset
 from gluonts.dataset.arrow import ArrowWriter
-
-## Utils for data trajectory generation
-
-def filter_dict(d: Dict[str, np.ndarray]) -> Tuple[Dict[str, np.ndarray], List[str]]:
-    # List to store the filtered out keys
-    excluded_keys = []
-    for key in list(d.keys()):
-        if d[key] is None: # or d[key].shape[0] < req_num_vals:
-            excluded_keys.append(key)  # Collect the key
-            del d[key]            # Remove the key from the dictionary
-    return d, excluded_keys
 
 
 def split_systems(
@@ -38,11 +27,10 @@ def split_systems(
     split = int(len(systems)*prop)
     return systems[:split], systems[split:]
 
-
 def convert_to_arrow(
     path: Union[str, Path],
     time_series: Union[List[np.ndarray], np.ndarray],
-    compression: str = "lz4",
+    compression: Literal["lz4", "zstd"] = "lz4",
 ):
     """
     Store a given set of series into Arrow format at the specified path.
@@ -64,15 +52,22 @@ def convert_to_arrow(
 
     ArrowWriter(compression=compression).write_to_file(
         dataset,
-        path=path,
+        path=Path(path),
     )
 
-
-def process_trajs(base_dir: str, timeseries: Dict[str, np.ndarray], verbose: Optional[bool] = False) -> None:
+# TODO: make this a class, DystsArrowWriter
+def process_trajs(
+    base_dir: str, 
+    timeseries: Dict[str, np.ndarray], 
+    verbose: bool = False,
+) -> None:
     """Saves each trajectory in timeseries ensemble to a separate directory
     """
     for sys_name, trajectories in timeseries.items():
-        if verbose: print(trajectories.shape)
+        
+        if verbose:
+            print(f"Processing trajectories of shape {trajectories.shape} for system {sys_name}")
+
         system_folder = os.path.join(base_dir, sys_name)
         os.makedirs(system_folder, exist_ok=True)
 
@@ -93,7 +88,6 @@ def process_trajs(base_dir: str, timeseries: Dict[str, np.ndarray], verbose: Opt
             
             path = os.path.join(system_folder, f"{curr_sample_idx}_T-{trajectory.shape[-1]}.arrow")
             convert_to_arrow(path, trajectory)
-
 
 ## Utils for augmentations
 def stack_and_extract_metadata(dataset: Dataset) -> Tuple[np.ndarray, Tuple[Any]]:
@@ -117,4 +111,11 @@ def sample_index_pairs(
     all_pairs = list(combinations(range(size), 2))
     return (all_pairs[i] for i in sampled_pairs) 
 
-# stationarity tests
+def filter_dict(d: Dict[str, np.ndarray]) -> Tuple[Dict[str, np.ndarray], List[str]]:
+    # List to store the filtered out keys
+    excluded_keys = []
+    for key in list(d.keys()):
+        if d[key] is None: # or d[key].shape[0] < req_num_vals:
+            excluded_keys.append(key)  # Collect the key
+            del d[key]            # Remove the key from the dictionary
+    return d, excluded_keys

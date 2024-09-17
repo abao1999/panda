@@ -1,10 +1,17 @@
 import os
 import numpy as np
-from dataclasses import dataclass
 from tqdm import trange
 from typing import List, Optional
 
-from dysts.base import make_trajectory_ensemble, init_cond_sampler
+from dysts.systems import make_trajectory_ensemble
+
+from chronos_dysts.sampling import (
+    InstabilityEvent, 
+    TimeLimitEvent,
+    GaussianParamSampler,
+    OnAttractorInitCondSampler,
+)
+
 from chronos_dysts.utils import (
     split_systems,
     process_trajs,
@@ -12,48 +19,9 @@ from chronos_dysts.utils import (
 )
 
 
-WORK_DIR = os.getenv('WORK')
+WORK_DIR = os.getenv('WORK', '')
 DELAY_SYSTEMS = ['MackeyGlass', 'IkedaDelay', 'SprottDelay', 'VossDelay', 'ScrollDelay', 'PiecewiseCircuit']
 # FORCED_SYSTEMS = ['ForcedFitzHughNagumo', 'ForcedBrusselator', 'ForcedVanDerPol']
-
-
-@dataclass
-class ParamPerturb:
-
-    scale: float
-    random_seed: int = 0
-
-    def __post_init__(self) -> None:
-        self.rng = np.random.default_rng(self.random_seed)
-
-    def __call__(self, name: str, param: np.ndarray) -> np.ndarray:
-        size = None if np.isscalar(param) else param.shape
-        return param + self.rng.normal(scale=self.scale*np.linalg.norm(param), size=size)
-
-# Event function to check if integration is taking too long
-import time
-class TimeLimitEvent:
-    def __init__(self, max_duration):
-        self.start_time = None
-        self.max_duration = max_duration
-
-    def __call__(self, t, y):
-        if self.start_time is None:
-            self.start_time = time.time()
-        elapsed_time = time.time() - self.start_time
-        if elapsed_time > self.max_duration:
-            print("Integration stopped due to time limit.")
-            return 0  # Trigger the event
-        return 1  # Continue the integration
-
-# Event function to detect instability
-def instability_event(t, y):
-    # Example criterion: If the solution's magnitude exceeds a large threshold
-    if np.any(np.abs(y) > 1e3): # reasonable threshold, since we are standardizing trajectories
-        print("y: ", y)
-        print("Integration stopped due to instability.")
-        return 0  # Trigger the event
-    return 1  # Continue the integration
 
 
 def save_dyst_ensemble(
@@ -69,8 +37,14 @@ def save_dyst_ensemble(
 ):
     print(f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}")
     
-    ic_sampler = init_cond_sampler(subset=dysts_names, random_seed=rseed)
-    param_sampler = ParamPerturb(scale=1e-3, random_seed=rseed)
+    param_sampler = GaussianParamSampler(random_seed=rseed, scale=1e-1, verbose=True)
+    ic_sampler = OnAttractorInitCondSampler(
+        reference_traj_length=1024,
+        reference_traj_transient=200,
+        random_seed=rseed, 
+        events=events, 
+        verbose=True
+    )
 
     num_total_samples = num_param_perturbations * num_ics
     ensemble_list = []
@@ -83,12 +57,19 @@ def save_dyst_ensemble(
             print("Making ensemble for sample ", sample_idx)
             # each ensemble is of type Dict[str, [ndarray]]
             ensemble = make_trajectory_ensemble(
-                num_points, subset=dysts_names, use_multiprocessing=True, 
-                init_conds=ic_sampler(scale=1e-1) if num_ics > 1 else {}, 
+                num_points, 
+                resample=True,
+                subset=dysts_names, 
+                use_multiprocessing=True, 
+                ic_transform=ic_sampler if num_ics > 1 else None,
                 param_transform=param_sampler if num_param_perturbations > 1 else None,
-                use_tqdm=True, standardize=True, pts_per_period=num_points//num_periods,
+                use_tqdm=True, 
+                standardize=True, 
+                pts_per_period=num_points//num_periods,
                 events=events,
+                rng=param_sampler.rng,
             )
+
             ensemble, excluded_keys = filter_dict(ensemble) #, req_num_vals=num_points)
             print("INTEGRATION FAILED FOR:", excluded_keys)
 
@@ -117,8 +98,7 @@ if __name__ == '__main__':
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=120)  # 2 min time limit
-    time_limit_event.terminal = True
-    instability_event.terminal = True
+    instability_event = InstabilityEvent(threshold=1e3)
 
     # make the train split
     save_dyst_ensemble(

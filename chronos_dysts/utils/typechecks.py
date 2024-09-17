@@ -1,6 +1,5 @@
 import numpy as np
-from typing import Optional
-from .type_aliases import FloatOrFloatSequence
+from collections.abc import Sequence
 
 # Typechecks
 def is_bool(x):
@@ -27,7 +26,6 @@ def is_power_of_two(n):
     else:
         return False
     
-from collections.abc import Sequence
 def is_float_or_sequence_of_floats(obj):
     # Check if the object is a float
     if isinstance(obj, float):
@@ -49,7 +47,7 @@ def is_float_or_sequence_of_floats(obj):
 
 def is_valid_vector(
         x: np.ndarray, 
-        bound: Optional[FloatOrFloatSequence] = 1e-3
+        bound: float = 1e3,
 ) -> None:
     """
     Simply check if vector is crazy big or has nans

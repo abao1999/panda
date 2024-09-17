@@ -9,7 +9,7 @@ from transformers import (
     PreTrainedModel,
 )
 from typing import Optional
-from chronos_dysts.tokenizer import ChronosConfig
+from chronos_dysts.chronos.tokenizer import ChronosConfig
 
 
 class ChronosModel(nn.Module):

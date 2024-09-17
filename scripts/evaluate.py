@@ -15,7 +15,7 @@ from gluonts.ev.metrics import SMAPE, MASE, RMSE, MeanWeightedSumQuantileLoss
 # from gluonts.evaluation.metrics import smape, mase, rmse, wql
 from gluonts.model.evaluation import evaluate_forecasts
 
-from chronos_dysts.pipeline import ChronosPipeline
+from chronos_dysts.chronos.pipeline import ChronosPipeline
 from chronos_dysts.utils import (
     load_and_split_dataset_from_arrow, 
     generate_sample_forecasts,
@@ -131,29 +131,31 @@ def main(cfg):
 
             # TODO: add option to plot forecasts
 
-            logger.info(f"Evaluating forecasts")
+            logger.info("Evaluating forecasts")
 
             # see gluonts metrics: https://github.com/awslabs/gluonts/blob/dev/src/gluonts/ev/metrics.py
             # this returns a pandas DataFrame
             #    - if axis=None, aggregate along all dimensions
             #    - if axis=1, aggregate along time dimension, see: https://ts.gluon.ai/stable/_modules/gluonts/model/evaluation.html#evaluate_forecasts
             #    - Can also aggregate test_data before metrics call so we can use gluonts api with axis=0 
-            metrics = (
-                evaluate_forecasts(
-                    sample_forecasts,
-                    test_data=test_data,
-                    metrics=[
-                        SMAPE(),
-                        MASE(),
-                        RMSE(),
-                        MeanWeightedSumQuantileLoss(np.arange(0.1, 1.0, 0.1)),
-                    ],
-                    batch_size=5000,
-                    axis=cfg.eval.agg_axis, # aggregation axis
+            metrics = []
+            if test_data.input:  # Check if there's any input data
+                metrics = (
+                    evaluate_forecasts(
+                        sample_forecasts,
+                        test_data=test_data,
+                        metrics=[
+                            SMAPE(),
+                            MASE(),
+                            RMSE(),
+                            MeanWeightedSumQuantileLoss(np.arange(0.1, 1.0, 0.1)),
+                        ],
+                        batch_size=5000,
+                        axis=cfg.eval.agg_axis, # aggregation axis
+                    )
+                    .reset_index(drop=True)
+                    .to_dict(orient="records")
                 )
-                .reset_index(drop=True)
-                .to_dict(orient="records")
-            )
             # metrics is list of dicts, each dict is a metric for a dimension
             # Verify that all dictionaries in metrics have the same keys
             keys = metrics[0].keys()
@@ -165,14 +167,15 @@ def main(cfg):
                 for metric_name, metric_value in metrics_per_dim.items():
                     metrics_all_samples[dim_idx][metric_name].append(metric_value)
     
-        # aggregate metrics across all samples of each dyst dim
+        # convert defaultdict to regular dict
+        metrics_dict = {k: dict(v) for k, v in metrics_all_samples.items()}
         #   i.e. each dim has its own dict that contains averaged values across all samples for that dim
-        metrics_all_samples = average_nested_dict(metrics_all_samples)
+        metrics_all_samples = average_nested_dict(metrics_dict)
         # logger.info(metrics_all_samples)
 
         # aggregate metrics across all samples and dimensions of a dyst (average the errors across dimensions)
         if cfg.eval.agg_axis is None:
-            assert len(metrics) == 1, "Expected only one dimension for axis=None aggregation"
+            assert len(metrics_all_samples) == 1, "Expected only one dimension for axis=None aggregation" # axis 0 and 2 are also allowed but we don't want them
             result_rows.append(
                 {"dataset": dyst_name, "model": cfg.eval.model_id, **metrics_all_samples[0]}
             )
@@ -180,7 +183,7 @@ def main(cfg):
         elif cfg.eval.agg_axis == 1:
             result_rows.extend(
                 {"dataset": dyst_name, "dimension": dim_idx, "model": cfg.eval.model_id, **metrics_all_samples[dim_idx]}
-                for dim_idx in range(len(metrics))
+                for dim_idx in range(len(metrics_all_samples))
             )
         else:
             raise ValueError(f"Invalid aggregation axis: {cfg.eval.agg_axis}") # axis 0 and 2 are also allowed but we don't want them

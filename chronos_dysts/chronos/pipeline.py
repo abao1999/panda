@@ -21,8 +21,8 @@ from chronos_dysts.utils import (
     ChronosModelType,
     left_pad_and_stack_1D,
 )
-from chronos_dysts.model import ChronosModel
-from chronos_dysts.tokenizer import ChronosConfig
+from chronos_dysts.chronos.model import ChronosModel
+from chronos_dysts.chronos.tokenizer import ChronosConfig
 
 
 @dataclass

@@ -3,6 +3,7 @@ utils for Chronos Pipeline (evaluation) and evaluation scripts
 """
 from typing import Iterable
 import os
+from git import Union
 import numpy as np
 import torch
 from gluonts.dataset.split import split, TestData
@@ -12,8 +13,10 @@ from gluonts.dataset.common import FileDataset
 from pathlib import Path
 
 from tqdm.auto import tqdm
-from typing import Optional, Any, List, Dict
+from typing import Optional, Any, List, Dict, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from chronos_dysts.chronos.pipeline import ChronosPipeline
 
 def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:
     """
@@ -31,13 +34,12 @@ def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:
         padded.append(torch.concat((padding, c), dim=-1))
     return torch.stack(padded)
 
-
 def load_and_split_dataset_from_arrow(
         prediction_length: int,
         offset: int,
         num_rolls: int, 
-        filepath: str, 
-        verbose: Optional[bool] = False
+        filepath: Union[str, Path],
+        verbose: bool = False
 ) -> TestData:
     """
     Directly loads Arrow file into GluonTS FileDataset
@@ -54,11 +56,10 @@ def load_and_split_dataset_from_arrow(
     """
     # TODO: load selected dimensions for dyst system config, so we can have separate forecast for each univariate trajectory
     if verbose:
-        print("filepath: ", filepath)
+        print("loading: ", filepath)
         print(f"Splitting timeseries by creating {num_rolls} non-overlapping windows")
         print(f"And using offset {offset} and prediction length {prediction_length}")
 
-    print("loading ", filepath)
     gts_dataset = FileDataset(path=Path(filepath), freq="h") # TODO: consider other frequencies?
 
     # Split dataset for evaluation
@@ -70,15 +71,14 @@ def load_and_split_dataset_from_arrow(
 
     return test_data
 
-
 def generate_sample_forecasts(
     test_data_input: Iterable,
     pipeline: "ChronosPipeline",
     prediction_length: int,
     batch_size: int,
     num_samples: int,
-    limit_prediction_length: Optional[bool] = True,
-    save_to_npy: Optional[bool] = False,
+    limit_prediction_length: bool = True,
+    save_to_npy: bool = False,
     save_path: Optional[str] = None,
     **predict_kwargs,
 ) -> Iterable[Forecast]:
@@ -101,7 +101,6 @@ def generate_sample_forecasts(
     forecast_samples = np.concatenate(forecast_samples)
     print("Forecast Samples shape: ", forecast_samples.shape)
     if save_to_npy and save_path is not None:
-        save_path = Path(save_path)
         print(f"Saving forecast samples to {save_path}")
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         np.save(save_path, forecast_samples)
@@ -118,7 +117,6 @@ def generate_sample_forecasts(
         )
 
     return sample_forecasts
-
 
 def average_nested_dict(data: Dict[Any, Dict[Any, List[float]]]) -> Dict[Any, Dict[Any, float]]:
     return {

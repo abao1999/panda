@@ -13,7 +13,7 @@ from chronos_dysts.utils import (
 from gluonts.dataset.common import FileDataset
 
 
-WORK_DIR = os.getenv("WORK")
+WORK_DIR = os.getenv("WORK", '')
 FORECAST_DATA_DIR = os.path.join(WORK_DIR, "data/forecasts")
 
 
