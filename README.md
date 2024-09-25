@@ -7,7 +7,7 @@ Baselines:
 + Zero-Shot Models
 
 ## Setup
-Install [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`. Consider installing `numba` for faster numerical integration.
+Install the most up-to-date version of [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`. Consider installing `numba` for faster numerical integration.
 
 To setup, run:
 ```
@@ -32,6 +32,7 @@ We provide a script [skew_product.py](scripts/skew_product.py) to generate traje
 We provide a script [test_param_perturb.py](scripts/test_param_perturb.py) to test the effect of parameter perturbations on the generated trajectories from `dysts`. An example workflow:
 
 ```
+./scripts/clean_dataset.sh train Lorenz
 python tests/test_param_perturb.py Lorenz
 python tests/test_dysts_data.py Lorenz
 ```

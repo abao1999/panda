@@ -3,29 +3,29 @@
 # TODO: modify for dysts
 
 """
-Utils for training/fine-tuning Chronos Model
+Utils for training/fine-tuning
 """
 
+import json
 import logging
 import os
 import re
 import sys
-import json
 from pathlib import Path
 from typing import Dict, Optional
 
+import accelerate
+import gluonts
 import numpy as np
 import torch
 import torch.distributed as dist
 import transformers
 from transformers import (
-    AutoModelForSeq2SeqLM,
-    AutoModelForCausalLM,
     AutoConfig,
+    AutoModelForCausalLM,
+    AutoModelForSeq2SeqLM,
     T5Config,
 )
-import accelerate
-import gluonts
 
 
 ### Utils for training
@@ -46,7 +46,7 @@ def log_on_main(msg: str, logger: logging.Logger, log_level: int = logging.INFO)
         logger.log(log_level, msg)
 
 
-def get_training_job_info() -> Dict: # not currently used
+def get_training_job_info() -> Dict:  # not currently used
     """
     Returns info about this training job.
     """
@@ -91,9 +91,9 @@ def save_training_info(ckpt_path: Path, model_config: Dict, training_config: Dic
     with open(ckpt_path / "training_info.json", "w") as fp:
         json.dump(
             {
-                "model_config": model_config, 
-                "training_config": training_config, 
-                "job_info": get_training_job_info()
+                "model_config": model_config,
+                "training_config": training_config,
+                "job_info": get_training_job_info(),
             },
             fp,
             indent=4,
@@ -204,9 +204,9 @@ def has_enough_observations(
 
 def ensure_contiguous(model):
     """
-    Ensure that all parameters in the model are contiguous. 
+    Ensure that all parameters in the model are contiguous.
     If any parameter is not contiguous, make it contiguous.
-    
+
     :param model: The model whose parameters need to be checked.
     """
     for name, param in model.named_parameters():
@@ -221,6 +221,7 @@ def ensure_contiguous(model):
     #     assert param.is_contiguous(), f"Parameter '{name}' is not contiguous after making changes."
     # print("All parameters are contiguous.")
 
+
 # def setup_rocm_distributed():
 #     """
 #     TODO: how to get torchrun working on AMD POD with ROCm (is backend Gloo or RCCL?)
@@ -228,10 +229,10 @@ def ensure_contiguous(model):
 #     # Set device for ROCm
 #     local_rank = int(os.environ['LOCAL_RANK'])
 #     torch.cuda.set_device(local_rank)
-    
+
 #     # Initialize the distributed environment with Gloo backend
 #     dist.init_process_group(backend='gloo')
-        
+
 #     # # Create model and move it to the ROCm device
 #     # model = MyModel().to(torch.device(f'cuda:{local_rank}'))
 #     # # Wrap model with DistributedDataParallel

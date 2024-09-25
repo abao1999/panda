@@ -1,26 +1,27 @@
 """
 utils for Chronos Pipeline (evaluation) and evaluation scripts
 """
-from typing import Iterable
+
 import os
-from git import Union
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+
 import numpy as np
 import torch
-from gluonts.dataset.split import split, TestData
-from gluonts.itertools import batcher
-from gluonts.model.forecast import SampleForecast, Forecast
+from git import Union
 from gluonts.dataset.common import FileDataset
-from pathlib import Path
-
+from gluonts.dataset.split import TestData, split
+from gluonts.itertools import batcher
+from gluonts.model.forecast import Forecast, SampleForecast
 from tqdm.auto import tqdm
-from typing import Optional, Any, List, Dict, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from dystformer.chronos.pipeline import ChronosPipeline
 
+
 def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:
     """
-    Left pad a list of 1D tensors to the same length and stack them. 
+    Left pad a list of 1D tensors to the same length and stack them.
     Used in pipeline, if given context is a list of tensors.
     """
     max_len = max(len(c) for c in tensors)
@@ -34,16 +35,17 @@ def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:
         padded.append(torch.concat((padding, c), dim=-1))
     return torch.stack(padded)
 
+
 def load_and_split_dataset_from_arrow(
-        prediction_length: int,
-        offset: int,
-        num_rolls: int, 
-        filepath: Union[str, Path],
-        verbose: bool = False
+    prediction_length: int,
+    offset: int,
+    num_rolls: int,
+    filepath: Union[str, Path],
+    verbose: bool = False,
 ) -> TestData:
     """
     Directly loads Arrow file into GluonTS FileDataset
-        https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.common.html 
+        https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.common.html
     And then uses GluonTS split to generate test instances from windows of original timeseries
         https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.split.html
 
@@ -60,7 +62,9 @@ def load_and_split_dataset_from_arrow(
         print(f"Splitting timeseries by creating {num_rolls} non-overlapping windows")
         print(f"And using offset {offset} and prediction length {prediction_length}")
 
-    gts_dataset = FileDataset(path=Path(filepath), freq="h") # TODO: consider other frequencies?
+    gts_dataset = FileDataset(
+        path=Path(filepath), freq="h"
+    )  # TODO: consider other frequencies?
 
     # Split dataset for evaluation
     _, test_template = split(gts_dataset, offset=offset)
@@ -70,6 +74,7 @@ def load_and_split_dataset_from_arrow(
     test_data = test_template.generate_instances(prediction_length, windows=num_rolls)
 
     return test_data
+
 
 def generate_sample_forecasts(
     test_data_input: Iterable,
@@ -118,10 +123,14 @@ def generate_sample_forecasts(
 
     return sample_forecasts
 
-def average_nested_dict(data: Dict[Any, Dict[Any, List[float]]]) -> Dict[Any, Dict[Any, float]]:
+
+def average_nested_dict(
+    data: Dict[Any, Dict[Any, List[float]]],
+) -> Dict[Any, Dict[Any, float]]:
     return {
         outer_key: {
-            inner_key: sum(values) / len(values) for inner_key, values in outer_dict.items()
+            inner_key: sum(values) / len(values)
+            for inner_key, values in outer_dict.items()
         }
         for outer_key, outer_dict in data.items()
     }

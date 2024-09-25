@@ -1,31 +1,36 @@
 import os
-import numpy as np
-from tqdm import trange
 from typing import List, Optional
 
+import numpy as np
 from dysts.systems import make_trajectory_ensemble
+from tqdm import trange
 
 from dystformer.sampling import (
-    InstabilityEvent, 
-    TimeLimitEvent,
     GaussianParamSampler,
+    InstabilityEvent,
     OnAttractorInitCondSampler,
+    TimeLimitEvent,
 )
-
 from dystformer.utils import (
-    split_systems,
-    process_trajs,
     filter_dict,
+    process_trajs,
+    split_systems,
 )
 
-
-WORK_DIR = os.getenv('WORK', '')
-DELAY_SYSTEMS = ['MackeyGlass', 'IkedaDelay', 'SprottDelay', 'VossDelay', 'ScrollDelay', 'PiecewiseCircuit']
+WORK_DIR = os.getenv("WORK", "")
+DELAY_SYSTEMS = [
+    "MackeyGlass",
+    "IkedaDelay",
+    "SprottDelay",
+    "VossDelay",
+    "ScrollDelay",
+    "PiecewiseCircuit",
+]
 # FORCED_SYSTEMS = ['ForcedFitzHughNagumo', 'ForcedBrusselator', 'ForcedVanDerPol']
 
 
 def save_dyst_ensemble(
-    dysts_names: List[str] = ['Lorenz'],
+    dysts_names: List[str] = ["Lorenz"],
     split: str = "train",
     rseed: int = 999,
     num_periods: int = 5,
@@ -35,15 +40,17 @@ def save_dyst_ensemble(
     samples_save_interval: int = 1,
     events: Optional[List] = None,
 ):
-    print(f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}")
-    
+    print(
+        f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}"
+    )
+
     param_sampler = GaussianParamSampler(random_seed=rseed, scale=1e-1, verbose=True)
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=1024,
         reference_traj_transient=200,
-        random_seed=rseed, 
-        events=events, 
-        verbose=True
+        random_seed=rseed,
+        events=events,
+        verbose=True,
     )
 
     num_total_samples = num_param_perturbations * num_ics
@@ -57,44 +64,55 @@ def save_dyst_ensemble(
             print("Making ensemble for sample ", sample_idx)
             # each ensemble is of type Dict[str, [ndarray]]
             ensemble = make_trajectory_ensemble(
-                num_points, 
+                num_points,
                 resample=True,
-                subset=dysts_names, 
-                use_multiprocessing=True, 
+                subset=dysts_names,
+                use_multiprocessing=True,
                 ic_transform=ic_sampler if num_ics > 1 else None,
                 param_transform=param_sampler if num_param_perturbations > 1 else None,
-                use_tqdm=True, 
-                standardize=True, 
-                pts_per_period=num_points//num_periods,
+                use_tqdm=True,
+                standardize=False,
+                pts_per_period=num_points // num_periods,
                 events=events,
                 rng=param_sampler.rng,
             )
 
-            ensemble, excluded_keys = filter_dict(ensemble) #, req_num_vals=num_points)
+            ensemble, excluded_keys = filter_dict(
+                ensemble
+            )  # , req_num_vals=num_points)
             print("INTEGRATION FAILED FOR:", excluded_keys)
 
             ensemble_list.append(ensemble)
 
             # save samples of trajectory ensembles to arrow files and clear list of ensembles
-            if ((sample_idx + 1) % samples_save_interval) == 0 or (sample_idx + 1) == num_total_samples:
+            if ((sample_idx + 1) % samples_save_interval) == 0 or (
+                sample_idx + 1
+            ) == num_total_samples:
                 print(f"Saving {len(ensemble_list)} sampled trajectoies to arrow files")
                 # transpose and stack to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
                 ensemble_keys = set().union(*[d.keys() for d in ensemble_list])
-                ensemble = {key: np.stack([d[key] for d in ensemble_list if key in d], axis=0).transpose(0, 2, 1) for key in ensemble_keys}
-                
-                data_dir = os.path.join(WORK_DIR, f'data/{split}')
+                ensemble = {
+                    key: np.stack(
+                        [d[key] for d in ensemble_list if key in d], axis=0
+                    ).transpose(0, 2, 1)
+                    for key in ensemble_keys
+                }
+
+                data_dir = os.path.join(WORK_DIR, f"data/{split}")
                 os.makedirs(data_dir, exist_ok=True)
                 process_trajs(data_dir, ensemble, verbose=True)
                 # reset lists of ensembles
                 ensemble_list = []
 
-if __name__ == '__main__':
 
+if __name__ == "__main__":
     # set random seed
-    rseed = 999 # we are using same seed for split and ic and param samplers
+    rseed = 999  # we are using same seed for split and ic and param samplers
 
     # generate split of dynamical systems
-    test, train = split_systems(0.3, seed=rseed, excluded_systems=DELAY_SYSTEMS) # + FORCED_SYSTEMS)
+    test, train = split_systems(
+        0.3, seed=rseed, excluded_systems=DELAY_SYSTEMS
+    )  # + FORCED_SYSTEMS)
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=120)  # 2 min time limit
@@ -102,8 +120,8 @@ if __name__ == '__main__':
 
     # make the train split
     save_dyst_ensemble(
-        train, 
-        split="train", 
+        train,
+        split="train",
         rseed=rseed,
         num_periods=5,
         num_points=1024,
@@ -114,8 +132,8 @@ if __name__ == '__main__':
 
     # make the test split
     save_dyst_ensemble(
-        test, 
-        split="test", 
+        test,
+        split="test",
         rseed=rseed,
         num_periods=5,
         num_points=1024,

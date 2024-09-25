@@ -14,7 +14,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dependencies = ["numpy", "torch", "transformers", "gluonts", "scipy", "tqdm", "wandb", "hydra-core"]
+dependencies = ["numpy", "torch", "transformers", "accelerate", "dysts", "gluonts", "scipy", "tqdm", "wandb", "hydra-core"]
 
 # Optional dependencies
 [project.optional-dependencies]
