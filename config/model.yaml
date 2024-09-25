@@ -14,7 +14,7 @@ tie_embeddings: true
 # for dataset and config
 context_length: 512
 prediction_length: 64
-num_samples: 20 # TODO: thi is not actually being used. should we change it to match our number of samples?
+num_samples: 20 # TODO: this is not actually being used. should we change it to match our number of samples?
 
 # vocab (tokens)
 n_tokens: 4096
@@ -33,3 +33,45 @@ tokenizer_kwargs:
 temperature: 1.0
 top_k: 50
 top_p: 1.0
+
+# PatchTST parameters
+num_input_channels: 1
+context_length: 32
+distribution_output: "student_t"
+loss: "mse"
+patch_length: 1
+patch_stride: 1
+num_hidden_layers: 3
+d_model: 128
+num_attention_heads: 4
+share_embedding: true
+channel_attention: false
+ffn_dim: 512
+norm_type: "batchnorm"
+norm_eps: 1e-05
+attention_dropout: 0.0
+positional_dropout: 0.0
+path_dropout: 0.0
+ff_dropout: 0.0
+bias: true
+activation_function: "gelu"
+pre_norm: true
+positional_encoding_type: "sincos"
+use_cls_token: false
+init_std: 0.02
+share_projection: true
+scaling: "std"
+do_mask_input: null
+mask_type: "random"
+random_mask_ratio: 0.5
+num_forecast_mask_patches: [2]
+channel_consistent_masking: false
+unmasked_channel_indices: null
+mask_value: 0
+pooling_type: "mean"
+head_dropout: 0.0
+num_targets: 1
+output_range: null
+num_parallel_samples: 100
+
+
