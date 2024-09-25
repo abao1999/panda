@@ -1,5 +1,0 @@
-matplotlib
-datasets
-nbconvert
-hydra-core
-statsmodels

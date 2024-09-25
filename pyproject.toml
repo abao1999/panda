@@ -18,8 +18,10 @@ dependencies = ["numpy", "torch", "transformers", "gluonts", "scipy", "tqdm", "w
 
 # Optional dependencies
 [project.optional-dependencies]
-tests = ["matplotlib"]
+tests = ["matplotlib", "statsmodels"]
+numba = ["numba"]
+chronos = ["datasets"] # huggingface datasets
 
 # Package data
 [tool.setuptools]
-packages = ["dystformer", "dystformer.utils"]
+packages = ["dystformer", "dystformer.utils", "dystformer.chronos"] # dystformer.chronos.utils?

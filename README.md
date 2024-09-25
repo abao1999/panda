@@ -7,11 +7,10 @@ Baselines:
 + Zero-Shot Models
 
 ## Setup
-Install [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`
+Install [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`. Consider installing `numba` for faster numerical integration.
 
 To setup, run:
 ```
-$ pip install -r requirements.txt
 $ pip install -e .
 ```
 
