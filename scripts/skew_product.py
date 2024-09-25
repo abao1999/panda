@@ -9,7 +9,7 @@ import dysts.flows as dfl
 from scipy.integrate import solve_ivp
 
 from typing import List, Union, Sequence
-from chronos_dysts.utils import is_float_or_sequence_of_floats
+from dystformer.utils import is_float_or_sequence_of_floats
 
 import matplotlib.pyplot as plt
 import os

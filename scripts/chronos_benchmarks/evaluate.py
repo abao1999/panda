@@ -1,4 +1,4 @@
-# Evaluation script from original Chronos repo. To test if our modified chronos_dysts retains performance on the chronos benchmark timeseries
+# Evaluation script from original Chronos repo. To test if our modified dystformer retains performance on the chronos benchmark timeseries
 # https://huggingface.co/datasets/autogluon/chronos_datasets
 
 import logging
@@ -16,7 +16,7 @@ from gluonts.ev.metrics import MASE, MeanWeightedSumQuantileLoss
 from gluonts.model.evaluation import evaluate_forecasts
 
 # from chronos import ChronosPipeline
-from chronos_dysts.chronos.pipeline import ChronosPipeline
+from dystformer.chronos.pipeline import ChronosPipeline
 from eval_utils import load_and_split_dataset, generate_sample_forecasts
 
 app = typer.Typer(pretty_exceptions_enable=False)

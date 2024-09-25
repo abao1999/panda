@@ -15,8 +15,8 @@ from gluonts.ev.metrics import SMAPE, MASE, RMSE, MeanWeightedSumQuantileLoss
 # from gluonts.evaluation.metrics import smape, mase, rmse, wql
 from gluonts.model.evaluation import evaluate_forecasts
 
-from chronos_dysts.chronos.pipeline import ChronosPipeline
-from chronos_dysts.utils import (
+from dystformer.chronos.pipeline import ChronosPipeline
+from dystformer.utils import (
     load_and_split_dataset_from_arrow, 
     generate_sample_forecasts,
     average_nested_dict,

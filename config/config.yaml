@@ -19,6 +19,6 @@ run_name: null
 # wandb parameters
 wandb:
   log: False
-  project_name: chronos-dysts
+  project_name: dystformer
   group_name: fine-tuning
   resume: False

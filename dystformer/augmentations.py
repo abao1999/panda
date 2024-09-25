@@ -10,7 +10,7 @@ import numpy as np
 from gluonts.dataset import Dataset
 from dataclasses import dataclass
 from typing import Optional, Iterator
-from chronos_dysts.utils import stack_and_extract_metadata
+from dystformer.utils import stack_and_extract_metadata
 
 
 @dataclass

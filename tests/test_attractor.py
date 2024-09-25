@@ -6,7 +6,7 @@ from tqdm import trange
 
 from dysts.systems import make_trajectory_ensemble
 
-from chronos_dysts.attractor import (
+from dystformer.attractor import (
     EnsembleCallbackHandler,
     check_no_nans,
     check_boundedness,
@@ -15,13 +15,13 @@ from chronos_dysts.attractor import (
     check_power_spectrum,
     check_stationarity,
 )
-from chronos_dysts.sampling import (
+from dystformer.sampling import (
     InstabilityEvent, 
     TimeLimitEvent,
     GaussianParamSampler,
     OnAttractorInitCondSampler,
 )
-from chronos_dysts.utils import (
+from dystformer.utils import (
     split_systems,
     process_trajs,
     filter_dict,

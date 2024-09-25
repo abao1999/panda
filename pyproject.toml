@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "chronos-dysts"
+name = "dystformer"
 description = "Chronos Fine-Tuned on Dynamical Systems"
 version = "0.1.0"
 readme = "README.md"
@@ -14,12 +14,12 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dependencies = ["numpy", "torch", "scipy"]
+dependencies = ["numpy", "torch", "transformers", "gluonts", "scipy", "tqdm", "wandb", "hydra-core"]
 
-# # Optional dependencies
-# [project.optional-dependencies]
-# benchmarks = ["darts", "torch", "scikit-learn", "pandas", "tsfresh", "nolds"]
+# Optional dependencies
+[project.optional-dependencies]
+tests = ["matplotlib"]
 
 # Package data
 [tool.setuptools]
-packages = ["chronos_dysts"]
+packages = ["dystformer", "dystformer.utils"]

@@ -1,4 +1,4 @@
-# utils for evaluation script from original Chronos repo. To test if our modified chronos_dysts retains performance on the chronos benchmark timeseries
+# utils for evaluation script from original Chronos repo. To test if our modified dystformer retains performance on the chronos benchmark timeseries
 # https://huggingface.co/datasets/autogluon/chronos_datasets
 
 from typing import Iterable
@@ -13,7 +13,7 @@ from gluonts.model.forecast import SampleForecast
 from tqdm.auto import tqdm
 
 # from chronos import ChronosPipeline
-from chronos_dysts.chronos.pipeline import ChronosPipeline
+from dystformer.chronos.pipeline import ChronosPipeline
 from type_aliases import offset_alias_to_period_alias
 
 def to_gluonts_univariate(hf_dataset: datasets.Dataset):

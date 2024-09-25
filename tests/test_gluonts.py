@@ -5,7 +5,7 @@ import argparse
 from gluonts.dataset.common import ListDataset
 from gluonts.itertools import batcher
 from gluonts.dataset.split import split
-from chronos_dysts.utils import (
+from dystformer.utils import (
     load_and_split_dataset_from_arrow,
     get_dyst_filepaths,
 )

@@ -16,7 +16,7 @@ from tqdm.auto import tqdm
 from typing import Optional, Any, List, Dict, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from chronos_dysts.chronos.pipeline import ChronosPipeline
+    from dystformer.chronos.pipeline import ChronosPipeline
 
 def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:
     """

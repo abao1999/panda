@@ -3,7 +3,7 @@ import os
 import argparse
 from pathlib import Path
 
-from chronos_dysts.utils import (
+from dystformer.utils import (
     get_dyst_filepaths,
     stack_and_extract_metadata,
     plot_trajs_multivariate,

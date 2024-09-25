@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from typing import Optional, List, Dict, Callable
 from gluonts.dataset import Dataset
 
-from chronos_dysts.utils import stack_and_extract_metadata
+from dystformer.utils import stack_and_extract_metadata
 
 WORK_DIR = os.getenv('WORK', '')
 

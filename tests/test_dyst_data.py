@@ -5,7 +5,7 @@ import argparse
 from gluonts.dataset.common import FileDataset
 from pathlib import Path
 
-from chronos_dysts.utils import (
+from dystformer.utils import (
     stack_and_extract_metadata,
     get_dyst_filepaths, 
     plot_trajs_multivariate

@@ -12,7 +12,7 @@ import warnings
 
 from statsmodels.tsa.stattools import adfuller, kpss
 
-from chronos_dysts.utils import plot_trajs_multivariate, plot_trajs_univariate
+from dystformer.utils import plot_trajs_multivariate, plot_trajs_univariate
 
 
 BURN_TIME = 200

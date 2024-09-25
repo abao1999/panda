@@ -2,47 +2,47 @@
 Training/fine-tuning script, adapted from chronos-forecasting
 """
 
+import importlib
 import logging
-from pathlib import Path
-from functools import partial
 import os
-import hydra
-from omegaconf import OmegaConf
+from functools import partial
+from pathlib import Path
 
+import hydra
 import torch
 import transformers
-from transformers import Trainer, TrainingArguments
-# from transformers.integrations import WandbCallback
+import wandb
+from dystformer.chronos.dataset import ChronosDataset
+from dystformer.chronos.tokenizer import ChronosConfig
+from dystformer.utils import (
+    ensure_contiguous,
+    get_next_path,
+    has_enough_observations,
+    is_main_process,
+    load_model,
+    log_on_main,
+    sample_index_pairs,
+    save_training_info,
+)
 
+# from transformers.integrations import WandbCallback
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
+from omegaconf import OmegaConf
+from transformers import Trainer, TrainingArguments
 
-from chronos_dysts.chronos.tokenizer import ChronosConfig
-from chronos_dysts.chronos.dataset import ChronosDataset
-
-from chronos_dysts.utils import (
-    is_main_process,
-    log_on_main,
-    save_training_info,
-    get_next_path,
-    load_model,
-    has_enough_observations,
-    ensure_contiguous,
-    sample_index_pairs,
+os.environ["WANDB_PROJECT"] = (
+    "dystformer"  # name of W&B project, right now hard-coded even though also in cfg
 )
-import importlib
-import wandb
-
-os.environ["WANDB_PROJECT"] = "chronos-dysts"  # name of W&B project, right now hard-coded even though also in cfg
 # os.environ["WANDB_LOG_MODEL"] = "checkpoint"  # log all model checkpoints to W&B automatically
 
 # augmentations module, for dynamic imports based on augmentations specified in config
-AUG_MODULE = importlib.import_module("chronos_dysts.augmentations")
+AUG_MODULE = importlib.import_module("dystformer.augmentations")
 
-@hydra.main(config_path='../config', config_name='config', version_base=None)
+
+@hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
-
     # set up wandb project and logging if enabled
     if cfg.wandb.log:
         run = wandb.init(
@@ -52,7 +52,7 @@ def main(cfg):
             sync_tensorboard=False,  # auto-upload tensorboard metrics
             group=cfg.wandb.group_name,
             tags=[],
-            resume=cfg.wandb.resume
+            resume=cfg.wandb.resume,
         )
 
     # set floating point precision
@@ -85,12 +85,14 @@ def main(cfg):
     train_data_paths = []
     if cfg.train_data_dir is not None:
         train_data_paths = list(
-            filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob('*'))
+            filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))
         )
 
     # add any additional arrow data filepaths specified to our training set
     if cfg.extra_train_data_paths is not None:
-        extra_paths = [Path(file) for file in cfg.extra_train_data_paths if Path(file).is_file()]
+        extra_paths = [
+            Path(file) for file in cfg.extra_train_data_paths if Path(file).is_file()
+        ]
         assert isinstance(extra_paths, list), "extra paths must be a list literal"
         train_data_paths.extend(extra_paths)
 
@@ -129,25 +131,30 @@ def main(cfg):
     log_on_main("Applying system-scale augmentations", logger)
     for augmentation_cls_name in cfg.augmentations.system:
         augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
-        log_on_main(f"Applying {augmentation_cls.__name__} system-scale augmentation", logger)
+        log_on_main(
+            f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
+        )
         kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
         augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend([
-            augmentation_fn(ds)
-            for ds in train_datasets[:len(train_data_paths)]
-        ])
+        train_datasets.extend(
+            [augmentation_fn(ds) for ds in train_datasets[: len(train_data_paths)]]
+        )
 
     # ensemble-scale augmentations
     log_on_main("Applying ensemble-scale augmentations", logger)
     for augmentation_cls_name in cfg.augmentations.ensemble:
         augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
-        log_on_main(f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger)
+        log_on_main(
+            f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
+        )
         kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
         augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend([
-            augmentation_fn(train_datasets[i], train_datasets[j])
-            for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
-        ])
+        train_datasets.extend(
+            [
+                augmentation_fn(train_datasets[i], train_datasets[j])
+                for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
+            ]
+        )
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -226,7 +233,9 @@ def main(cfg):
         lr_scheduler_type=cfg.train.lr_scheduler_type,
         warmup_ratio=cfg.train.warmup_ratio,
         optim=cfg.train.optim,
-        logging_dir=f"wandb/tbruns/{run.name}_{run.id}/logs" if cfg.wandb.log else str(output_dir / "logs"),
+        logging_dir=f"wandb/tbruns/{run.name}_{run.id}/logs"
+        if cfg.wandb.log
+        else str(output_dir / "logs"),
         logging_strategy="steps",
         logging_steps=cfg.train.log_steps,
         save_strategy="steps",
@@ -241,7 +250,7 @@ def main(cfg):
         remove_unused_columns=cfg.train.remove_unused_columns,
     )
 
-    # check if model weights are contiguous in memory; if not, make them contiguous tensors. 
+    # check if model weights are contiguous in memory; if not, make them contiguous tensors.
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
@@ -251,11 +260,11 @@ def main(cfg):
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
-        callbacks=[] # if not cfg.wandb.log else [WandbCallback()], # this duplicates our current logging. Try using custom callback instead
+        callbacks=[],  # if not cfg.wandb.log else [WandbCallback()], # this duplicates our current logging. Try using custom callback instead
     )
 
     log_on_main("Training", logger)
-    trainer.train() # Transformers trainer will save model checkpoints automatically
+    trainer.train()  # Transformers trainer will save model checkpoints automatically
 
     # terminate wandb run after training
     if cfg.wandb.log:
@@ -268,10 +277,12 @@ def main(cfg):
         model.save_pretrained(output_dir / "checkpoint-final")
         save_training_info(
             output_dir / "checkpoint-final",
-            model_config=vars(chronos_config), # use dataclass asdict for more complex dataclasses
+            model_config=vars(
+                chronos_config
+            ),  # use dataclass asdict for more complex dataclasses
             training_config=OmegaConf.to_container(cfg.train, resolve=True),
         )
-    
+
 
 if __name__ == "__main__":
     logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

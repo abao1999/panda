@@ -1,5 +1,10 @@
-# chronos-dysts
-Chronos fine-tuned on Dynamical Systems
+# dystformer
+PatchTST trained on Dynamical Systems with channel mixing
+
+Baselines:
++ PatchTST trained on Dynamical Systems without channel mixing
++ Chronos fine-tuned on Dynamical Systems
++ Zero-Shot Models
 
 ## Setup
 Install [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`
@@ -13,7 +18,7 @@ $ pip install -e .
 ## Generating Dyst Dataset
 We structure our Arrow files as multivariate trajectories saved per sample instance, with default `1024` numerical integration timesteps. Each sample instance is a specific parameter perturbation and initial condition. For example, each Arrow file `[SAMPLE_IDX]_T-1024.arrow` within `[DATA_DIR]/train/Lorenz` corresponds to a single sample instance of the Lorenz system, and contains trajectories for all coordinates (dimensions) i.e. a numpy array of shape (3, 1024) for the Lorenz system.  
 
-We provide several on-the-fly dataset augmentations compatible with the GluonTS framework, in [chronos_dysts/augmentations.py](chronos_dysts.augmentations). By default, all of these augmentations are used during training, but the choice of augmentations can be directly specified in the [dataset config](config/dataset.yaml).
+We provide several on-the-fly dataset augmentations compatible with the GluonTS framework, in [dystformer/augmentations.py](dystformer.augmentations). By default, all of these augmentations are used during training, but the choice of augmentations can be directly specified in the [dataset config](config/dataset.yaml).
 
 Currently implemented data augmentations:
 - RandomAffineTransform

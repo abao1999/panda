@@ -18,7 +18,7 @@ from gluonts.transform import (
     MissingValueImputation,
     LeavesMissingValues,
 )
-from chronos_dysts.utils import ChronosTokenizerType
+from dystformer.utils import ChronosTokenizerType
 
 
 class PseudoShuffledIterableDataset(IterableDataset):

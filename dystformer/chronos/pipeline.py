@@ -16,13 +16,13 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForSeq2SeqLM,
 )
-from chronos_dysts.utils import (
+from dystformer.utils import (
     ChronosTokenizerType, 
     ChronosModelType,
     left_pad_and_stack_1D,
 )
-from chronos_dysts.chronos.model import ChronosModel
-from chronos_dysts.chronos.tokenizer import ChronosConfig
+from dystformer.chronos.model import ChronosModel
+from dystformer.chronos.tokenizer import ChronosConfig
 
 
 @dataclass

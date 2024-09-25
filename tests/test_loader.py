@@ -14,15 +14,15 @@ from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter, Map
 from gluonts.transform import LastValueImputation
 
-from chronos_dysts.chronos.tokenizer import ChronosConfig
-from chronos_dysts.utils import (
+from dystformer.chronos.tokenizer import ChronosConfig
+from dystformer.utils import (
     log_on_main,
     get_next_path,
     has_enough_observations,
     sample_index_pairs
 )
-from chronos_dysts.chronos.dataset import ChronosDataset
-from chronos_dysts.augmentations import (
+from dystformer.chronos.dataset import ChronosDataset
+from dystformer.augmentations import (
     RandomAffineTransform, 
     RandomConvexCombinationTransform,
     RandomProjectedSkewTransform,

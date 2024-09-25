@@ -5,14 +5,14 @@ from typing import List, Optional
 
 from dysts.systems import make_trajectory_ensemble
 
-from chronos_dysts.sampling import (
+from dystformer.sampling import (
     InstabilityEvent, 
     TimeLimitEvent,
     GaussianParamSampler,
     OnAttractorInitCondSampler,
 )
 
-from chronos_dysts.utils import (
+from dystformer.utils import (
     split_systems,
     process_trajs,
     filter_dict,

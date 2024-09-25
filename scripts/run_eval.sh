@@ -34,7 +34,7 @@ run_job_bg scripts/evaluate.py \
         eval.overwrite=false \
         eval.device=cuda:6 \
 
-# fine-tuned chronos-dysts large model, intermediate checkpoint
+# fine-tuned dystformer large model, intermediate checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-20000 \
         eval.data_dir=$WORK/data \
@@ -47,7 +47,7 @@ run_job_bg scripts/evaluate.py \
         eval.overwrite=false \
         eval.device=cuda:5 \
 
-# fine-tuned chronos-dysts large model, intermediate checkpoint
+# fine-tuned dystformer large model, intermediate checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-40000 \
         eval.data_dir=$WORK/data \
@@ -60,7 +60,7 @@ run_job_bg scripts/evaluate.py \
         eval.overwrite=false \
         eval.device=cuda:4 \
 
-# fine-tuned chronos-dysts large model, intermediate checkpoint
+# fine-tuned dystformer large model, intermediate checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-60000 \
         eval.data_dir=$WORK/data \
@@ -73,7 +73,7 @@ run_job_bg scripts/evaluate.py \
         eval.overwrite=false \
         eval.device=cuda:3 \
 
-# fine-tuned chronos-dysts large model, intermediate checkpoint
+# fine-tuned dystformer large model, intermediate checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-80000 \
         eval.data_dir=$WORK/data \
@@ -86,7 +86,7 @@ run_job_bg scripts/evaluate.py \
         eval.overwrite=false \
         eval.device=cuda:2 \
 
-# fine-tuned chronos-dysts large model, final checkpoint
+# fine-tuned dystformer large model, final checkpoint
 run_job_bg scripts/evaluate.py \
         eval.model_id=$checkpoint_dir/checkpoint-final \
         eval.data_dir=$WORK/data \

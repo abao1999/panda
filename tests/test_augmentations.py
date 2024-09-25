@@ -6,7 +6,7 @@ from typing import List, Dict
 from gluonts.dataset import Dataset
 
 import importlib
-from chronos_dysts.utils import (
+from dystformer.utils import (
     stack_and_extract_metadata,
     sample_index_pairs,
     get_dysts_datasets_dict,
@@ -27,7 +27,7 @@ AUG_CLS_KWARGS = {
     "RandomProjectedSkewTransform": {"embedding_dim": 6, "scale": 5e-1, "random_seed": 0},
 }
 # augmentations module, for dynamic imports
-AUG_MODULE = importlib.import_module("chronos_dysts.augmentations")
+AUG_MODULE = importlib.import_module("dystformer.augmentations")
 
 
 def apply_augmentations_system(dysts_names: List[str]) -> None:
