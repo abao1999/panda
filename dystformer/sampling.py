@@ -58,7 +58,6 @@ class GaussianParamSampler(BaseSampler):
         - Other parameter transforms should follow this dataclass template
 
     Args:
-        random_seed: for random sampling
         scale: std (isotropic) of gaussian used for sampling
     """
 
@@ -84,7 +83,8 @@ class GaussianParamSampler(BaseSampler):
             perturbed_param = float(perturbed_param)
 
         if self.verbose:
-            print(f"System: {system.name}")
+            if system is not None:
+                print(f"System: {system.name}")
             print(f"Parameter name: {name}")
             print(f"--> Original parameter: {param}")
             print(f"--> Perturbed parameter: {perturbed_param}")

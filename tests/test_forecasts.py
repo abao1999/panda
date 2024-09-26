@@ -68,7 +68,7 @@ if __name__ == "__main__":
         fc_dyst_coords_samples.append(dyst_coords)
 
     # should be shape (num_samples, dim, prediction_length)
-    fc_dyst_coords_samples = np.array(fc_dyst_coords_samples)
+    fc_dyst_coords_samples = np.array(fc_dyst_coords_samples)  # type: ignore
     print(fc_dyst_coords_samples.shape)
 
     # accumulate the ground truth trajectories coordinates across samples
@@ -86,7 +86,7 @@ if __name__ == "__main__":
         gt_dyst_coords_samples.append(dyst_coords)
 
     # should be shape (num_samples, dim, prediction_length)
-    gt_dyst_coords_samples = np.array(gt_dyst_coords_samples)
+    gt_dyst_coords_samples = np.array(gt_dyst_coords_samples)  # type: ignore
     print(gt_dyst_coords_samples.shape)
 
     dim = gt_dyst_coords_samples.shape[1]

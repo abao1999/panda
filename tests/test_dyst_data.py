@@ -34,7 +34,7 @@ if __name__ == "__main__":
         print("metadata: ", metadata)
         print("IC: ", dyst_coords[:, 0])
 
-    dyst_coords_samples = np.array(dyst_coords_samples)
+    dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
     print(dyst_coords_samples.shape)
 
     # plot the trajectories

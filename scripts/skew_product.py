@@ -10,12 +10,14 @@ from typing import List, Sequence, Union
 import dysts.flows as dfl
 import matplotlib.pyplot as plt
 import numpy as np
-from dyst_data import process_trajs
 
 # from dysts.analysis import sample_initial_conditions
 from scipy.integrate import solve_ivp
 
-from dystformer.utils import is_float_or_sequence_of_floats
+from dystformer.utils import (
+    is_float_or_sequence_of_floats,
+    process_trajs,
+)
 
 WORK_DIR = os.getenv("WORK", "")
 
