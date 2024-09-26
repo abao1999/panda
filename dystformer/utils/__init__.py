@@ -41,5 +41,4 @@ from .typechecks import (
     is_positive_float,
     is_positive_int,
     is_power_of_two,
-    is_valid_vector,
 )

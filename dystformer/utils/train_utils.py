@@ -211,25 +211,3 @@ def ensure_contiguous(model):
             param.data = param.data.contiguous()
         else:
             print(f"Parameter {name} is already contiguous.")
-
-    # # Verify that parameters are now contiguous
-    # for name, param in model.named_parameters():
-    #     assert param.is_contiguous(), f"Parameter '{name}' is not contiguous after making changes."
-    # print("All parameters are contiguous.")
-
-
-# def setup_rocm_distributed():
-#     """
-#     TODO: how to get torchrun working on AMD POD with ROCm (is backend Gloo or RCCL?)
-#     """
-#     # Set device for ROCm
-#     local_rank = int(os.environ['LOCAL_RANK'])
-#     torch.cuda.set_device(local_rank)
-
-#     # Initialize the distributed environment with Gloo backend
-#     dist.init_process_group(backend='gloo')
-
-#     # # Create model and move it to the ROCm device
-#     # model = MyModel().to(torch.device(f'cuda:{local_rank}'))
-#     # # Wrap model with DistributedDataParallel
-#     # model = DDP(model, device_ids=[local_rank])

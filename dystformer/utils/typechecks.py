@@ -52,24 +52,3 @@ def is_float_or_sequence_of_floats(obj):
 
     # If neither, return False
     return False
-
-
-def is_valid_vector(
-    x: np.ndarray,
-    bound: float = 1e3,
-) -> bool:
-    """
-    Simply check if vector is crazy big or has nans
-    currently bounds L^infinity norm. Can also make more sophisticated
-    """
-    has_nans = np.any(np.isnan(x))
-    if has_nans:
-        print("Invalid vector, nans detected")
-        return False
-
-    within_bounds = np.all(x < bound)
-    if not within_bounds:
-        print("NOT WITHIN BOUNDS: ", x)
-        return False
-
-    return True

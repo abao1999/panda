@@ -10,6 +10,10 @@ from typing import Dict, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.fft import fft, fftfreq
+from scipy.signal import find_peaks
+from scipy.stats import t as student_t
+from sklearn.decomposition import PCA
 from statsmodels.tsa.stattools import adfuller, kpss
 
 from dystformer.utils import plot_trajs_multivariate, plot_trajs_univariate
@@ -220,9 +224,6 @@ def check_not_fixed_point(
     return True
 
 
-from sklearn.decomposition import PCA
-
-
 def check_not_limit_cycle(trajectory, tolerance=1e-3, min_recurrences=5, verbose=False):
     """
     Checks if a multidimensional trajectory is collapsing to a limit cycle.
@@ -270,16 +271,12 @@ def check_not_limit_cycle(trajectory, tolerance=1e-3, min_recurrences=5, verbose
     return True
 
 
-from scipy.fft import fft, fftfreq
-from scipy.signal import find_peaks
-
-
 def check_power_spectrum_1d(
     signal,
     rel_peak_height_threshold: float = 1e-5,
     rel_prominence_threshold: Optional[float] = 1e-5,  # None,
-    plot_name: str = "power_spectrum",
-    plot_save_dir: str = "tests/figs",
+    plot_save_dir: Optional[str] = None,
+    plot_name: Optional[str] = None,
     verbose: bool = False,
 ) -> bool:
     """
@@ -296,7 +293,7 @@ def check_power_spectrum_1d(
 
     # Compute the FFT and the power spectrum
     fft_values = fft(signal)
-    power_spectrum = np.abs(fft_values) ** 2
+    power_spectrum = np.abs(fft_values) ** 2  # type: ignore
     freqs = fftfreq(n)
 
     # Consider only positive frequencies
@@ -350,6 +347,7 @@ def check_power_spectrum_1d(
             )
 
     if plot_save_dir is not None:
+        plot_name = plot_name or "power_spectrum"
         # Plot the power spectrum on a logarithmic scale
         plt.figure(figsize=(10, 6))
         plt.plot(pos_freqs, pos_power, label="Power Spectrum")
@@ -596,9 +594,6 @@ def kpss_test(timeseries, regression="c", lags=None):
     return is_stationary
 
 
-from scipy.stats import t
-
-
 def adf_test(y, max_lag=None):
     """
     TODO: need to fix, does not behave as expected
@@ -640,7 +635,7 @@ def adf_test(y, max_lag=None):
     t_stat = gamma / se_gamma
 
     # Step 5: Critical values and p-value
-    p_value = 2 * (1 - t.cdf(abs(t_stat), df=len(y_diff) - X.shape[1]))
+    p_value = 2 * (1 - student_t.cdf(abs(t_stat), df=len(y_diff) - X.shape[1]))
     # critical_values = {'1%': -3.43, '5%': -2.86, '10%': -2.57}
 
     # Determine if the series is stationary based on the 5% significance level

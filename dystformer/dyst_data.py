@@ -1,11 +1,20 @@
 import os
 import warnings
+from functools import partial
 from typing import Dict, List, Optional
 
 import numpy as np
 from dysts.systems import make_trajectory_ensemble
 from tqdm import trange
 
+from dystformer.attractor import (
+    EnsembleCallbackHandler,
+    check_boundedness,
+    check_no_nans,
+    check_not_fixed_point,
+    check_power_spectrum,
+    check_stationarity,
+)
 from dystformer.sampling import (
     GaussianParamSampler,
     InstabilityEvent,
@@ -32,6 +41,7 @@ class DystData:
         num_param_perturbations: int = 1,
         events: Optional[List] = None,
         verbose: bool = True,
+        apply_attractor_tests: bool = False,
     ):
         self.rseed = rseed
         self.num_periods = num_periods
@@ -64,6 +74,48 @@ class DystData:
             verbose=verbose,
         )
 
+        # Callbacks to check attractor properties
+        if apply_attractor_tests:
+            self.attractor_validator = self._build_attractor_validator()
+        else:
+            self.attractor_validator = None
+            if self.num_param_perturbations > 1:
+                warnings.warn(
+                    "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
+                )
+
+    def _build_attractor_validator(self) -> EnsembleCallbackHandler:
+        """
+        Builds a list of attractor tests to check for each trajectory ensemble.
+        """
+        print("Setting up callbacks to test attractor properties")
+        # callbacks to check attractor validity when creating traj ensemble of dysts
+        ens_callback_handler = EnsembleCallbackHandler(verbose=0)  # verbose=2
+        ens_callback_handler.add_callback(check_no_nans)
+        ens_callback_handler.add_callback(check_boundedness)
+        ens_callback_handler.add_callback(check_not_fixed_point)
+        # ens_callback_handler.add_callback(
+        #     partial(
+        #         check_not_limit_cycle,
+        #         tolerance=1e-3,
+        #         min_recurrences=5,
+        #     )
+        # )
+        ens_callback_handler.add_callback(
+            partial(
+                check_power_spectrum,
+                plot_save_dir=None,  # FIGS_SAVE_DIR # NOTE: set to None when actually generating data so we don't plot thousands of times
+            )
+        )
+        ens_callback_handler.add_callback(
+            partial(
+                check_stationarity,
+                method="recurrence",  # "statsmodels", # adfuller and kpss only maybe reliable for long horizon
+            )
+        )
+
+        return ens_callback_handler
+
     def save_dyst_ensemble(
         self,
         dysts_names: List[str],
@@ -81,7 +133,14 @@ class DystData:
         ensemble_list = []
 
         # TODO: for random parameter perturbations, need to check validity, as we currently get nans, which throws error at the dysts level
+        # make a stream of rngs for each parameter perturbation
+        pp_rng_stream = np.random.default_rng(self.rseed).spawn(
+            self.num_param_perturbations,
+        )
         for i in range(self.num_param_perturbations):
+            # set the rng for the param sampler
+            pp_rng = pp_rng_stream[i]
+            self.param_sampler.set_rng(pp_rng)
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j
 
@@ -93,18 +152,30 @@ class DystData:
                     subset=dysts_names,
                     use_multiprocessing=True,
                     ic_transform=self.ic_sampler if self.num_ics > 1 else None,
-                    param_transform=self.param_sampler
-                    if self.num_param_perturbations > 1
-                    else None,
+                    param_transform=self.param_sampler,
+                    ic_rng=pp_rng,  # self.ic_sampler.rng
                     use_tqdm=True,
                     standardize=False,
                     pts_per_period=self.num_points // self.num_periods,
                     events=self.events,
-                    rng=self.param_sampler.rng,
                 )
 
                 ensemble, excluded_keys = filter_dict(ensemble)
-                print("INTEGRATION FAILED FOR:", excluded_keys)
+                if len(excluded_keys) > 0:
+                    warnings.warn(f"INTEGRATION FAILED FOR: {excluded_keys}")
+
+                # Check if attractor properties are valid
+                if self.attractor_validator is not None:
+                    self.attractor_validator.execute_callbacks(
+                        ensemble, first_sample_idx=sample_idx
+                    )
+                    all_valid_attractors = self.attractor_validator.check_status_all()
+                    # TODO: filter out invalid attractors and add valid attractors to ensemble list
+                    if not all_valid_attractors:
+                        print(
+                            "Attractors are not valid. Skipping, will not save to arrow files."
+                        )
+                        continue
 
                 ensemble_list.append(ensemble)
 
