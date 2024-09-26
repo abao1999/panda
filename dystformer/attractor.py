@@ -2,18 +2,17 @@
 Callbacks to check if generated trajectories are valid attractors
 """
 
-import os
-import numpy as np
-from typing import Dict, Optional
-import matplotlib.pyplot as plt
 import functools
-from collections import defaultdict
+import os
 import warnings
+from collections import defaultdict
+from typing import Dict, Optional
 
+import matplotlib.pyplot as plt
+import numpy as np
 from statsmodels.tsa.stattools import adfuller, kpss
 
 from dystformer.utils import plot_trajs_multivariate, plot_trajs_univariate
-
 
 BURN_TIME = 200
 
@@ -42,48 +41,64 @@ class EnsembleCallbackHandler:
         return True
 
     def plot_phase_space(
-            self, 
-            ensemble: Dict[str, np.ndarray], 
-            save_dir="tests/figs",
-            plot_univariate: bool = False,
+        self,
+        ensemble: Dict[str, np.ndarray],
+        save_dir="tests/figs",
+        plot_univariate: bool = False,
     ) -> None:
         for dyst_name, all_traj in ensemble.items():
-            plot_trajs_multivariate(all_traj, save_dir=save_dir, plot_name=dyst_name, plot_2d_slice=False)
+            plot_trajs_multivariate(
+                all_traj, save_dir=save_dir, plot_name=dyst_name, plot_2d_slice=False
+            )
             if plot_univariate:
                 num_dims = all_traj.shape[1]
                 for dim_idx in range(3 if num_dims > 3 else num_dims):
                     plot_trajs_univariate(
                         all_traj,
-                        selected_dim = dim_idx,
-                        save_dir = save_dir,
-                        plot_name = f"{dyst_name}_univariate_dim{dim_idx}"
+                        selected_dim=dim_idx,
+                        save_dir=save_dir,
+                        plot_name=f"{dyst_name}_univariate_dim{dim_idx}",
                     )
 
-    def execute_callbacks(self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0):
+    def execute_callbacks(
+        self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
+    ):
         # assert first_sample_idx >= 0, "First sample index must be a non-negative integer."
         for dyst_name, all_traj in ensemble.items():
             for i, traj_sample in enumerate(all_traj):
                 sample_idx = first_sample_idx + i
-                if traj_sample.ndim == 1: # handles case where just a single trajectory sample was stored in dict
+                if (
+                    traj_sample.ndim == 1
+                ):  # handles case where just a single trajectory sample was stored in dict
                     traj_sample = np.expand_dims(traj_sample, axis=0)
                 if self.verbose >= 1:
-                    print(f"Checking trajectory sample {sample_idx} for {dyst_name}, with shape {traj_sample.shape}")
+                    print(
+                        f"Checking trajectory sample {sample_idx} for {dyst_name}, with shape {traj_sample.shape}"
+                    )
                 for callback in self.callbacks:
                     if self.verbose >= 2:
                         callback = functools.partial(callback, verbose=True)
                     # Check if the object is a functools.partial
                     if isinstance(callback, functools.partial):
-                        callback_name = callback.func.__name__  # Access the wrapped function's name
+                        callback_name = (
+                            callback.func.__name__
+                        )  # Access the wrapped function's name
                     elif callable(callback):
-                        callback_name = callback.__name__  # Directly access the function's name
+                        callback_name = (
+                            callback.__name__
+                        )  # Directly access the function's name
                     else:
-                        raise ValueError("Invalid callback type. Must be a function or functools.partial.")
+                        raise ValueError(
+                            "Invalid callback type. Must be a function or functools.partial."
+                        )
 
                     if self.verbose >= 1:
                         print(f"Executing callback: {callback_name}")
                     status = callback(traj_sample)
                     if not status:
-                        self.failed_checks[dyst_name].append((sample_idx, callback_name))
+                        self.failed_checks[dyst_name].append(
+                            (sample_idx, callback_name)
+                        )
                         break
 
 
@@ -92,15 +107,15 @@ def check_no_nans(traj: np.ndarray, verbose: bool = False) -> bool:
     Check if a multi-dimensional trajectory contains NaN values.
     """
     if np.isnan(traj).any():
-        if verbose: 
+        if verbose:
             print("Trajectory contains NaN values.")
         return False
     return True
 
+
 def check_boundedness(
-        traj: np.ndarray,
-        max_num_stds: float = 1e2,
-        verbose: bool = False) -> bool:
+    traj: np.ndarray, max_num_stds: float = 1e2, verbose: bool = False
+) -> bool:
     """
     Check if a multi-dimensional trajectory is bounded (not diverging).
 
@@ -110,7 +125,7 @@ def check_boundedness(
     """
 
     if np.any(np.abs(traj) > 1e3):
-        if verbose: 
+        if verbose:
             print("Trajectory appears to be diverging.")
         return False
 
@@ -120,12 +135,12 @@ def check_boundedness(
 
     # Calculate the Euclidean distance from the first point in the trajectory at each time point
     distances = np.linalg.norm(traj - initial_point, axis=0)
-    if verbose: 
+    if verbose:
         print("std of distances: ", np.std(distances))
-    
+
     # Check if the trajectory is diverging
-    is_diverging = (np.max(distances) > max_num_stds * np.std(distances))
-    
+    is_diverging = np.max(distances) > max_num_stds * np.std(distances)
+
     # # NOTE: looking at trends seems brittle, need very long horizon to be reliable
     # if is_diverging: # double check by looking at trend
     #     # Fit a polynomial to the distances to check the trend
@@ -154,10 +169,10 @@ def check_boundedness(
 
 # Function to check if the system goes to a fixed point
 def check_not_fixed_point(
-        traj: np.ndarray,
-        min_variance_threshold: float = 1e-3,
-        window_prop: float = 0.5,
-        verbose: bool = False,
+    traj: np.ndarray,
+    min_variance_threshold: float = 1e-3,
+    window_prop: float = 0.5,
+    verbose: bool = False,
 ) -> bool:
     """
     Check if the system trajectory converges to a fixed point.
@@ -170,21 +185,21 @@ def check_not_fixed_point(
     Returns:
         bool: False if the system is approaching a fixed point, True otherwise.
     """
-    # Check if the trajectory has collapsed to a fixed point 
+    # Check if the trajectory has collapsed to a fixed point
     if np.allclose(traj[:, -1], traj[:, -2], atol=1e-3):
-    # if np.allclose(traj[:, -99:-50], traj[:, -50:-1], atol=1e-3):
-        if verbose: 
+        # if np.allclose(traj[:, -99:-50], traj[:, -50:-1], atol=1e-3):
+        if verbose:
             print("System may have collapsed to a fixed point.")
         return False
 
     # Check of the last 100 points have near zero variance
     final_segment = traj[:, -100:]  # Last 100 points
     variance = np.var(final_segment, axis=1)
-    near_zero_variance = np.any(variance < min_variance_threshold) # maybe use all?
-    if verbose: 
+    near_zero_variance = np.any(variance < min_variance_threshold)  # maybe use all?
+    if verbose:
         print(f"Variance of state variables over the final segment: {variance}")
     if near_zero_variance:
-        if verbose: 
+        if verbose:
             print("The system trajectory appears to approach a fixed point.")
         return False
 
@@ -198,12 +213,16 @@ def check_not_fixed_point(
         print("rolling_variance_first: ", rolling_variance_first)
         print("rolling_variance_second: ", rolling_variance_second)
     if np.all(rolling_variance_second < 0.2 * rolling_variance_first):
-        if verbose: print("Variance is decaying in the second half of the trajectory.")
+        if verbose:
+            print("Variance is decaying in the second half of the trajectory.")
         return False
 
     return True
 
+
 from sklearn.decomposition import PCA
+
+
 def check_not_limit_cycle(trajectory, tolerance=1e-3, min_recurrences=5, verbose=False):
     """
     Checks if a multidimensional trajectory is collapsing to a limit cycle.
@@ -227,33 +246,41 @@ def check_not_limit_cycle(trajectory, tolerance=1e-3, min_recurrences=5, verbose
         reduced_trajectory = trajectory
 
     # Step 2: Recurrence Detection using Distance Matrix
-    dist_matrix = np.linalg.norm(reduced_trajectory[:, np.newaxis] - reduced_trajectory[np.newaxis, :], axis=-1)
-    
+    dist_matrix = np.linalg.norm(
+        reduced_trajectory[:, np.newaxis] - reduced_trajectory[np.newaxis, :], axis=-1
+    )
+
     # Consider recurrences within a certain tolerance
     recurrence_indices = np.where(dist_matrix < tolerance)
     recurrence_times = np.diff(recurrence_indices[0])
 
     # Step 3: Identify if recurrences are periodic
-    periodic_recurrences = recurrence_times[np.abs(recurrence_times - np.median(recurrence_times)) < tolerance]
-    if verbose: 
+    periodic_recurrences = recurrence_times[
+        np.abs(recurrence_times - np.median(recurrence_times)) < tolerance
+    ]
+    if verbose:
         print("Number of periodic recurrences: ", len(periodic_recurrences))
     # Check if recurrences meet the minimum count
     if len(periodic_recurrences) >= min_recurrences:
         if verbose:
-            print("The trajectory suggests a limit cycle with stable periodic behavior.")
+            print(
+                "The trajectory suggests a limit cycle with stable periodic behavior."
+            )
         return False
     return True
 
 
 from scipy.fft import fft, fftfreq
 from scipy.signal import find_peaks
+
+
 def check_power_spectrum_1d(
-    signal, 
-    rel_peak_height_threshold: float = 1e-5, 
-    rel_prominence_threshold: Optional[float] = 1e-5, # None,
+    signal,
+    rel_peak_height_threshold: float = 1e-5,
+    rel_prominence_threshold: Optional[float] = 1e-5,  # None,
     plot_name: str = "power_spectrum",
     plot_save_dir: str = "tests/figs",
-    verbose: bool = False
+    verbose: bool = False,
 ) -> bool:
     """
     Analyzes the power spectrum of a 1D signal to find significant peaks and plots the spectrum on a log scale.
@@ -266,10 +293,10 @@ def check_power_spectrum_1d(
     # Convert the signal to a numpy array
     signal = np.asarray(signal[BURN_TIME:])  # Exclude the burn-in period
     n = len(signal)
-    
+
     # Compute the FFT and the power spectrum
     fft_values = fft(signal)
-    power_spectrum = np.abs(fft_values)**2
+    power_spectrum = np.abs(fft_values) ** 2
     freqs = fftfreq(n)
 
     # Consider only positive frequencies
@@ -290,10 +317,8 @@ def check_power_spectrum_1d(
     else:
         prominence_threshold = None
     peak_indices, _ = find_peaks(
-                        pos_power, 
-                        height=peak_height_threshold, 
-                        prominence=prominence_threshold
-                      )
+        pos_power, height=peak_height_threshold, prominence=prominence_threshold
+    )
     peak_frequencies = pos_freqs[peak_indices]
     peak_powers = pos_power[peak_indices]
 
@@ -307,57 +332,71 @@ def check_power_spectrum_1d(
 
     # Heuristic Interpretation of the Power Spectrum
     if n_significant_peaks < 3:
-        if verbose: 
-            print("The power spectrum suggests a fixed point or a simple periodic attractor (few peaks).")
+        if verbose:
+            print(
+                "The power spectrum suggests a fixed point or a simple periodic attractor (few peaks)."
+            )
         return False
     elif n_significant_peaks > 10:
-        if verbose: 
-            print("The power spectrum suggests a chaotic attractor (many peaks with broad distribution).")
+        if verbose:
+            print(
+                "The power spectrum suggests a chaotic attractor (many peaks with broad distribution)."
+            )
         # return True
     else:
-        if verbose: 
-            print("The system appears to have a quasi-periodic or more complex attractor (intermediate peaks).")
-    
+        if verbose:
+            print(
+                "The system appears to have a quasi-periodic or more complex attractor (intermediate peaks)."
+            )
+
     if plot_save_dir is not None:
         # Plot the power spectrum on a logarithmic scale
         plt.figure(figsize=(10, 6))
-        plt.plot(pos_freqs, pos_power, label='Power Spectrum')
-        plt.scatter(peak_frequencies, peak_powers, color='red', label='Significant Peaks', zorder=5)
-        plt.yscale('log')
-        plt.xlabel('Frequency (Hz)')
-        plt.ylabel('Power')
-        plt.title('Power Spectrum with Significant Peaks')
+        plt.plot(pos_freqs, pos_power, label="Power Spectrum")
+        plt.scatter(
+            peak_frequencies,
+            peak_powers,
+            color="red",
+            label="Significant Peaks",
+            zorder=5,
+        )
+        plt.yscale("log")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("Power")
+        plt.title("Power Spectrum with Significant Peaks")
         plt.grid(True, which="both", ls="--", lw=0.5)
         plt.legend()
         plt.savefig(os.path.join(plot_save_dir, f"{plot_name}.png"), dpi=300)
 
-    return True # make this check loose
+    return True  # make this check loose
+
 
 def check_power_spectrum(
-        traj: np.ndarray,
-        plot_save_dir: Optional[str] = None,
-        verbose: bool = False,
+    traj: np.ndarray,
+    plot_save_dir: Optional[str] = None,
+    verbose: bool = False,
 ) -> bool:
     num_dims = traj.shape[0]
     for d in range(num_dims):
         x = traj[d, :]
         status = check_power_spectrum_1d(
-            x, 
+            x,
             plot_name=f"power_spectrum_dim{d}",
-            plot_save_dir=plot_save_dir, 
+            plot_save_dir=plot_save_dir,
             verbose=verbose,
         )
         if not status:
-            if verbose: 
+            if verbose:
                 print(f"Power spectrum check failed for dimension {d}")
             return False
     return True
 
+
 def check_stationarity(
-        traj: np.ndarray,
-        verbose: bool = False,
-        method: str = 'recurrence',
-        ) -> bool:
+    traj: np.ndarray,
+    verbose: bool = False,
+    method: str = "recurrence",
+) -> bool:
     """
     ADF checks for presence of a unit root, with null hypothesis that time_series is non-stationary.
     KPSS checks for stationarity around a constant (or deterministic trend), with null hypothesis that time_series is stationary.
@@ -370,16 +409,18 @@ def check_stationarity(
                     'custom' to use custom tests.
                     None to use custom check
     """
-    num_dims = traj.shape[0] # assuming first dimension is the state dimension, shape is (dim, T)
+    num_dims = traj.shape[
+        0
+    ]  # assuming first dimension is the state dimension, shape is (dim, T)
 
-    if method == 'recurrence':
+    if method == "recurrence":
         for d in range(num_dims):
-            if verbose: 
+            if verbose:
                 print(f"Checking stationarity for dimension {d}")
             coord = traj[d, :]
             status = check_recurrence(
-                coord, 
-                rel_revisit_threshold=0.2, 
+                coord,
+                rel_revisit_threshold=0.2,
                 revisit_count=3,
                 window_prop=0.5,
                 verbose=verbose,
@@ -390,32 +431,34 @@ def check_stationarity(
         return True
 
     for d in range(num_dims):
-        if verbose: 
+        if verbose:
             print(f"Checking stationarity for dimension {d}")
         coord = traj[d, :]
 
-        if method == 'custom':
+        if method == "custom":
             # Use custom ADF and KPSS tests
             status_adf = adf_test(coord)
-            status_kpss = kpss_test(coord, regression='c')
+            status_kpss = kpss_test(coord, regression="c")
 
-        elif method == 'statsmodels':
+        elif method == "statsmodels":
             # Use statsmodels ADF and KPSS tests
             result_adf = adfuller(coord, autolag="AIC")
-            result_kpss = kpss(coord, regression='c')
+            result_kpss = kpss(coord, regression="c")
             # Interpret p-values for ADF
             status_adf = 1 if result_adf[1] < 0.05 else 0
             status_kpss = 0 if result_kpss[1] < 0.05 else 1
-        
+
         else:
-            raise ValueError("Invalid method. Choose from 'statsmodels' or 'custom' or 'recurrence'.")
+            raise ValueError(
+                "Invalid method. Choose from 'statsmodels' or 'custom' or 'recurrence'."
+            )
 
         # Aggregate conclusion
         if status_adf and status_kpss:
-            if verbose: 
+            if verbose:
                 print("Strong evidence for stationarity")
         elif not status_adf and not status_kpss:
-            if verbose: 
+            if verbose:
                 print("Strong evidence for non-stationarity")
             return False
         else:
@@ -429,8 +472,8 @@ def check_stationarity(
 # from scipy.stats import linregress
 # from scipy.signal import detrend
 def check_recurrence(
-    signal: np.ndarray, 
-    rel_revisit_threshold: float = 0.1, 
+    signal: np.ndarray,
+    rel_revisit_threshold: float = 0.1,
     revisit_count: int = 3,
     window_prop: float = 0.5,
     verbose: bool = False,
@@ -442,7 +485,7 @@ def check_recurrence(
     Set a target value as the mean of the signal.
     If values in the intermediate window are within the revisit threshold of the target value, count them as revisits.
     If the number of revisits is less than revisit_count, the check fails (not enough revisits)
-    
+
     Parameters:
     - signal (array-like): The input 1D signal.
     - rel_revisit_threshold (float): Threshold relative distance to consider as revisiting near the starting point.
@@ -451,7 +494,7 @@ def check_recurrence(
     """
     signal = np.asarray(signal[BURN_TIME:])  # Exclude the burn-in period
     n = len(signal)
-    
+
     # # Criterion 1: Trend check # NOTE: only reliable for long time horizon
     # detrended_signal = detrend(signal)
     # slope, _, _, p_value, _ = linregress(np.arange(n), signal)
@@ -462,12 +505,14 @@ def check_recurrence(
 
     # Criterion 2: Recurrence check
     # target = signal[BURN_TIME:] # starting point after burn time
-    target = np.mean(signal) # mean of signal
+    target = np.mean(signal)  # mean of signal
     revisit_threshold = rel_revisit_threshold * np.std(signal)
     cutoff = int(window_prop * n)
     intermediate_window = signal[cutoff:]
-    revisit_indices = np.where(np.abs(intermediate_window - target) < revisit_threshold)[0]
-    if verbose: 
+    revisit_indices = np.where(
+        np.abs(intermediate_window - target) < revisit_threshold
+    )[0]
+    if verbose:
         print("Number of revisits: ", len(revisit_indices))
     if len(revisit_indices) < revisit_count:
         return False
@@ -475,9 +520,8 @@ def check_recurrence(
     return True
 
 
-
 ## Stationarity Checks (TODO: need to fix, does not behave as expected)
-def kpss_test(timeseries, regression='c', lags=None):
+def kpss_test(timeseries, regression="c", lags=None):
     """
     TODO: need to fix, does not behave as expected
     Perform KPSS test for stationarity.
@@ -494,11 +538,11 @@ def kpss_test(timeseries, regression='c', lags=None):
     # Remove the trend (mean or linear trend based on regression parameter)
     n = len(timeseries)
 
-    if regression == 'c':
+    if regression == "c":
         # Center the series by removing the mean
         detrended = timeseries - np.mean(timeseries)
         critical_values = [0.347, 0.463, 0.574, 0.739]
-    elif regression == 'ct':
+    elif regression == "ct":
         # Remove a linear trend
         x = np.arange(1, n + 1)
         coef = np.polyfit(x, timeseries, 1)
@@ -552,8 +596,9 @@ def kpss_test(timeseries, regression='c', lags=None):
     return is_stationary
 
 
-
 from scipy.stats import t
+
+
 def adf_test(y, max_lag=None):
     """
     TODO: need to fix, does not behave as expected
@@ -577,7 +622,7 @@ def adf_test(y, max_lag=None):
         max_lag = int(12 * (len(y_diff) / 100) ** (1 / 4))
 
     # Step 2: Create lagged difference matrix for lagged terms
-    X = np.column_stack([y_lag[max_lag - i: -i] for i in range(1, max_lag + 1)])
+    X = np.column_stack([y_lag[max_lag - i : -i] for i in range(1, max_lag + 1)])
 
     # Prepare the regression matrix with a constant term
     X = np.column_stack([np.ones(len(X)), y_lag[max_lag:], X])
@@ -589,7 +634,9 @@ def adf_test(y, max_lag=None):
 
     # Step 4: Compute the test statistic (t-statistic)
     gamma = beta[1]  # Coefficient for y_{t-1}
-    se_gamma = np.sqrt(np.sum(residuals ** 2) / (len(y_diff) - X.shape[1]) / np.sum(X[:, 1] ** 2))
+    se_gamma = np.sqrt(
+        np.sum(residuals**2) / (len(y_diff) - X.shape[1]) / np.sum(X[:, 1] ** 2)
+    )
     t_stat = gamma / se_gamma
 
     # Step 5: Critical values and p-value
@@ -600,4 +647,4 @@ def adf_test(y, max_lag=None):
     # is_stationary = t_stat < critical_values['5%']
     is_stationary = p_value < 0.05
 
-    return is_stationary # strong evidence for stationarity
+    return is_stationary  # strong evidence for stationarity

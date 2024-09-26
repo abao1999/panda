@@ -3,11 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # TODO: modify for dysts
 
-import torch
-from typing import Any, Optional, Tuple
-from dataclasses import dataclass
-from typing import Any, Dict, Literal, Optional
 import importlib
+from dataclasses import dataclass
+from typing import Any, Dict, Literal, Optional, Tuple
+
+import torch
 
 
 @dataclass
@@ -42,7 +42,6 @@ class ChronosConfig:
         module = importlib.import_module(__name__)
         class_ = getattr(module, self.tokenizer_class)
         return class_(**self.tokenizer_kwargs, config=self)
-    
 
 
 class ChronosTokenizer:
@@ -53,6 +52,8 @@ class ChronosTokenizer:
     For details, see the ``input_transform`` and ``output_transform`` methods,
     which concrete classes must implement.
     """
+
+    config: ChronosConfig
 
     def context_input_transform(
         self,

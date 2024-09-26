@@ -1,14 +1,14 @@
-import numpy as np
 import time
 from dataclasses import dataclass, field
-from dysts.sampling import BaseSampler
+from typing import Callable, Dict, List, Optional
 
-from numpy.typing import NDArray
-from typing import Optional, Dict, List, Callable
-
+import numpy as np
 from dysts.base import BaseDyn
+from dysts.sampling import BaseSampler
+from numpy.typing import NDArray
 
 Array = NDArray[np.float64]
+
 
 # Event functions for solve_ivp
 @dataclass
@@ -16,6 +16,7 @@ class TimeLimitEvent:
     """
     Event to check if integration is taking too long
     """
+
     max_duration: float
     terminal: bool = True
 
@@ -29,11 +30,13 @@ class TimeLimitEvent:
             return 0  # Trigger the event
         return 1  # Continue the integration
 
+
 @dataclass
 class InstabilityEvent:
     """
     Event to detect instability during numerical integration
     """
+
     threshold: float
     terminal: bool = True
 
@@ -60,7 +63,7 @@ class GaussianParamSampler(BaseSampler):
     """
 
     scale: float = 1e-2
-    verbose: bool = False # for testing purposes 
+    verbose: bool = False  # for testing purposes
 
     def __call__(
         self, name: str, param: Array, system: Optional[BaseDyn] = None
@@ -79,7 +82,7 @@ class GaussianParamSampler(BaseSampler):
         )
         if isinstance(param, (float, int)):
             perturbed_param = float(perturbed_param)
-    
+
         if self.verbose:
             print(f"System: {system.name}")
             print(f"Parameter name: {name}")
@@ -87,7 +90,7 @@ class GaussianParamSampler(BaseSampler):
             print(f"--> Perturbed parameter: {perturbed_param}")
 
         return perturbed_param
-    
+
 
 @dataclass
 class OnAttractorInitCondSampler(BaseSampler):
@@ -99,7 +102,7 @@ class OnAttractorInitCondSampler(BaseSampler):
           parameters before sampling from the attractor.
         - The sampled initial conditions from this sampler are necessarily
           tied to the attractor defined by the default parameters.
-    
+
     Args:
         reference_traj_length: Length of the reference trajectory to use for sampling ic on attractor.
         reference_traj_transient: Transient length to ignore for the reference trajectory
@@ -110,13 +113,13 @@ class OnAttractorInitCondSampler(BaseSampler):
     reference_traj_length: int = 4096
     reference_traj_transient: int = 500
     trajectory_cache: Dict[str, Array] = field(default_factory=dict)
-    verbose: bool = False # for testing purposes
-    events: Optional[List[Callable]] = None # solve_ivp events
+    verbose: bool = False  # for testing purposes
+    events: Optional[List[Callable]] = None  # solve_ivp events
 
     def __call__(self, ic: Array, system: BaseDyn) -> Array:
         if system.name is None:
             raise ValueError("System must have a name")
-        
+
         # make reference trajectory if not already cached
         if system.name not in self.trajectory_cache:
             # Integrate the system with default parameters
@@ -126,8 +129,12 @@ class OnAttractorInitCondSampler(BaseSampler):
                 verbose=self.verbose,
             )[self.reference_traj_transient :]
 
-            if reference_traj is None: # if integrate fails, resulting in an incomplete trajectory
-                raise ValueError(f"Failed to integrate the system {system.name} with ic {system.ic} and params {system.params}")
+            if (
+                reference_traj is None
+            ):  # if integrate fails, resulting in an incomplete trajectory
+                raise ValueError(
+                    f"Failed to integrate the system {system.name} with ic {system.ic} and params {system.params}"
+                )
 
             self.trajectory_cache[system.name] = reference_traj
 
@@ -151,7 +158,7 @@ class GaussianInitialConditionSampler(BaseSampler):
     """
 
     scale: float = 1e-4
-    verbose: bool = False # for testing purposes
+    verbose: bool = False  # for testing purposes
 
     def __call__(self, ic: Array, system: BaseDyn) -> Array:
         """

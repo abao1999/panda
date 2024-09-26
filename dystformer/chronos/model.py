@@ -2,13 +2,15 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 from transformers import (
     GenerationConfig,
     PreTrainedModel,
 )
-from typing import Optional
+
 from dystformer.chronos.tokenizer import ChronosConfig
 
 
@@ -119,7 +121,7 @@ class ChronosModel(nn.Module):
             preds = preds[..., 1:]  # remove the decoder start token
         else:
             assert self.config.model_type == "causal"
-            assert preds.size(-1) == input_ids.size(-1) + prediction_length
+            assert preds.size(-1) == input_ids.size(-1) + prediction_length  # type: ignore
             preds = preds[..., -prediction_length:]
 
         return preds.reshape(input_ids.size(0), num_samples, -1)

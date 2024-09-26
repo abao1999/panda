@@ -1,20 +1,22 @@
-import torch
-import numpy as np
 import argparse
 
+import numpy as np
+import torch
 from gluonts.dataset.common import ListDataset
-from gluonts.itertools import batcher
 from gluonts.dataset.split import split
+from gluonts.itertools import batcher
+
 from dystformer.utils import (
-    load_and_split_dataset_from_arrow,
     get_dyst_filepaths,
+    load_and_split_dataset_from_arrow,
 )
+
 
 def simple_test_split():
     prediction_length = 4
     offset = -4
     num_rolls = 1
-    distance = None # if None specified, distance is set to prediction_length
+    distance = None  # if None specified, distance is set to prediction_length
 
     # Create a sample dataset
     dataset = ListDataset(
@@ -23,14 +25,16 @@ def simple_test_split():
             {"start": "2020-01-01", "target": [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]},
             {"start": "2020-01-01", "target": [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]},
         ],
-        freq="h"
+        freq="h",
     )
 
     # Split the dataset with an offset of 5
     train_dataset, test_template = split(dataset, offset=offset)
 
     # Generate test instances with a prediction length of 2
-    test_data = test_template.generate_instances(prediction_length, windows=num_rolls, distance=distance)
+    test_data = test_template.generate_instances(
+        prediction_length, windows=num_rolls, distance=distance
+    )
 
     # Print the results
     print("Train Dataset:")
@@ -55,6 +59,7 @@ def simple_test_split():
         print("label shape: ", label_data.shape)
         idx += 1
 
+
 def test_split_from_arrow(filepath):
     num_rolls = 1
     # test_data is of type TestData
@@ -63,7 +68,7 @@ def test_split_from_arrow(filepath):
         offset=-512,
         num_rolls=num_rolls,
         filepath=filepath,
-        verbose=True
+        verbose=True,
     )
     print("Test Data:")
     print(len(test_data))
@@ -87,6 +92,7 @@ def test_split_from_arrow(filepath):
 
     return test_data
 
+
 def test_context(test_data_input, batch_size):
     first_batch = next(batcher(test_data_input, batch_size=batch_size))
     print("first batch num dims: ", len(first_batch))
@@ -94,6 +100,7 @@ def test_context(test_data_input, batch_size):
     context = [torch.tensor(entry["target"]) for entry in first_batch]
     print("context shape: ", np.array(context).shape)
     return context
+
 
 if __name__ == "__main__":
     simple_test_split()
@@ -109,4 +116,3 @@ if __name__ == "__main__":
     test_data = test_split_from_arrow(sample_filepath)
 
     context = test_context(test_data.input, batch_size=32)
-

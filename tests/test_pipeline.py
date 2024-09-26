@@ -1,125 +1,41 @@
-import numpy as np
-import torch
 import os
 from pathlib import Path
-from typing import Optional, Iterable
+from typing import Optional
+
+import numpy as np
+import torch
 from tqdm.auto import tqdm
 
-from chronos import ChronosPipeline
+from dystformer.chronos.pipeline import ChronosPipeline
+from dystformer.utils import (
+    generate_sample_forecasts,
+    load_and_split_dataset_from_arrow,
+)
 
-from gluonts.dataset.split import split, TestData
-from gluonts.itertools import batcher
-from gluonts.model.forecast import SampleForecast, Forecast
-from gluonts.dataset.common import FileDataset
-
-
-WORK_DIR = os.getenv('WORK', '')
+WORK_DIR = os.getenv("WORK", "")
 
 
-def load_and_split_dataset_from_arrow(
-        prediction_length: int,
-        offset: int,
-        num_rolls: int, 
-        filepath: str, 
-        verbose: bool = False
-) -> TestData:
+class ChronosForecast:
     """
-    Directly loads Arrow file into GluonTS FileDataset
-        https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.common.html 
-    And then uses GluonTS split to generate test instances from windows of original timeseries
-        https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.split.html
-
-    Load and split a dataset from an Arrow file, applies split to generate test instances
-    Returns:
-      TestData object.
-            Elements of a TestData object are pairs (input, label), where
-            input is input data for models, while label is the future
-            ground truth that models are supposed to predict.
-    """
-    # TODO: load selected dimensions for dyst system config, so we can have separate forecast for each univariate trajectory
-    if verbose:
-        print("filepath: ", filepath)
-        print(f"Splitting timeseries by creating {num_rolls} non-overlapping windows")
-        print(f"And using offset {offset} and prediction length {prediction_length}")
-
-    print("loading ", filepath)
-    gts_dataset = FileDataset(path=Path(filepath), freq="h") # TODO: consider other frequencies?
-
-    # Split dataset for evaluation
-    _, test_template = split(gts_dataset, offset=offset)
-
-    # see Gluonts split documentation: https://ts.gluon.ai/v0.11.x/_modules/gluonts/dataset/split.html#TestTemplate.generate_instances
-    # https://ts.gluon.ai/v0.11.x/api/gluonts/gluonts.dataset.split.html#gluonts.dataset.split.TestData
-    test_data = test_template.generate_instances(prediction_length, windows=num_rolls)
-
-    return test_data
-
-
-def generate_sample_forecasts(
-    test_data_input: Iterable,
-    pipeline: "ChronosPipeline",
-    prediction_length: int,
-    batch_size: int,
-    num_samples: int,
-    limit_prediction_length: bool = True,
-    save_path: Optional[str] = None,
-    **predict_kwargs,
-) -> Iterable[Forecast]:
-    """
-    Generates forecast samples using GluonTS batcher to batch the test instances generated from FileDataset
-    Returns Forecast object https://ts.gluon.ai/stable/api/gluonts/gluonts.model.forecast.html#gluonts.model.forecast.Forecast
-    """
-    forecast_samples = []
-    for batch in tqdm(batcher(test_data_input, batch_size=batch_size)):
-        context = [torch.tensor(entry["target"]) for entry in batch]
-        forecast_samples.append(
-            pipeline.predict(
-                context,
-                prediction_length=prediction_length,
-                num_samples=num_samples,
-                limit_prediction_length=limit_prediction_length,
-                **predict_kwargs,
-            ).numpy()
-        )
-    forecast_samples = np.concatenate(forecast_samples)
-    print("Forecast Samples shape: ", forecast_samples.shape)
-    if save_path is not None:
-        print(f"Saving forecast samples to {save_path}")
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        np.save(save_path, forecast_samples)
-
-    # Convert forecast samples into gluonts SampleForecast objects
-    sample_forecasts = []
-    for item, ts in zip(forecast_samples, test_data_input):
-        forecast_start_date = ts["start"] + len(ts["target"])
-        sample_forecasts.append(
-            # see https://ts.gluon.ai/stable/api/gluonts/gluonts.model.forecast.html#gluonts.model.forecast.SampleForecast
-            SampleForecast(samples=item, start_date=forecast_start_date)
-        )
-    return sample_forecasts
-
-class ChronosModel:
-    """
-    A wrapper around the Chronos forecast model class that makes it easier to use in 
+    A wrapper around the Chronos forecast model class that makes it easier to use in
     forecasting tasks.
 
     Attributes:
         model (str): The model size to use. One of "tiny", "mini", "small", "base", "large".
         n_samples (int): The number of samples to use when making predictions.
         use_gpu (bool): Whether to use a GPU for prediction.
-        max_chunk (int): The maximum number of data points to predict in one go. If the 
+        max_chunk (int): The maximum number of data points to predict in one go. If the
             prediction length is greater than this value, we use the autoregressive
             mode to predict the future values.
     """
 
     def __init__(
-        self, 
-        model="base", 
-        n_samples=20, 
-        max_chunk=64, 
-        use_gpu=True, 
+        self,
+        model="base",
+        n_samples=20,
+        max_chunk=64,
+        use_gpu=True,
     ) -> None:
-        
         self.model = model
         self.n_samples = n_samples
         self.use_gpu = use_gpu
@@ -146,8 +62,8 @@ class ChronosModel:
         # self.name = f"chronos-{self.model}-context{self.context}"
 
     def predict(
-        self, 
-        dyst_dir: str, 
+        self,
+        dyst_dir: str,
         prediction_length: int = 64,
         offset: int = -64,
         num_rolls: int = 1,
@@ -159,7 +75,7 @@ class ChronosModel:
         forecast_save_dir: Optional[str] = None,
     ) -> np.ndarray:
         """
-        Given a time series data, use the last {self.context} timepoints of data 
+        Given a time series data, use the last {self.context} timepoints of data
         to predict next value in the series.
 
         Args:
@@ -203,10 +119,15 @@ class ChronosModel:
 
         # assuming that the name of the folder is the dyst name
         dyst_name = os.path.basename(dyst_dir)
-        print(f"Generating forecasts for {dyst_name} from {dyst_dir} with prediction length {prediction_length} and offset {offset}")
+        print(
+            f"Generating forecasts for {dyst_name} from {dyst_dir} with prediction length {prediction_length} and offset {offset}"
+        )
 
         # get list of all dataset Arrow files associated with dyst_name
-        filepaths = sorted(list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0]))
+        filepaths = sorted(
+            list(Path(dyst_dir).glob("*.arrow")),
+            key=lambda x: int(x.stem.split("_")[0]),
+        )
 
         all_forecasts = []
         # generate forecasts for each sample instance of dyst
@@ -216,7 +137,7 @@ class ChronosModel:
             test_data = load_and_split_dataset_from_arrow(
                 prediction_length=prediction_length,
                 offset=offset,
-                num_rolls=num_rolls, 
+                num_rolls=num_rolls,
                 filepath=str(filepath),
             )
 
@@ -225,12 +146,14 @@ class ChronosModel:
                 f"Generating forecasts for {dyst_name} sample {sample_idx} "
                 f"with {len(test_data.input)} time series (one for each dimension)"
             )
-            
+
             forecast_save_path = None
             if forecast_save_dir is not None:
-                forecast_save_path = os.path.join(forecast_save_dir, dyst_name, f"{filepath.stem}.npy")
+                forecast_save_path = os.path.join(
+                    forecast_save_dir, dyst_name, f"{filepath.stem}.npy"
+                )
                 os.makedirs(os.path.dirname(forecast_save_path), exist_ok=True)
-            
+
             sample_forecasts = generate_sample_forecasts(
                 test_data.input,
                 pipeline=self.pipeline,
@@ -238,10 +161,10 @@ class ChronosModel:
                 batch_size=batch_size,
                 num_samples=self.n_samples,
                 limit_prediction_length=limit_prediction_length,
-                save_path=forecast_save_path, # if None, then don't save
-                temperature=temperature, # not needed
-                top_k=top_k, # not needed
-                top_p=top_p, # not needed
+                save_path=forecast_save_path,  # if None, then don't save
+                temperature=temperature,  # not needed
+                top_k=top_k,  # not needed
+                top_p=top_p,  # not needed
             )
             all_forecasts.append(sample_forecasts)
 
@@ -252,18 +175,18 @@ class ChronosModel:
 if __name__ == "__main__":
     forecast_save_dir = os.path.join(WORK_DIR, "forecasts")
     dyst_dir = os.path.join(WORK_DIR, "data/train", "Lorenz")
-    
-    model = ChronosModel(
+
+    model = ChronosForecast(
         model="base",
         n_samples=20,
         max_chunk=64,
         use_gpu=True,
     )
-    
+
     forecasts = model.predict(
-        dyst_dir=dyst_dir, 
+        dyst_dir=dyst_dir,
         prediction_length=64,
-        offset=-64, # use the whole trajectory except last 64 points as context
+        offset=-64,  # use the whole trajectory except last 64 points as context
         num_rolls=1,
         batch_size=32,
         limit_prediction_length=False,

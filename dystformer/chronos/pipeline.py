@@ -16,13 +16,10 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForSeq2SeqLM,
 )
-from dystformer.utils import (
-    ChronosTokenizerType, 
-    ChronosModelType,
-    left_pad_and_stack_1D,
-)
+
 from dystformer.chronos.model import ChronosModel
-from dystformer.chronos.tokenizer import ChronosConfig
+from dystformer.chronos.tokenizer import ChronosConfig, ChronosTokenizer
+from dystformer.utils import left_pad_and_stack_1D
 
 
 @dataclass
@@ -42,8 +39,8 @@ class ChronosPipeline:
         The model to use.
     """
 
-    tokenizer: ChronosTokenizerType
-    model: ChronosModelType
+    tokenizer: ChronosTokenizer
+    model: ChronosModel
 
     def _prepare_and_validate_context(
         self, context: Union[torch.Tensor, List[torch.Tensor]]

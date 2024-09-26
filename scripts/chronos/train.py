@@ -12,6 +12,14 @@ import hydra
 import torch
 import transformers
 import wandb
+
+# from transformers.integrations import WandbCallback
+from gluonts.dataset.common import FileDataset
+from gluonts.itertools import Filter
+from gluonts.transform import LastValueImputation
+from omegaconf import OmegaConf
+from transformers import Trainer, TrainingArguments
+
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.tokenizer import ChronosConfig
 from dystformer.utils import (
@@ -24,13 +32,6 @@ from dystformer.utils import (
     sample_index_pairs,
     save_training_info,
 )
-
-# from transformers.integrations import WandbCallback
-from gluonts.dataset.common import FileDataset
-from gluonts.itertools import Filter
-from gluonts.transform import LastValueImputation
-from omegaconf import OmegaConf
-from transformers import Trainer, TrainingArguments
 
 os.environ["WANDB_PROJECT"] = (
     "dystformer"  # name of W&B project, right now hard-coded even though also in cfg
@@ -115,7 +116,7 @@ def main(cfg):
                 min_length=cfg.min_past + cfg.prediction_length,
                 max_missing_prop=cfg.max_missing_prop,
             ),
-            FileDataset(path=Path(data_path), freq="h"),
+            FileDataset(path=Path(data_path), freq="h"),  # type: ignore
         )
         for data_path in train_data_paths
     ]
@@ -280,7 +281,7 @@ def main(cfg):
             model_config=vars(
                 chronos_config
             ),  # use dataclass asdict for more complex dataclasses
-            training_config=OmegaConf.to_container(cfg.train, resolve=True),
+            training_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
         )
 
 

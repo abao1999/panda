@@ -1,18 +1,18 @@
-import numpy as np
 import argparse
+import importlib
 from functools import partial
-from typing import List, Dict
+from typing import Dict, List
 
+import numpy as np
 from gluonts.dataset import Dataset
 
-import importlib
 from dystformer.utils import (
-    stack_and_extract_metadata,
-    sample_index_pairs,
-    get_dysts_datasets_dict,
     accumulate_dyst_samples,
-    plot_trajs_univariate, 
+    get_dysts_datasets_dict,
     plot_trajs_multivariate,
+    plot_trajs_univariate,
+    sample_index_pairs,
+    stack_and_extract_metadata,
 )
 
 # list of augmentation classes to apply
@@ -22,9 +22,17 @@ AUG_CLS_DICT = {
 }
 # kwargs associated with each augmentation class
 AUG_CLS_KWARGS = {
-    "RandomConvexCombinationTransform": {"num_combinations": 10, "alpha": 0.6, "random_seed": 0},
+    "RandomConvexCombinationTransform": {
+        "num_combinations": 10,
+        "alpha": 0.6,
+        "random_seed": 0,
+    },
     "RandomAffineTransform": {"out_dim": 6, "scale": 5e-1, "random_seed": 0},
-    "RandomProjectedSkewTransform": {"embedding_dim": 6, "scale": 5e-1, "random_seed": 0},
+    "RandomProjectedSkewTransform": {
+        "embedding_dim": 6,
+        "scale": 5e-1,
+        "random_seed": 0,
+    },
 }
 # augmentations module, for dynamic imports
 AUG_MODULE = importlib.import_module("dystformer.augmentations")
@@ -48,29 +56,27 @@ def apply_augmentations_system(dysts_names: List[str]) -> None:
             augmentation_fn = partial(augmentation_cls, **kwargs)
             # accumulate coords in sample dimension, while applying augmentation to each coords
             dyst_coords_samples = accumulate_dyst_samples(
-                dyst_name, 
-                gts_datasets_dict,
-                augmentation_fn
+                dyst_name, gts_datasets_dict, augmentation_fn
             )
 
             # Plot the univariate timeseries after augmentation
             plot_trajs_univariate(
-                dyst_coords_samples, 
-                selected_dim = 1,
-                save_dir = "tests/figs", 
-                plot_name = f"{dyst_name}_univariate_{augmentation_cls_name}"
+                dyst_coords_samples,
+                selected_dim=1,
+                save_dir="tests/figs",
+                plot_name=f"{dyst_name}_univariate_{augmentation_cls_name}",
             )
 
             plot_trajs_multivariate(
-                dyst_coords_samples, 
-                save_dir = "tests/figs", 
-                plot_name = f"{dyst_name}_{augmentation_cls_name}"
+                dyst_coords_samples,
+                save_dir="tests/figs",
+                plot_name=f"{dyst_name}_{augmentation_cls_name}",
             )
 
 
 def apply_augmentations_ensemble(
-        gts_datasets_dict: Dict[str, List[Dataset]],
-        num_pairs_dysts: int = 1,
+    gts_datasets_dict: Dict[str, List[Dataset]],
+    num_pairs_dysts: int = 1,
 ) -> None:
     """
     Apply augmentations on the ensemble scale, given dict that maps dyst_name to list of all associated datasets
@@ -88,20 +94,22 @@ def apply_augmentations_ensemble(
 
         # build augmentation partial function
         augmentation_fn = partial(augmentation_cls, **kwargs)
-        
+
         # for every pair of dysts
         for i, j in sample_index_pairs(len(dysts_names), num_pairs=num_pairs_dysts):
             # TODO: wrap this in a helper function
             dyst1, dyst2 = dysts_names[i], dysts_names[j]
             print(f"Applying ensemble-scale augmentation to {dyst1} and {dyst2}")
-            num_samples = min(len(gts_datasets_dict[dyst1]), len(gts_datasets_dict[dyst2]))
-            
+            num_samples = min(
+                len(gts_datasets_dict[dyst1]), len(gts_datasets_dict[dyst2])
+            )
+
             dyst_pair_coords_samples = []
             for sample_idx in range(num_samples):
                 print(f"Augmenting sample index {sample_idx}")
                 gts_dataset = augmentation_fn(
-                    gts_datasets_dict[dyst1][sample_idx], 
-                    gts_datasets_dict[dyst2][sample_idx]
+                    gts_datasets_dict[dyst1][sample_idx],
+                    gts_datasets_dict[dyst2][sample_idx],
                 )
 
                 dyst_pair_coords, _ = stack_and_extract_metadata(gts_dataset)
@@ -113,20 +121,23 @@ def apply_augmentations_ensemble(
 
             # Plot the univariate timeseries after ensemble-scale augmentation
             plot_trajs_univariate(
-                dyst_pair_coords_samples, 
-                selected_dim = 1,
-                plot_name=f"{'_'.join([dyst1, dyst2])}_univariate_{augmentation_cls_name}"
+                dyst_pair_coords_samples,
+                selected_dim=1,
+                plot_name=f"{'_'.join([dyst1, dyst2])}_univariate_{augmentation_cls_name}",
             )
             plot_trajs_multivariate(
-                dyst_pair_coords_samples, 
-                save_dir = "tests/figs", 
-                plot_name = f"{'_'.join([dyst1, dyst2])}_{augmentation_cls_name}"
+                dyst_pair_coords_samples,
+                save_dir="tests/figs",
+                plot_name=f"{'_'.join([dyst1, dyst2])}_{augmentation_cls_name}",
             )
+
 
 if __name__ == "__main__":
     # NOTE: augmentations so far are only on univariate trajectories
     parser = argparse.ArgumentParser()
-    parser.add_argument("dysts_names", help="Names of the dynamical systems", nargs="+", type=str)
+    parser.add_argument(
+        "dysts_names", help="Names of the dynamical systems", nargs="+", type=str
+    )
     args = parser.parse_args()
 
     dysts_names = args.dysts_names
@@ -135,6 +146,8 @@ if __name__ == "__main__":
     apply_augmentations_system(dysts_names)
 
     print("Applying ensemble-scale transformations")
-    gts_datasets_dict = get_dysts_datasets_dict(dysts_names) # repeated computation, but for simplicity
+    gts_datasets_dict = get_dysts_datasets_dict(
+        dysts_names
+    )  # repeated computation, but for simplicity
     print("Avaialble data files for ensemble-scale transform: ", gts_datasets_dict)
     apply_augmentations_ensemble(gts_datasets_dict, num_pairs_dysts=1)

@@ -1,16 +1,14 @@
-import numpy as np
-
 import argparse
-
-from gluonts.dataset.common import FileDataset
 from pathlib import Path
 
-from dystformer.utils import (
-    stack_and_extract_metadata,
-    get_dyst_filepaths, 
-    plot_trajs_multivariate
-)
+import numpy as np
+from gluonts.dataset.common import FileDataset
 
+from dystformer.utils import (
+    get_dyst_filepaths,
+    plot_trajs_multivariate,
+    stack_and_extract_metadata,
+)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -24,7 +22,9 @@ if __name__ == "__main__":
     dyst_coords_samples = []
     for filepath in filepaths:
         # create dataset by reading directly from filepath into FileDataset
-        gts_dataset = FileDataset(path=Path(filepath), freq="h", one_dim_target=True) # TODO: consider other frequencies?
+        gts_dataset = FileDataset(
+            path=Path(filepath), freq="h", one_dim_target=True
+        )  # TODO: consider other frequencies?
 
         # extract the coordinates
         dyst_coords, metadata = stack_and_extract_metadata(gts_dataset)
@@ -38,4 +38,6 @@ if __name__ == "__main__":
     print(dyst_coords_samples.shape)
 
     # plot the trajectories
-    plot_trajs_multivariate(dyst_coords_samples, save_dir="tests/figs", plot_name=args.dyst_name)
+    plot_trajs_multivariate(
+        dyst_coords_samples, save_dir="tests/figs", plot_name=args.dyst_name
+    )

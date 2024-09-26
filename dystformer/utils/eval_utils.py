@@ -83,7 +83,6 @@ def generate_sample_forecasts(
     batch_size: int,
     num_samples: int,
     limit_prediction_length: bool = True,
-    save_to_npy: bool = False,
     save_path: Optional[str] = None,
     **predict_kwargs,
 ) -> Iterable[Forecast]:
@@ -105,14 +104,11 @@ def generate_sample_forecasts(
         )
     forecast_samples = np.concatenate(forecast_samples)
     print("Forecast Samples shape: ", forecast_samples.shape)
-    if save_to_npy and save_path is not None:
+    if save_path is not None:
         print(f"Saving forecast samples to {save_path}")
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         np.save(save_path, forecast_samples)
 
-    # TODO: wrap previous so we can return and work with forecast_samples np array
-    # and in evaluate.py pool them together to plot or save to arrow files
-    # Convert forecast samples into gluonts SampleForecast objects
     sample_forecasts = []
     for item, ts in zip(forecast_samples, test_data_input):
         forecast_start_date = ts["start"] + len(ts["target"])

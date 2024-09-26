@@ -2,23 +2,23 @@
 # SPDX-License-Identifier: Apache-2.0
 import itertools
 from functools import partial
-from typing import List, Iterator, Optional, Iterable
+from typing import Iterator, List, Optional
 
 import numpy as np
 import torch
-from torch.utils.data import IterableDataset, get_worker_info
-
 from gluonts.itertools import Cyclic, Map
 from gluonts.transform import (
+    ExpectedNumInstanceSampler,
     FilterTransformation,
+    InstanceSplitter,
+    LeavesMissingValues,
+    MissingValueImputation,
     TestSplitSampler,
     ValidationSplitSampler,
-    InstanceSplitter,
-    ExpectedNumInstanceSampler,
-    MissingValueImputation,
-    LeavesMissingValues,
 )
-from dystformer.utils import ChronosTokenizerType
+from torch.utils.data import IterableDataset, get_worker_info
+
+from dystformer.chronos.tokenizer import ChronosTokenizer
 
 
 class PseudoShuffledIterableDataset(IterableDataset):
@@ -104,7 +104,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         self,
         datasets: list,
         probabilities: List[float],
-        tokenizer: ChronosTokenizerType,
+        tokenizer: ChronosTokenizer,
         context_length: int = 512,
         prediction_length: int = 64,
         drop_prob: float = 0.2,
@@ -112,7 +112,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         model_type: str = "seq2seq",
         imputation_method: Optional[MissingValueImputation] = None,
         mode: str = "train",
-        np_dtype: np.dtype = np.float32,
+        np_dtype: np.dtype = np.float32,  # type: ignore
     ) -> None:
         super().__init__()
 
@@ -214,13 +214,19 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             assert input_ids.shape[-1] == entry["past_is_pad"].shape[0]
 
             # Find the index where padding starts
+
             pad_start_idx = np.searchsorted(1 - entry["past_is_pad"], 1)
-            padded_input_ids, obs_input_ids = torch.tensor_split(
-                input_ids, [pad_start_idx], dim=-1
-            )
-            padded_attention_mask, obs_attention_mask = torch.tensor_split(
-                attention_mask, [pad_start_idx], dim=-1
-            )
+            # padded_input_ids, obs_input_ids = torch.tensor_split(
+            #     input_ids_tensor, [pad_start_idx], dim=-1
+            # )
+            # padded_attention_mask, obs_attention_mask = torch.tensor_split(
+            #     attention_mask, [pad_start_idx], dim=-1
+            # )
+            input_ids_tensor = torch.tensor(input_ids)
+            padded_input_ids = input_ids_tensor[:pad_start_idx]
+            obs_input_ids = input_ids_tensor[pad_start_idx:]
+            padded_attention_mask = attention_mask[:, :pad_start_idx]
+            obs_attention_mask = attention_mask[:, pad_start_idx:]
 
             # Move padding to the right
             input_ids = torch.cat(
@@ -229,7 +235,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
                     labels,
                     padded_input_ids,
                 ],
-                axis=-1,
+                dim=-1,  # Changed 'axis' to 'dim'
             )
             attention_mask = torch.cat(
                 [
@@ -237,7 +243,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
                     labels_mask,
                     padded_attention_mask,
                 ],
-                axis=-1,
+                dim=-1,  # Changed 'axis' to 'dim'
             )
 
             # labels for causal models are same as the input_ids.
