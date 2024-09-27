@@ -2,6 +2,11 @@
 tests/playground.py
 tests/another_playground.py
 
+# language config files
+.mypy_cache/
+.mypy.ini
+pyrightconfig.json
+
 # data directory and files
 data/
 *.arrow
