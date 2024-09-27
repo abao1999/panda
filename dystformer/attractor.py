@@ -22,6 +22,10 @@ BURN_TIME = 200
 
 
 class EnsembleCallbackHandler:
+    """
+    Class to handle callbacks for checking if generated trajectories are valid attractors.
+    """
+
     def __init__(self, verbose: int = 1):
         self.callbacks = []
         self.verbose = verbose
@@ -29,9 +33,15 @@ class EnsembleCallbackHandler:
         self.valid_attractor_ensemble = {}
 
     def add_callback(self, callback):
+        """
+        Add a callback to the list of callbacks.
+        """
         self.callbacks.append(callback)
 
     def check_status_all(self):
+        """
+        Check if all callbacks passed.
+        """
         if len(self.failed_checks) > 0:
             print(f"FAILED CHECKS: {self.failed_checks}")
             return False
@@ -39,6 +49,9 @@ class EnsembleCallbackHandler:
         return True
 
     def check_status_dyst(self, dyst_name: str):
+        """
+        Check if all callbacks passed for a given system.
+        """
         if len(self.failed_checks[dyst_name]) > 0:
             print(f"FAILED CHECKS for {dyst_name}: {self.failed_checks[dyst_name]}")
             return False
@@ -51,6 +64,9 @@ class EnsembleCallbackHandler:
         save_dir="tests/figs",
         plot_univariate: bool = False,
     ) -> None:
+        """
+        Plot the phase space of the attractor for all systems in the ensemble.
+        """
         for dyst_name, all_traj in ensemble.items():
             plot_trajs_multivariate(
                 all_traj, save_dir=save_dir, plot_name=dyst_name, plot_2d_slice=False
@@ -89,6 +105,9 @@ class EnsembleCallbackHandler:
         dyst_name: Optional[str] = None,
         sample_idx: Optional[int] = None,
     ) -> bool:
+        """
+        Execute a single callback for a given trajectory sample of a system.
+        """
         # make callback verbose if verbose >= 2
         if self.verbose >= 2:
             callback = functools.partial(callback, verbose=True)
@@ -114,6 +133,9 @@ class EnsembleCallbackHandler:
     def execute_callbacks(
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
     ):
+        """
+        Execute all callbacks for all trajectory samples in the ensemble. Save the valid trajectories to the valid_attractor_ensemble dictionary.
+        """
         # assert first_sample_idx >= 0, "First sample index must be a non-negative integer."
         for dyst_name, all_traj in ensemble.items():
             # for each trajectory sample for a given system dyst_name
