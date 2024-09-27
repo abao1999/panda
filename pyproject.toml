@@ -21,7 +21,6 @@ dependencies = ["hydra-core", "numpy", "torch", "transformers", "accelerate", "d
 tests = ["matplotlib", "statsmodels"]
 numba = ["numba"]
 chronos = ["datasets"] # huggingface datasets
-<<<<<<< HEAD
 rocm = [    
     "torch @ https://download.pytorch.org/whl/rocm5.7/torch-2.2.2%2Brocm5.7-cp312-cp312-linux_x86_64.whl",
 ]
@@ -29,10 +28,3 @@ rocm = [
 # Package data
 [tool.setuptools]
 packages = ["dystformer", "dystformer.utils", "dystformer.chronos"] 
-=======
-rocm = ["torch==2.2.2"] # pip install dystformer[rocm] --extra-index-url https://download.pytorch.org/whl/rocm5.7
-
-# Package data
-[tool.setuptools]
-packages = ["dystformer", "dystformer.utils", "dystformer.chronos", "dystformer.patchtst"] # dystformer.chronos.utils?
->>>>>>> e3c9a330987039c284c51f2a853cc1c3e54a2992
