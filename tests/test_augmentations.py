@@ -1,11 +1,11 @@
 import argparse
-import importlib
 from functools import partial
 from typing import Dict, List
 
 import numpy as np
 from gluonts.dataset import Dataset
 
+from dystformer import augmentations
 from dystformer.utils import (
     accumulate_dyst_samples,
     get_dysts_datasets_dict,
@@ -34,8 +34,6 @@ AUG_CLS_KWARGS = {
         "random_seed": 0,
     },
 }
-# augmentations module, for dynamic imports
-AUG_MODULE = importlib.import_module("dystformer.augmentations")
 
 
 def apply_augmentations_system(dysts_names: List[str]) -> None:
@@ -47,7 +45,7 @@ def apply_augmentations_system(dysts_names: List[str]) -> None:
         # for every system-scale augmentation
         for augmentation_cls_name in AUG_CLS_DICT["system_scale"]:
             print(augmentation_cls_name)
-            augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
+            augmentation_cls = getattr(augmentations, augmentation_cls_name)
             print("Applying system-scale augmentation: ", augmentation_cls.__name__)
             kwargs = AUG_CLS_KWARGS[augmentation_cls_name]
             print("kwargs: ", kwargs)
@@ -87,7 +85,7 @@ def apply_augmentations_ensemble(
     # for every ensemble-scale augmentation
     for augmentation_cls_name in AUG_CLS_DICT["ensemble_scale"]:
         print(augmentation_cls_name)
-        augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
+        augmentation_cls = getattr(augmentations, augmentation_cls_name)
         print("Applying ensemble-scale augmentation: ", augmentation_cls.__name__)
         kwargs = AUG_CLS_KWARGS[augmentation_cls_name]
         print("kwargs: ", kwargs)
