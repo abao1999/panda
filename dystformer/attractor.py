@@ -82,7 +82,7 @@ class EnsembleCallbackHandler:
             print(f"Executing callback: {callback_name}")
         return callback_name
 
-    def execute_callback(
+    def _execute_single_callback(
         self,
         callback: Callable,
         traj_sample: np.ndarray,
@@ -133,7 +133,7 @@ class EnsembleCallbackHandler:
 
                 # Execute all callbacks
                 for callback in self.callbacks:
-                    status = self.execute_callback(
+                    status = self._execute_single_callback(
                         callback,
                         traj_sample,
                         dyst_name=dyst_name,
