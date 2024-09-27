@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 
 import numpy as np
@@ -10,34 +11,50 @@ from dystformer.utils import (
     stack_and_extract_metadata,
 )
 
+WORK_DIR = os.getenv("WORK", "")
+DATA_DIR = os.path.join(WORK_DIR, "data")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
+    parser.add_argument("--split", help="Split of the data", type=str, default=None)
     args = parser.parse_args()
 
-    filepaths = get_dyst_filepaths(args.dyst_name)
-    print(f"{args.dyst_name} filepaths: ", filepaths)
+    if args.dyst_name == "all":
+        # get all folder names in DATA_DIR/{split}
+        if args.split is None:
+            raise ValueError("Split must be provided for 'all' argument")
+        split_dir = os.path.join(DATA_DIR, args.split)
+        dyst_names_lst = [
+            folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
+        ]
+    else:
+        dyst_names_lst = [args.dyst_name]
 
-    # NOTE: this is same as accumulate_dyst_samples in tests/test_augmentations.py
-    dyst_coords_samples = []
-    for filepath in filepaths:
-        # create dataset by reading directly from filepath into FileDataset
-        gts_dataset = FileDataset(
-            path=Path(filepath), freq="h", one_dim_target=True
-        )  # TODO: consider other frequencies?
+    for dyst_name in dyst_names_lst:
+        filepaths = get_dyst_filepaths(dyst_name, split=args.split)
+        print(f"{dyst_name} filepaths: ", filepaths)
 
-        # extract the coordinates
-        dyst_coords, metadata = stack_and_extract_metadata(gts_dataset)
-        dyst_coords_samples.append(dyst_coords)
+        # NOTE: this is same as accumulate_dyst_samples in tests/test_augmentations.py
+        dyst_coords_samples = []
+        for filepath in filepaths:
+            # create dataset by reading directly from filepath into FileDataset
+            gts_dataset = FileDataset(
+                path=Path(filepath), freq="h", one_dim_target=True
+            )  # TODO: consider other frequencies?
 
-        print("data shape: ", dyst_coords.shape)
-        print("metadata: ", metadata)
-        print("IC: ", dyst_coords[:, 0])
+            # extract the coordinates
+            dyst_coords, metadata = stack_and_extract_metadata(gts_dataset)
+            dyst_coords_samples.append(dyst_coords)
 
-    dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
-    print(dyst_coords_samples.shape)
+            print("data shape: ", dyst_coords.shape)
+            print("metadata: ", metadata)
+            print("IC: ", dyst_coords[:, 0])
 
-    # plot the trajectories
-    plot_trajs_multivariate(
-        dyst_coords_samples, save_dir="tests/figs", plot_name=args.dyst_name
-    )
+        dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
+        print(dyst_coords_samples.shape)
+
+        # plot the trajectories
+        plot_trajs_multivariate(
+            dyst_coords_samples, save_dir="tests/figs", plot_name=dyst_name
+        )

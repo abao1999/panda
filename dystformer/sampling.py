@@ -127,7 +127,7 @@ class OnAttractorInitCondSampler(BaseSampler):
                 self.reference_traj_length,
                 events=self.events,
                 verbose=self.verbose,
-            )[self.reference_traj_transient :]
+            )
 
             if (
                 reference_traj is None
@@ -135,7 +135,7 @@ class OnAttractorInitCondSampler(BaseSampler):
                 raise ValueError(
                     f"Failed to integrate the system {system.name} with ic {system.ic} and params {system.params}"
                 )
-
+            reference_traj = reference_traj[self.reference_traj_transient :]
             self.trajectory_cache[system.name] = reference_traj
 
         trajectory = self.trajectory_cache[system.name]

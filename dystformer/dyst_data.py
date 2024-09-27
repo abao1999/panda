@@ -40,8 +40,9 @@ class DystData:
         num_ics: int = 3,
         num_param_perturbations: int = 1,
         events: Optional[List] = None,
-        verbose: bool = True,
         apply_attractor_tests: bool = False,
+        verbose: bool = True,
+        debug_mode: bool = False,
     ):
         self.rseed = rseed
         self.num_periods = num_periods
@@ -50,6 +51,7 @@ class DystData:
         self.num_param_perturbations = num_param_perturbations
         self.events = events
         self.verbose = verbose
+        self.debug_mode = debug_mode
 
         if events is None:
             warnings.warn(
@@ -64,7 +66,7 @@ class DystData:
         # NOTE: we are fixing the sampler settings here for now to ensure consistency across runs
         # Sampler to generate a perturbed parameter set for each dynamical system
         self.param_sampler = GaussianParamSampler(
-            random_seed=rseed, scale=1e-1, verbose=verbose
+            random_seed=rseed, scale=1, verbose=verbose
         )
         # Sampler to generate initial conditions for each dynamical system
         self.ic_sampler = OnAttractorInitCondSampler(
@@ -90,7 +92,7 @@ class DystData:
         """
         print("Setting up callbacks to test attractor properties")
         # callbacks to check attractor validity when creating traj ensemble of dysts
-        ens_callback_handler = EnsembleCallbackHandler(verbose=0)  # verbose=2
+        ens_callback_handler = EnsembleCallbackHandler(verbose=1)  # verbose=2
         ens_callback_handler.add_callback(check_no_nans)
         ens_callback_handler.add_callback(check_boundedness)
         ens_callback_handler.add_callback(check_not_fixed_point)
@@ -164,40 +166,38 @@ class DystData:
                 if len(excluded_keys) > 0:
                     warnings.warn(f"INTEGRATION FAILED FOR: {excluded_keys}")
 
-                # Check if attractor properties are valid
-                if self.attractor_validator is not None:
-                    self.attractor_validator.execute_callbacks(
-                        ensemble, first_sample_idx=sample_idx
+                successful_dyst_names = list(ensemble.keys())
+                print(f"Successful Dysts: {successful_dyst_names}")
+                if len(successful_dyst_names) == 0:
+                    print(
+                        "No successful trajectories. Skipping, will not save to arrow files."
                     )
-                    all_valid_attractors = self.attractor_validator.check_status_all()
-                    # TODO: filter out invalid attractors and add valid attractors to ensemble list
-                    if not all_valid_attractors:
-                        print(
-                            "Attractors are not valid. Skipping, will not save to arrow files."
-                        )
-                        continue
+                    continue
 
                 ensemble_list.append(ensemble)
-
                 # save samples of trajectory ensembles to arrow files and clear list of ensembles
                 # Essentially a batched version of process_trajs
-                if ((sample_idx + 1) % samples_save_interval) == 0 or (
-                    sample_idx + 1
-                ) == num_total_samples:
-                    self._save_ensembles(
-                        ensemble_list, save_dyst_dir, verbose=self.verbose
-                    )
-                    ensemble_list = []
+                is_last_sample = (sample_idx + 1) == num_total_samples
+                if ((sample_idx + 1) % samples_save_interval) == 0 or is_last_sample:
+                    # process the ensemble list
+                    ensemble = self._process_ensemble_list(ensemble_list, sample_idx)
+                    if not self.debug_mode:
+                        # save the processed ensemble to arrow files
+                        self._save_ensemble(
+                            ensemble, save_dyst_dir, verbose=self.verbose
+                        )
+                ensemble_list = []
 
-    def _save_ensembles(
+    def _process_ensemble_list(
         self,
         ensemble_list: List[Dict[str, np.ndarray]],
-        data_dir: str,
-        verbose: bool = True,
-    ):
-        print(
-            f"Saving {len(ensemble_list)} sampled trajectories to arrow files within {data_dir}"
-        )
+        sample_idx: int,
+    ) -> Dict[str, np.ndarray]:
+        """
+        Process the ensemble list by checking for valid attractors and filtering out invalid ones.
+        Also, transposes and stacks trajectories to get shape (num_samples, num_dims, num_timesteps).
+        """
+        print(f"Processing {len(ensemble_list)} ensembles")
         # transpose and stack to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
         ensemble_keys = set().union(*[d.keys() for d in ensemble_list])
         ensemble = {
@@ -207,5 +207,28 @@ class DystData:
             for key in ensemble_keys
         }
 
+        print(f"Checking if attractor properties are valid for {len(ensemble)} systems")
+        # Check if attractor properties are valid
+        if self.attractor_validator is not None:
+            self.attractor_validator.execute_callbacks(
+                ensemble, first_sample_idx=sample_idx
+            )
+            # all_valid_attractors = self.attractor_validator.check_status_all()
+
+            # Filter out invalid attractors and add valid attractors to ensemble list
+            ensemble = self.attractor_validator.valid_attractor_ensemble
+            print(f"Found {len(ensemble)} valid attractors")
+
+        return ensemble
+
+    def _save_ensemble(
+        self,
+        ensemble: Dict[str, np.ndarray],
+        data_dir: str,
+        verbose: bool = True,
+    ):
+        print(
+            f"Saving all valid sampled trajectories from {len(ensemble)} systems to arrow files within {data_dir}"
+        )
         os.makedirs(data_dir, exist_ok=True)
         process_trajs(data_dir, ensemble, verbose=verbose)
