@@ -2,9 +2,7 @@
 Training/fine-tuning script, adapted from chronos-forecasting
 """
 
-import importlib
 import logging
-import os
 from functools import partial
 from pathlib import Path
 
@@ -12,14 +10,13 @@ import hydra
 import torch
 import transformers
 import wandb
-
-# from transformers.integrations import WandbCallback
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
+import dystformer.augmentations as augmentations
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.tokenizer import ChronosConfig
 from dystformer.utils import (
@@ -33,14 +30,6 @@ from dystformer.utils import (
     save_training_info,
 )
 
-os.environ["WANDB_PROJECT"] = (
-    "dystformer"  # name of W&B project, right now hard-coded even though also in cfg
-)
-# os.environ["WANDB_LOG_MODEL"] = "checkpoint"  # log all model checkpoints to W&B automatically
-
-# augmentations module, for dynamic imports based on augmentations specified in config
-AUG_MODULE = importlib.import_module("dystformer.augmentations")
-
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
@@ -52,7 +41,6 @@ def main(cfg):
             config=dict(cfg),
             sync_tensorboard=False,  # auto-upload tensorboard metrics
             group=cfg.wandb.group_name,
-            tags=[],
             resume=cfg.wandb.resume,
         )
 
@@ -131,7 +119,7 @@ def main(cfg):
     # system-scale augmentations
     log_on_main("Applying system-scale augmentations", logger)
     for augmentation_cls_name in cfg.augmentations.system:
-        augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
+        augmentation_cls = getattr(augmentations, augmentation_cls_name)
         log_on_main(
             f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
         )
@@ -144,7 +132,7 @@ def main(cfg):
     # ensemble-scale augmentations
     log_on_main("Applying ensemble-scale augmentations", logger)
     for augmentation_cls_name in cfg.augmentations.ensemble:
-        augmentation_cls = getattr(AUG_MODULE, augmentation_cls_name)
+        augmentation_cls = getattr(augmentations, augmentation_cls_name)
         log_on_main(
             f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
         )
