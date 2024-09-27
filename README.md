@@ -14,6 +14,11 @@ To setup, run:
 $ pip install -e .
 ```
 
+If training on AMD GPUs, install with the ROCm extras:
+```
+$ pip install -e .[rocm] --extra-index-url https://download.pytorch.org/whl/rocm5.7
+```
+
 ## Generating Dyst Dataset
 We structure our Arrow files as multivariate trajectories saved per sample instance, with default `1024` numerical integration timesteps. Each sample instance is a specific parameter perturbation and initial condition. For example, each Arrow file `[SAMPLE_IDX]_T-1024.arrow` within `[DATA_DIR]/train/Lorenz` corresponds to a single sample instance of the Lorenz system, and contains trajectories for all coordinates (dimensions) i.e. a numpy array of shape (3, 1024) for the Lorenz system.  
 
