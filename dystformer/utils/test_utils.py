@@ -15,22 +15,28 @@ from dystformer.utils import stack_and_extract_metadata
 WORK_DIR = os.getenv("WORK", "")
 
 
-def get_dyst_filepaths(dyst_name: str) -> List[Path]:
+def get_dyst_filepaths(dyst_name: str, split: Optional[str] = None) -> List[Path]:
     """
     [dyst_name].arrow could either be in data/train or data/test
     Check if [dyst_name].arrow is in either data/train or data/test
     """
-    possible_train_dir = os.path.join(WORK_DIR, "data/train", dyst_name)
-    possible_test_dir = os.path.join(WORK_DIR, "data/test", dyst_name)
+    if split is None:
+        possible_train_dir = os.path.join(WORK_DIR, "data/train", dyst_name)
+        possible_test_dir = os.path.join(WORK_DIR, "data/test", dyst_name)
 
-    if os.path.exists(possible_train_dir):
-        dyst_dir = possible_train_dir
-    elif os.path.exists(possible_test_dir):
-        dyst_dir = possible_test_dir
+        if os.path.exists(possible_train_dir):
+            dyst_dir = possible_train_dir
+        elif os.path.exists(possible_test_dir):
+            dyst_dir = possible_test_dir
+        else:
+            raise Exception(
+                f"Directory {dyst_name} does not exist in data/train or data/test."
+            )
+
     else:
-        raise Exception(
-            f"Directory {dyst_name} does not exist in data/train or data/test."
-        )
+        dyst_dir = os.path.join(WORK_DIR, f"data/{split}", dyst_name)
+        if not os.path.exists(dyst_dir):
+            raise Exception(f"Directory {dyst_name} does not exist in data/{split}.")
 
     print(f"Found dyst directory: {dyst_dir}")
     filepaths = sorted(

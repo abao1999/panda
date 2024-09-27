@@ -6,7 +6,7 @@ import functools
 import os
 import warnings
 from collections import defaultdict
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -26,6 +26,7 @@ class EnsembleCallbackHandler:
         self.callbacks = []
         self.verbose = verbose
         self.failed_checks = defaultdict(list)
+        self.valid_attractor_ensemble = {}
 
     def add_callback(self, callback):
         self.callbacks.append(callback)
@@ -64,13 +65,63 @@ class EnsembleCallbackHandler:
                         plot_name=f"{dyst_name}_univariate_dim{dim_idx}",
                     )
 
+    def _get_callback_name(self, callback: Callable) -> str:
+        """
+        Get the name of the callback test function
+        """
+        if isinstance(callback, functools.partial):
+            # case when the test is a functools.partial
+            callback_name = callback.func.__name__  # Access the wrapped function's name
+        elif callable(callback):
+            callback_name = callback.__name__  # Directly access the function's name
+        else:
+            raise ValueError(
+                "Invalid callback type. Must be a function or functools.partial."
+            )
+        if self.verbose >= 1:
+            print(f"Executing callback: {callback_name}")
+        return callback_name
+
+    def execute_callback(
+        self,
+        callback: Callable,
+        traj_sample: np.ndarray,
+        dyst_name: Optional[str] = None,
+        sample_idx: Optional[int] = None,
+    ) -> bool:
+        # make callback verbose if verbose >= 2
+        if self.verbose >= 2:
+            callback = functools.partial(callback, verbose=True)
+
+        # Execute the callback test
+        status = callback(traj_sample)
+
+        # book keeping
+        if not status:
+            callback_name = self._get_callback_name(callback)
+            if self.verbose >= 1:
+                if dyst_name is not None and sample_idx is not None:
+                    print(
+                        f"FAILED {callback_name} for {dyst_name} at sample {sample_idx}"
+                    )
+                else:
+                    print(f"FAILED {callback_name}")
+            # add to failed checks
+            self.failed_checks[dyst_name].append((sample_idx, callback_name))
+
+        return status
+
     def execute_callbacks(
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
     ):
         # assert first_sample_idx >= 0, "First sample index must be a non-negative integer."
         for dyst_name, all_traj in ensemble.items():
+            # for each trajectory sample for a given system dyst_name
+            valid_attractor_trajs = []
             for i, traj_sample in enumerate(all_traj):
                 sample_idx = first_sample_idx + i
+
+                # Make sure traj_sample is a 2D array
                 if (
                     traj_sample.ndim == 1
                 ):  # handles case where just a single trajectory sample was stored in dict
@@ -79,31 +130,33 @@ class EnsembleCallbackHandler:
                     print(
                         f"Checking trajectory sample {sample_idx} for {dyst_name}, with shape {traj_sample.shape}"
                     )
-                for callback in self.callbacks:
-                    if self.verbose >= 2:
-                        callback = functools.partial(callback, verbose=True)
-                    # Check if the object is a functools.partial
-                    if isinstance(callback, functools.partial):
-                        callback_name = (
-                            callback.func.__name__
-                        )  # Access the wrapped function's name
-                    elif callable(callback):
-                        callback_name = (
-                            callback.__name__
-                        )  # Directly access the function's name
-                    else:
-                        raise ValueError(
-                            "Invalid callback type. Must be a function or functools.partial."
-                        )
 
-                    if self.verbose >= 1:
-                        print(f"Executing callback: {callback_name}")
-                    status = callback(traj_sample)
+                # Execute all callbacks
+                for callback in self.callbacks:
+                    status = self.execute_callback(
+                        callback,
+                        traj_sample,
+                        dyst_name=dyst_name,
+                        sample_idx=sample_idx,
+                    )
+                    # break upon first failure
                     if not status:
-                        self.failed_checks[dyst_name].append(
-                            (sample_idx, callback_name)
-                        )
                         break
+
+                if not status:
+                    continue
+                # if all checks pass, add to valid attractor ensemble
+                valid_attractor_trajs.append(traj_sample)
+
+            if len(valid_attractor_trajs) == 0:
+                print(f"No valid attractor trajectories found for {dyst_name}")
+                continue
+
+            print(
+                f"Found {len(valid_attractor_trajs)} valid attractor trajectories for {dyst_name}"
+            )
+            # Add the valid attractor trajectories for this dyst_name system to the ensemble
+            self.valid_attractor_ensemble[dyst_name] = np.array(valid_attractor_trajs)
 
 
 def check_no_nans(traj: np.ndarray, verbose: bool = False) -> bool:
@@ -423,7 +476,8 @@ def check_stationarity(
                 window_prop=0.5,
                 verbose=verbose,
             )
-            print(f"status for dim {d}: {status}")
+            # if verbose:
+            #     print(f"status for dim {d}: {status}")
             if not status:
                 return False
         return True
