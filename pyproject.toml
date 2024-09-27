@@ -14,11 +14,24 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-dependencies = ["hydra-core", "numpy", "torch", "transformers", "accelerate", "dysts", "gluonts", "scipy", "scikit-learn", "tqdm", "wandb", "hydra-core"]
+dependencies = [
+    "hydra-core", 
+    "numpy", 
+    "torch", 
+    "transformers", 
+    "accelerate", 
+    "dysts", 
+    "gluonts[arrow]", 
+    "scipy", 
+    "scikit-learn", 
+    "tqdm", 
+    "wandb", 
+    "matplotlib",
+    "statsmodels",
+]
 
 # Optional dependencies
 [project.optional-dependencies]
-tests = ["matplotlib", "statsmodels"]
 numba = ["numba"]
 chronos = ["datasets"] # huggingface datasets
 
