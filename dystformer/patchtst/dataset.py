@@ -87,8 +87,8 @@ class PatchTSTDataset(IterableDataset, ShuffleMixin):
             "train": ExpectedNumInstanceSampler(
                 num_instances=1.0,
                 min_instances=1,
-                min_past=self.min_past,
-                min_future=self.prediction_length,
+                min_past=self.context_length,  # never sample behind the timeseries
+                min_future=self.prediction_length,  # never sample too far ahead
             ),
             "test": TestSplitSampler(),
             "validation": ValidationSplitSampler(min_future=self.prediction_length),

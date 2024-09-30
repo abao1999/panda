@@ -3,6 +3,7 @@ from functools import partial
 from pathlib import Path
 
 import hydra
+import numpy as np
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 
@@ -56,7 +57,8 @@ def test_patchtst_dataset(cfg):
     for data in dataset:
         print(data)
         print(data["future_values"].shape, data["past_values"].shape)
-        break
+        print(any(np.isnan(data["past_values"])))
+        print(any(np.isnan(data["future_values"])))
 
     # chronos_config = ChronosConfig(
     #     tokenizer_class=cfg.tokenizer_class,
