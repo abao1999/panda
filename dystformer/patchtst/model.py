@@ -14,6 +14,7 @@ class PatchTSTModel(nn.Module):
     ):
         super().__init__()
 
+        self.mode = mode
         assert mode in [
             "pretrain",
             "predict",
@@ -24,7 +25,7 @@ class PatchTSTModel(nn.Module):
 
         if mode == "pretrain":
             self.model = PatchTSTForPretraining(self.config)
-        else:  # mode == "predict"
+        elif mode == "predict":
             self.model = PatchTSTForPrediction(self.config)
 
         if pretrain_path is not None:
@@ -40,4 +41,15 @@ class PatchTSTModel(nn.Module):
         """
         Exposed for flexibility in channel mixing strategies.
         """
+        # pretraining mode does require forecasts as it does MLM
+        # TODO: move this logic to the dataset to optimize forward pass cost
+        if self.mode == "pretrain":
+            kwargs.pop("future_values")
+        print("Kwargs shapes:")
+        for key, value in kwargs.items():
+            try:
+                print(f"{key}: {value.shape}")
+            except AttributeError:
+                print(f"{key}: {value}")
+
         return self.model(*args, **kwargs)

@@ -1,8 +1,5 @@
-"""
-Training/fine-tuning script, adapted from chronos-forecasting
-"""
-
 import logging
+import os
 from functools import partial
 from pathlib import Path
 
@@ -12,26 +9,22 @@ import transformers
 import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
-from gluonts.transform import LastValueImputation
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
-import dystformer.augmentations as augmentations
-from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.tokenizer import ChronosConfig
+from dystformer.patchtst.dataset import PatchTSTDataset
+from dystformer.patchtst.model import PatchTSTModel
 from dystformer.utils import (
     ensure_contiguous,
     get_next_path,
     has_enough_observations,
     is_main_process,
-    load_model,
     log_on_main,
-    sample_index_pairs,
     save_training_info,
 )
 
 
-@hydra.main(config_path="../config", config_name="config", version_base=None)
+@hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
     # set up wandb project and logging if enabled
     if cfg.wandb.log:
@@ -63,27 +56,13 @@ def main(cfg):
     log_on_main(f"Using SEED: {cfg.train.seed}", logger)
     transformers.set_seed(seed=cfg.train.seed)
 
-    # get tokenizer kwargs dict
-    tokenizer_kwargs = dict(cfg.tokenizer_kwargs)
-
-    # check model type is valid
-    assert cfg.model_type in ["seq2seq", "causal"]
-
-    # Get list of files to use for training
-    # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
-    train_data_paths = []
-    if cfg.train_data_dir is not None:
-        train_data_paths = list(
-            filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))
-        )
-
-    # add any additional arrow data filepaths specified to our training set
-    if cfg.extra_train_data_paths is not None:
-        extra_paths = [
-            Path(file) for file in cfg.extra_train_data_paths if Path(file).is_file()
-        ]
-        assert isinstance(extra_paths, list), "extra paths must be a list literal"
-        train_data_paths.extend(extra_paths)
+    # Get the path for "$WORK/data/train/Lorenz"
+    train_data_dir = os.path.expandvars("$WORK/data/train/Lorenz")
+    train_data_paths = [os.path.join(train_data_dir, "3_T-1024.arrow")]
+    # if cfg.train_data_dir is not None:
+    #     train_data_paths = list(
+    #         filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))
+    #     )
 
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
@@ -96,7 +75,6 @@ def main(cfg):
         logger,
     )
 
-    # load datasets and apply loading filters on the fly
     train_datasets = [
         Filter(
             partial(
@@ -109,41 +87,34 @@ def main(cfg):
         for data_path in train_data_paths
     ]
 
-    # apply augmentations on the fly
-    # TODO: understand the fine-tuning details more. Do we want to aggregate the samples together, on the fly?
-    # TODO: also will probably need to re-weight probabilities to take into account the type of augmentation
-    #    - say original data is (3,1024) and augmented is (10,1024). Then each entry in the augmented would have less probability under current scheme
-    #    - essentially, the training datasets is jagged arrays of different lengths
-    #    - (also, if we're doing a skew transform, we might want to weight the original data more heavily?)
+    # # system-scale augmentations
+    # log_on_main("Applying system-scale augmentations", logger)
+    # for augmentation_cls_name in cfg.augmentations.system:
+    #     augmentation_cls = getattr(augmentations, augmentation_cls_name)
+    #     log_on_main(
+    #         f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
+    #     )
+    #     kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
+    #     augmentation_fn = partial(augmentation_cls, **kwargs)
+    #     train_datasets.extend(
+    #         [augmentation_fn(ds) for ds in train_datasets[: len(train_data_paths)]]
+    #     )
 
-    # system-scale augmentations
-    log_on_main("Applying system-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.system:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [augmentation_fn(ds) for ds in train_datasets[: len(train_data_paths)]]
-        )
-
-    # ensemble-scale augmentations
-    log_on_main("Applying ensemble-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.ensemble:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [
-                augmentation_fn(train_datasets[i], train_datasets[j])
-                for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
-            ]
-        )
+    # # ensemble-scale augmentations
+    # log_on_main("Applying ensemble-scale augmentations", logger)
+    # for augmentation_cls_name in cfg.augmentations.ensemble:
+    #     augmentation_cls = getattr(augmentations, augmentation_cls_name)
+    #     log_on_main(
+    #         f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
+    #     )
+    #     kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
+    #     augmentation_fn = partial(augmentation_cls, **kwargs)
+    #     train_datasets.extend(
+    #         [
+    #             augmentation_fn(train_datasets[i], train_datasets[j])
+    #             for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
+    #         ]
+    #     )
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -171,47 +142,15 @@ def main(cfg):
 
     log_on_main("Initializing model", logger)
 
-    model = load_model(
-        model_id=cfg.model_id,
-        model_type=cfg.model_type,
-        vocab_size=cfg.n_tokens,
-        random_init=cfg.random_init,
-        tie_embeddings=cfg.tie_embeddings,
-        pad_token_id=cfg.pad_token_id,
-        eos_token_id=cfg.eos_token_id,
-    )
-
-    chronos_config = ChronosConfig(
-        tokenizer_class=cfg.tokenizer_class,
-        tokenizer_kwargs=tokenizer_kwargs,
-        n_tokens=cfg.n_tokens,
-        n_special_tokens=cfg.n_special_tokens,
-        pad_token_id=cfg.pad_token_id,
-        eos_token_id=cfg.eos_token_id,
-        use_eos_token=cfg.use_eos_token,
-        model_type=cfg.model_type,
-        context_length=cfg.context_length,
-        prediction_length=cfg.prediction_length,
-        num_samples=cfg.num_samples,
-        temperature=cfg.temperature,
-        top_k=cfg.top_k,
-        top_p=cfg.top_p,
-    )
-
-    # Add extra items to model config so that it's saved in the ckpt
-    model.config.chronos_config = chronos_config.__dict__
-
-    shuffled_train_dataset = ChronosDataset(
+    shuffled_train_dataset = PatchTSTDataset(
         datasets=train_datasets,
         probabilities=probability,
-        tokenizer=chronos_config.create_tokenizer(),
-        context_length=cfg.context_length,
-        prediction_length=cfg.prediction_length,
-        min_past=cfg.min_past,
-        model_type=cfg.model_type,
-        imputation_method=LastValueImputation() if cfg.model_type == "causal" else None,
+        context_length=512,
+        prediction_length=64,
         mode="train",
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
+
+    model = PatchTSTModel(dict(cfg.patchtst), mode="pretrain")
 
     # Define training args
     training_args = TrainingArguments(
@@ -267,7 +206,7 @@ def main(cfg):
         save_training_info(
             output_dir / "checkpoint-final",
             model_config=vars(
-                chronos_config
+                cfg.patchtst
             ),  # use dataclass asdict for more complex dataclasses
             training_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
         )

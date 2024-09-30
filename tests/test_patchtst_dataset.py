@@ -37,6 +37,11 @@ def test_patchtst_dataset(cfg):
         for data_path in train_data_paths
     ]
 
+    for dataset in train_datasets:
+        for data in dataset:
+            print(data)
+        break
+    fdsfs
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
         probability = cfg.probability
@@ -57,8 +62,14 @@ def test_patchtst_dataset(cfg):
     for data in dataset:
         print(data)
         print(data["future_values"].shape, data["past_values"].shape)
-        print(any(np.isnan(data["past_values"])))
-        print(any(np.isnan(data["future_values"])))
+        if np.isnan(data["past_values"]).any():
+            print("NaNs found in past_values:")
+            print(data["past_values"])
+            break
+        if np.isnan(data["future_values"]).any():
+            print("NaNs found in future_values:")
+            print(data["future_values"])
+            break
 
     # chronos_config = ChronosConfig(
     #     tokenizer_class=cfg.tokenizer_class,

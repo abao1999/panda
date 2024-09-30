@@ -35,7 +35,7 @@ top_k: 50
 top_p: 1.0
 
 # PatchTST parameters
-patchtst_params:
+patchtst:
   num_input_channels: 1
   context_length: 512
   distribution_output: "student_t"

@@ -7,7 +7,6 @@ import torch
 from gluonts.itertools import Cyclic, Map
 from gluonts.transform import (
     ExpectedNumInstanceSampler,
-    FilterTransformation,
     InstanceSplitter,
     LeavesMissingValues,
     MissingValueImputation,
@@ -107,11 +106,7 @@ class PatchTSTDataset(IterableDataset, ShuffleMixin):
 
     def create_training_data(self, data):
         data = Cyclic(data)
-        split_transform = self._create_instance_splitter(
-            "train"
-        ) + FilterTransformation(
-            condition=lambda entry: (~np.isnan(entry["past_target"])).sum() > 0
-        )
+        split_transform = self._create_instance_splitter("train")
         data = split_transform.apply(data, is_train=True)
         return data
 
