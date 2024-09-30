@@ -1,5 +1,6 @@
 import os
 import warnings
+from dataclasses import dataclass
 from functools import partial
 from typing import Dict, List, Optional
 
@@ -27,33 +28,25 @@ from dystformer.utils import (
 )
 
 
+@dataclass
 class DystData:
     """
     Class to generate and save trajectory ensembles for a given set of dynamical systems.
     """
 
-    def __init__(
-        self,
-        rseed: int = 999,
-        num_periods: int = 5,
-        num_points: int = 1024,
-        num_ics: int = 3,
-        num_param_perturbations: int = 1,
-        events: Optional[List] = None,
-        apply_attractor_tests: bool = False,
-        verbose: bool = True,
-        debug_mode: bool = False,
-    ):
-        self.rseed = rseed
-        self.num_periods = num_periods
-        self.num_points = num_points
-        self.num_ics = num_ics
-        self.num_param_perturbations = num_param_perturbations
-        self.events = events
-        self.verbose = verbose
-        self.debug_mode = debug_mode
+    rseed: int = 999
+    num_periods: int = 5
+    num_points: int = 1024
+    num_ics: int = 3
+    num_param_perturbations: int = 1
+    split_coords: bool = True  # by default save trajectories compatible with Chronos
+    events: Optional[List] = None
+    apply_attractor_tests: bool = False
+    verbose: bool = True
+    debug_mode: bool = False
 
-        if events is None:
+    def __post_init__(self):
+        if self.events is None:
             warnings.warn(
                 "No events provided for numerical integration. Defaulting to TimeLimitEvent with max_duration of 5 minutes \
                 and InstabilityEvent with threshold of 1e4."
@@ -66,18 +59,18 @@ class DystData:
         # NOTE: we are fixing the sampler settings here for now to ensure consistency across runs
         # Sampler to generate a perturbed parameter set for each dynamical system
         self.param_sampler = GaussianParamSampler(
-            random_seed=rseed, scale=1, verbose=verbose
+            random_seed=self.rseed, scale=1, verbose=self.verbose
         )
         # Sampler to generate initial conditions for each dynamical system
         self.ic_sampler = OnAttractorInitCondSampler(
             reference_traj_length=1024,
             reference_traj_transient=200,
             events=self.events,
-            verbose=verbose,
+            verbose=self.verbose,
         )
 
         # Callbacks to check attractor properties
-        if apply_attractor_tests:
+        if self.apply_attractor_tests:
             self.attractor_validator = self._build_attractor_validator()
         else:
             self.attractor_validator = None
@@ -139,10 +132,9 @@ class DystData:
         pp_rng_stream = np.random.default_rng(self.rseed).spawn(
             self.num_param_perturbations,
         )
-        for i in range(self.num_param_perturbations):
+        for i, param_rng in zip(range(self.num_param_perturbations), pp_rng_stream):
             # set the rng for the param sampler
-            pp_rng = pp_rng_stream[i]
-            self.param_sampler.set_rng(pp_rng)
+            self.param_sampler.set_rng(param_rng)
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j
 
@@ -155,7 +147,7 @@ class DystData:
                     use_multiprocessing=True,
                     ic_transform=self.ic_sampler if self.num_ics > 1 else None,
                     param_transform=self.param_sampler,
-                    ic_rng=pp_rng,  # self.ic_sampler.rng
+                    ic_rng=param_rng,  # self.ic_sampler.rng
                     use_tqdm=True,
                     standardize=False,
                     pts_per_period=self.num_points // self.num_periods,
@@ -175,6 +167,10 @@ class DystData:
                     continue
 
                 ensemble_list.append(ensemble)
+
+                # NOTE: when samples_save_interval = 1, this is very slow as we are performing IO every sample
+                # consider deprecating this option, could even multithread this process
+
                 # save samples of trajectory ensembles to arrow files and clear list of ensembles
                 # Essentially a batched version of process_trajs
                 is_last_sample = (sample_idx + 1) == num_total_samples
@@ -183,9 +179,17 @@ class DystData:
                     ensemble = self._process_ensemble_list(ensemble_list, sample_idx)
                     if not self.debug_mode:
                         # save the processed ensemble to arrow files
-                        self._save_ensemble(
-                            ensemble, save_dyst_dir, verbose=self.verbose
+                        print(
+                            f"Saving all valid sampled trajectories from {len(ensemble)} systems to arrow files within {save_dyst_dir}"
                         )
+                        os.makedirs(save_dyst_dir, exist_ok=True)
+                        process_trajs(
+                            save_dyst_dir,
+                            ensemble,
+                            split_coords=self.split_coords,
+                            verbose=self.verbose,
+                        )
+
                 ensemble_list = []
 
     def _process_ensemble_list(
@@ -199,12 +203,11 @@ class DystData:
         """
         print(f"Processing {len(ensemble_list)} ensembles")
         # transpose and stack to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
-        ensemble_keys = set().union(*[d.keys() for d in ensemble_list])
         ensemble = {
             key: np.stack(
                 [d[key] for d in ensemble_list if key in d], axis=0
             ).transpose(0, 2, 1)
-            for key in ensemble_keys
+            for key in [key for d in ensemble_list for key in d.keys()]
         }
 
         print(f"Checking if attractor properties are valid for {len(ensemble)} systems")
@@ -220,15 +223,3 @@ class DystData:
             print(f"Found {len(ensemble)} valid attractors")
 
         return ensemble
-
-    def _save_ensemble(
-        self,
-        ensemble: Dict[str, np.ndarray],
-        data_dir: str,
-        verbose: bool = True,
-    ):
-        print(
-            f"Saving all valid sampled trajectories from {len(ensemble)} systems to arrow files within {data_dir}"
-        )
-        os.makedirs(data_dir, exist_ok=True)
-        process_trajs(data_dir, ensemble, verbose=verbose)

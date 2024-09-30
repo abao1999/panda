@@ -19,7 +19,7 @@ def test_patchtst_dataset(cfg):
 
     # Get the path for "$WORK/data/train/Lorenz"
     train_data_dir = os.path.expandvars("$WORK/data/train/Lorenz")
-    train_data_paths = [os.path.join(train_data_dir, "3_T-1024.arrow")]
+    train_data_paths = [os.path.join(train_data_dir, "8_T-1024.arrow")]
     # if cfg.train_data_dir is not None:
     #     train_data_paths = list(
     #         filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))

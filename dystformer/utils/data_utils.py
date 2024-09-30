@@ -10,15 +10,18 @@ from gluonts.dataset import Dataset
 from gluonts.dataset.arrow import ArrowWriter
 
 
-def split_systems(prop: float, seed: int, excluded_systems: Optional[List[str]] = None):
+def split_systems(
+    prop: float,
+    seed: int,
+    sys_class: Optional[str] = "continuous",
+    excluded_systems: List[str] = [],
+):
     """
     Split the list of attractors into training and testing sets.
     if exclude_systems is provided, the systems in the list will be excluded
     """
     np.random.seed(seed)
-    systems = get_attractor_list()
-    if excluded_systems is not None:
-        systems = [sys for sys in systems if sys not in excluded_systems]
+    systems = get_attractor_list(sys_class=sys_class, exclude=excluded_systems)
     np.random.default_rng(seed).shuffle(systems)
     split = int(len(systems) * prop)
     return systems[:split], systems[split:]
@@ -28,6 +31,7 @@ def convert_to_arrow(
     path: Union[str, Path],
     time_series: Union[List[np.ndarray], np.ndarray],
     compression: Literal["lz4", "zstd"] = "lz4",
+    split_coords: bool = False,
 ):
     """
     Store a given set of series into Arrow format at the specified path.
@@ -42,7 +46,10 @@ def convert_to_arrow(
     # GluonTS requires this datetime format for reading arrow file
     start = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    dataset = [{"start": start, "target": ts} for ts in time_series]
+    if split_coords:
+        dataset = [{"start": start, "target": ts} for ts in time_series]
+    else:
+        dataset = [{"start": start, "target": time_series}]
 
     ArrowWriter(compression=compression).write_to_file(
         dataset,
@@ -50,10 +57,10 @@ def convert_to_arrow(
     )
 
 
-# TODO: make this a class, DystsArrowWriter
 def process_trajs(
     base_dir: str,
     timeseries: Dict[str, np.ndarray],
+    split_coords: bool = False,
     verbose: bool = False,
 ) -> None:
     """Saves each trajectory in timeseries ensemble to a separate directory"""
@@ -76,12 +83,8 @@ def process_trajs(
         for i, trajectory in enumerate(trajectories):
             curr_sample_idx = max_existing_sample_idx + i + 1
 
-            if (
-                trajectory.ndim == 1
-            ):  # handles case where just a single trajectory sample was generated and saved to timeseries dict
-                trajectory = np.expand_dims(
-                    trajectory, axis=0
-                )  # trajectories.reshape(1, -1)
+            if trajectory.ndim == 1:
+                trajectory = np.expand_dims(trajectory, axis=0)
             if verbose:
                 print(
                     f"Saving {sys_name} trajectory {curr_sample_idx} with shape {trajectory.shape}"
@@ -90,7 +93,8 @@ def process_trajs(
             path = os.path.join(
                 system_folder, f"{curr_sample_idx}_T-{trajectory.shape[-1]}.arrow"
             )
-            convert_to_arrow(path, trajectory)
+
+            convert_to_arrow(path, trajectory, split_coords=split_coords)
 
 
 ## Utils for augmentations
