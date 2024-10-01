@@ -191,7 +191,7 @@ def has_enough_observations(
         attribute.
     """
     if (
-        len(entry["target"]) >= min_length
+        entry["target"].shape[-1] >= min_length
         and np.isnan(entry["target"]).mean() <= max_missing_prop
     ):
         return True

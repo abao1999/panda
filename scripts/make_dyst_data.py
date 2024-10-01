@@ -44,11 +44,14 @@ def main():
 
     # make the train split
     dyst_data_generator.save_dyst_ensemble(
-        dysts_names=train,
+        # dysts_names=train,
+        dysts_names=["Lorenz"],
         split="train",
         samples_save_interval=1,
         save_dir=DATA_DIR,
     )
+
+    fdsfsdfsdfsdf
 
     # make the test split
     dyst_data_generator.save_dyst_ensemble(

@@ -1,3 +1,11 @@
+"""
+Dataset for PatchTST
+
+TODO:
+    - The augmentations can be rewritten to handle 2D arrays for this dataset
+      since patchTST does not adhere to the chronos dataset structure
+"""
+
 import itertools
 from functools import partial
 from typing import Iterator, List, Optional
@@ -73,7 +81,6 @@ class PatchTSTDataset(IterableDataset, ShuffleMixin):
     def preprocess_entry(self, entry: dict, mode: str) -> dict:
         entry = {f: entry[f] for f in ["start", "target"]}
         entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
-        assert entry["target"].ndim == 1, f"got {entry['target'].ndim=}, expected 1"
 
         entry["target"] = self.imputation_method(entry["target"])
 

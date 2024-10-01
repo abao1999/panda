@@ -1,9 +1,7 @@
 """Augmentations for dynamical systems
 
-TODO: maybe add augmentations at different scales
-- coordinate scale (should prob go into preprocess_entry)
-- system scale
-- ensemble of systems scale
+TODO
+    - consider adding option to cache the iteratables via Cached wrapper https://ts.gluon.ai/stable/api/gluonts/gluonts.itertools.html
 """
 
 from dataclasses import dataclass
