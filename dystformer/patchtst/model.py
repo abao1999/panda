@@ -45,11 +45,5 @@ class PatchTSTModel(nn.Module):
         # TODO: move this logic to the dataset to optimize forward pass cost
         if self.mode == "pretrain":
             kwargs.pop("future_values")
-        print("Kwargs shapes:")
-        for key, value in kwargs.items():
-            try:
-                print(f"{key}: {value.shape}")
-            except AttributeError:
-                print(f"{key}: {value}")
 
         return self.model(*args, **kwargs)
