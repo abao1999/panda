@@ -5,6 +5,7 @@ from functools import partial
 from typing import Dict, List, Optional
 
 import numpy as np
+from dysts.sampling import BaseSampler
 from dysts.systems import make_trajectory_ensemble
 from tqdm import trange
 
@@ -17,7 +18,6 @@ from dystformer.attractor import (
     check_stationarity,
 )
 from dystformer.sampling import (
-    BaseSampler,
     InstabilityEvent,
     TimeLimitEvent,
 )
@@ -46,7 +46,7 @@ class DystData:
     events: Optional[List] = None
     apply_attractor_tests: bool = False
     verbose: bool = True
-    output_status_json_path: Optional[str] = None
+    output_json_path: Optional[str] = None
     debug_mode: bool = False
 
     def __post_init__(self):
@@ -83,7 +83,7 @@ class DystData:
         print("Setting up callbacks to test attractor properties")
         # callbacks to check attractor validity when creating traj ensemble of dysts
         ens_callback_handler = EnsembleCallbackHandler(
-            verbose=1, save_json_path=self.output_status_json_path
+            verbose=1, save_json_path=self.output_json_path
         )  # verbose=2
         ens_callback_handler.add_callback(check_no_nans)
         ens_callback_handler.add_callback(check_boundedness)
@@ -223,3 +223,8 @@ class DystData:
             print(f"Found {len(ensemble)} valid attractors")
 
         return ensemble
+
+
+# TODO: lots to do here. Make the attractor validator execution return the filtered ensemble
+# but also make it store a counter dict of all valid attractors and all failed checks
+# so at the end of the dyst data level, we can print out a summary and dump into json

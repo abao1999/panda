@@ -8,7 +8,7 @@ import os
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -29,16 +29,21 @@ class EnsembleCallbackHandler:
     Class to handle callbacks for checking if generated trajectories are valid attractors.
     """
 
-    callbacks: List[Callable] = []
     verbose: int = 1
     save_json_path: Optional[str] = None
-    failed_checks: Dict[str, List[Tuple[int, str]]] = defaultdict(list)
-    valid_attractor_ensemble: Dict[str, np.ndarray] = {}
-    # valid_params_ensemble: Dict[str, np.ndarray] = {}
 
     def __post_init__(self):
         if self.save_json_path is not None:
             os.makedirs(os.path.dirname(self.save_json_path), exist_ok=True)
+            # delete the file if it already exists
+            if os.path.exists(self.save_json_path):
+                os.remove(self.save_json_path)
+        # List[Callable]
+        self.callbacks = []
+        # Dict[str, List[Tuple[int, str]]]
+        self.failed_checks = defaultdict(list)
+        # Dict[str, np.ndarray]
+        self.valid_attractor_ensemble = {}
 
     def add_callback(self, callback):
         """
@@ -136,7 +141,6 @@ class EnsembleCallbackHandler:
         for dyst_name, all_traj in ensemble.items():
             # for each trajectory sample for a given system dyst_name
             valid_attractor_trajs = []
-            # valid_params = []
             for i, traj_sample in enumerate(all_traj):
                 sample_idx = first_sample_idx + i
 
@@ -167,7 +171,6 @@ class EnsembleCallbackHandler:
 
                 # if all checks pass, add to valid attractor ensemble
                 valid_attractor_trajs.append(traj_sample)
-                # valid_params.append(params_sampled)
 
             if len(valid_attractor_trajs) == 0:
                 print(f"No valid attractor trajectories found for {dyst_name}")
@@ -178,17 +181,16 @@ class EnsembleCallbackHandler:
             )
             # Add the valid attractor trajectories for this dyst_name system to the ensemble
             self.valid_attractor_ensemble[dyst_name] = np.array(valid_attractor_trajs)
-            # self.valid_params_ensemble[dyst_name] = np.array(valid_params)
 
         # dump a summary of valid attractor counts and failed checks to a json file
         if self.save_json_path is not None:
             valid_attractor_counts = {
-                dyst_name: len(trajs)
+                dyst_name: (trajs.shape[0], trajs.shape[1])
                 for dyst_name, trajs in self.valid_attractor_ensemble.items()
             }
-            with open(self.save_json_path, "w") as f:
-                json.dump(valid_attractor_counts, f)
-                json.dump(self.failed_checks, f)
+            with open(self.save_json_path, "a") as f:
+                json.dump([valid_attractor_counts, self.failed_checks], f)
+                f.write("\n")
 
 
 ### Start of attractor checks (callbacks) ###

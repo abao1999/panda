@@ -7,11 +7,11 @@ TODO:
 
 import os
 
-from dysts.sampling import GaussianParamSampler, OnAttractorInitCondSampler
-
 from dystformer.dyst_data import DystData
 from dystformer.sampling import (
+    GaussianParamSampler,
     InstabilityEvent,
+    OnAttractorInitCondSampler,
     TimeLimitEvent,
 )
 from dystformer.utils import (

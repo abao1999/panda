@@ -1,4 +1,5 @@
 import time
+import warnings
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
@@ -126,15 +127,14 @@ class OnAttractorInitCondSampler(BaseSampler):
             reference_traj = system.make_trajectory(
                 self.reference_traj_length,
                 events=self.events,
-                verbose=self.verbose,
             )
 
-            if (
-                reference_traj is None
-            ):  # if integrate fails, resulting in an incomplete trajectory
-                raise ValueError(
+            # if integrate fails, resulting in an incomplete trajectory
+            if reference_traj is None:
+                warnings.warn(
                     f"Failed to integrate the system {system.name} with ic {system.ic} and params {system.params}"
                 )
+                return ic
             reference_traj = reference_traj[self.reference_traj_transient :]
             self.trajectory_cache[system.name] = reference_traj
 
