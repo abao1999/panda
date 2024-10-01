@@ -5,13 +5,13 @@ defaults:
   - evaluation
   - dataset
   - figures
-  - override hydra/job_logging: disabled 
+  # - override hydra/job_logging: disabled 
   - override hydra/hydra_logging: disabled 
 
 hydra:
   output_subdir: null
   run:
-    dir: .
+    dir: logs
 
 # string identifier for wandb runs and generic I/O
 run_name: null

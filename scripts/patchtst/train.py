@@ -6,12 +6,12 @@ from pathlib import Path
 import hydra
 import torch
 import transformers
-import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
+import wandb
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTSTModel
 from dystformer.utils import (
@@ -22,6 +22,8 @@ from dystformer.utils import (
     log_on_main,
     save_training_info,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -152,6 +154,9 @@ def main(cfg):
 
     model = PatchTSTModel(dict(cfg.patchtst), mode="pretrain")
 
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    log_on_main(f"Total trainable parameters: {trainable_params:,}", logger)
+
     # Define training args
     training_args = TrainingArguments(
         run_name=cfg.run_name,
@@ -213,7 +218,4 @@ def main(cfg):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.INFO)
     main()
