@@ -187,7 +187,7 @@ class DystData:
                             verbose=self.verbose,
                         )
 
-                ensemble_list = []
+                    ensemble_list = []
 
     def _process_ensemble_list(
         self,
