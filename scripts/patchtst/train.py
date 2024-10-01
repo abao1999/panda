@@ -6,12 +6,12 @@ from pathlib import Path
 import hydra
 import torch
 import transformers
+import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
-import wandb
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTSTModel
 from dystformer.utils import (
@@ -81,7 +81,7 @@ def main(cfg):
         Filter(
             partial(
                 has_enough_observations,
-                min_length=cfg.min_past + cfg.prediction_length,
+                min_length=cfg.min_past + cfg.patchtst.prediction_length,
                 max_missing_prop=cfg.max_missing_prop,
             ),
             FileDataset(path=Path(data_path), freq="h", one_dim_target=False),  # type: ignore
@@ -147,8 +147,8 @@ def main(cfg):
     shuffled_train_dataset = PatchTSTDataset(
         datasets=train_datasets,
         probabilities=probability,
-        context_length=512,
-        prediction_length=64,
+        context_length=cfg.patchtst.context_length,
+        prediction_length=cfg.patchtst.prediction_length,
         mode="train",
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 

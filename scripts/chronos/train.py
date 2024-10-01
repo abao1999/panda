@@ -64,10 +64,10 @@ def main(cfg):
     transformers.set_seed(seed=cfg.train.seed)
 
     # get tokenizer kwargs dict
-    tokenizer_kwargs = dict(cfg.tokenizer_kwargs)
+    tokenizer_kwargs = dict(cfg.chronos.tokenizer_kwargs)
 
     # check model type is valid
-    assert cfg.model_type in ["seq2seq", "causal"]
+    assert cfg.chronos.model_type in ["seq2seq", "causal"]
 
     # Get list of files to use for training
     # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
@@ -101,7 +101,7 @@ def main(cfg):
         Filter(
             partial(
                 has_enough_observations,
-                min_length=cfg.min_past + cfg.prediction_length,
+                min_length=cfg.min_past + cfg.chronos.prediction_length,
                 max_missing_prop=cfg.max_missing_prop,
             ),
             FileDataset(path=Path(data_path), freq="h"),  # type: ignore
@@ -172,30 +172,30 @@ def main(cfg):
     log_on_main("Initializing model", logger)
 
     model = load_model(
-        model_id=cfg.model_id,
-        model_type=cfg.model_type,
-        vocab_size=cfg.n_tokens,
-        random_init=cfg.random_init,
-        tie_embeddings=cfg.tie_embeddings,
-        pad_token_id=cfg.pad_token_id,
-        eos_token_id=cfg.eos_token_id,
+        model_id=cfg.chronos.model_id,
+        model_type=cfg.chronos.model_type,
+        vocab_size=cfg.chronos.n_tokens,
+        random_init=cfg.chronos.random_init,
+        tie_embeddings=cfg.chronos.tie_embeddings,
+        pad_token_id=cfg.chronos.pad_token_id,
+        eos_token_id=cfg.chronos.eos_token_id,
     )
 
     chronos_config = ChronosConfig(
-        tokenizer_class=cfg.tokenizer_class,
+        tokenizer_class=cfg.chronos.tokenizer_class,
         tokenizer_kwargs=tokenizer_kwargs,
-        n_tokens=cfg.n_tokens,
-        n_special_tokens=cfg.n_special_tokens,
-        pad_token_id=cfg.pad_token_id,
-        eos_token_id=cfg.eos_token_id,
-        use_eos_token=cfg.use_eos_token,
-        model_type=cfg.model_type,
-        context_length=cfg.context_length,
-        prediction_length=cfg.prediction_length,
-        num_samples=cfg.num_samples,
-        temperature=cfg.temperature,
-        top_k=cfg.top_k,
-        top_p=cfg.top_p,
+        n_tokens=cfg.chronos.n_tokens,
+        n_special_tokens=cfg.chronos.n_special_tokens,
+        pad_token_id=cfg.chronos.pad_token_id,
+        eos_token_id=cfg.chronos.eos_token_id,
+        use_eos_token=cfg.chronos.use_eos_token,
+        model_type=cfg.chronos.model_type,
+        context_length=cfg.chronos.context_length,
+        prediction_length=cfg.chronos.prediction_length,
+        num_samples=cfg.chronos.num_samples,
+        temperature=cfg.chronos.temperature,
+        top_k=cfg.chronos.top_k,
+        top_p=cfg.chronos.top_p,
     )
 
     # Add extra items to model config so that it's saved in the ckpt
@@ -205,11 +205,13 @@ def main(cfg):
         datasets=train_datasets,
         probabilities=probability,
         tokenizer=chronos_config.create_tokenizer(),
-        context_length=cfg.context_length,
-        prediction_length=cfg.prediction_length,
+        context_length=cfg.chronos.context_length,
+        prediction_length=cfg.chronos.prediction_length,
         min_past=cfg.min_past,
-        model_type=cfg.model_type,
-        imputation_method=LastValueImputation() if cfg.model_type == "causal" else None,
+        model_type=cfg.chronos.model_type,
+        imputation_method=LastValueImputation()
+        if cfg.chronos.model_type == "causal"
+        else None,
         mode="train",
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
