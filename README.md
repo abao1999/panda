@@ -79,6 +79,8 @@ The torchrun launcher provides capability for distributed data-parallel (DDP) tr
 
 We are fine-tuning [Chronos](https://github.com/amazon-science/chronos-forecasting) on trajectories from dynamical systems. Chronos is itself a variation of the [T5 architecture](https://huggingface.co/docs/transformers/en/model_doc/t5) fine-tuned on various benchmark univariate timeseries datasets. Specifically, Chronos fine-tunes an deep-narrow [efficient T5](https://huggingface.co/google/t5-efficient-large).
 
+If you run into a weird miopen error, see: https://github.com/pytorch/pytorch/issues/60477
+
 ## Evaluation
 To evalute the performance of a fine-tuned model, run `python scripts/evaluate.py` after setting the appropriate configuration in `configs/evaluation.yaml`. In particular, set `model_id` to point to the directory of your saved fine-tuned model checkpoint. The list of dynamical systems used for evaluation is also set in the configuration, but will default to using the test/train split.
 
@@ -97,6 +99,7 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 + Add support for custom tokenizer and model architecture
 
 ## TODO
++ address this rocM warning: `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory`
 + Make dysts data under parameter and ic perturbations
 + Check attractor validity for parameter perturbations
 + Check attractor validity for skew system generation
