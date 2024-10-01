@@ -7,6 +7,8 @@ TODO:
 
 import os
 
+from dysts.sampling import GaussianParamSampler, OnAttractorInitCondSampler
+
 from dystformer.dyst_data import DystData
 from dystformer.sampling import (
     InstabilityEvent,
@@ -25,11 +27,20 @@ def main():
     rseed = 999  # we are using same seed for split and ic and param samplers
 
     # generate split of dynamical systems
-    test, train = split_systems(0.3, seed=rseed, sys_class="continuous_no_delay")
+    test, train = split_systems(0.3, seed=rseed, sys_class="continuous")
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=60 * 2)  # 2 min time limit
     instability_event = InstabilityEvent(threshold=1e4)
+    events = [time_limit_event, instability_event]
+
+    param_sampler = GaussianParamSampler(random_seed=rseed, scale=0.5, verbose=True)
+    ic_sampler = OnAttractorInitCondSampler(
+        reference_traj_length=1024,
+        reference_traj_transient=200,
+        events=events,
+        verbose=True,
+    )
 
     dyst_data_generator = DystData(
         rseed=rseed,
@@ -37,21 +48,21 @@ def main():
         num_points=1024,
         num_ics=5,  # only activates ic sampler if > 1
         num_param_perturbations=1,  # only activates param sampler if > 1
-        events=[time_limit_event, instability_event],
+        param_sampler=param_sampler,
+        ic_sampler=ic_sampler,
+        events=events,
         verbose=True,
         split_coords=False,  # false for patchtst
+        apply_attractor_tests=True,
     )
 
     # make the train split
     dyst_data_generator.save_dyst_ensemble(
-        # dysts_names=train,
-        dysts_names=["Lorenz"],
+        dysts_names=train,
         split="train",
         samples_save_interval=1,
         save_dir=DATA_DIR,
     )
-
-    fdsfsdfsdfsdf
 
     # make the test split
     dyst_data_generator.save_dyst_ensemble(
