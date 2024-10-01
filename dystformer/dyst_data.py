@@ -43,6 +43,7 @@ class DystData:
     events: Optional[List] = None
     apply_attractor_tests: bool = False
     verbose: bool = True
+    output_status_json_path: Optional[str] = None
     debug_mode: bool = False
 
     def __post_init__(self):
@@ -85,7 +86,9 @@ class DystData:
         """
         print("Setting up callbacks to test attractor properties")
         # callbacks to check attractor validity when creating traj ensemble of dysts
-        ens_callback_handler = EnsembleCallbackHandler(verbose=1)  # verbose=2
+        ens_callback_handler = EnsembleCallbackHandler(
+            verbose=1, save_json_path=self.output_status_json_path
+        )  # verbose=2
         ens_callback_handler.add_callback(check_no_nans)
         ens_callback_handler.add_callback(check_boundedness)
         ens_callback_handler.add_callback(check_not_fixed_point)
