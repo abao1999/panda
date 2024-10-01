@@ -18,8 +18,11 @@ def test_patchtst_dataset(cfg):
     # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
 
     # Get the path for "$WORK/data/train/Lorenz"
-    train_data_dir = os.path.expandvars("$WORK/data/train/Lorenz")
-    train_data_paths = [os.path.join(train_data_dir, "5_T-1024.arrow")]
+    train_data_dir = os.path.expandvars("$WORK/data/train/")
+    train_data_paths = [
+        os.path.join(train_data_dir, "Lorenz/0_T-1024.arrow"),
+        os.path.join(train_data_dir, "Lorenz96/0_T-1024.arrow"),
+    ]
     # if cfg.train_data_dir is not None:
     #     train_data_paths = list(
     #         filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))
