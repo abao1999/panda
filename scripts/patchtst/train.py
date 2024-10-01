@@ -1,17 +1,18 @@
 import logging
 import os
+import random
 from functools import partial
 from pathlib import Path
 
 import hydra
 import torch
 import transformers
-import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
+import wandb
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTSTModel
 from dystformer.utils import (
@@ -59,8 +60,11 @@ def main(cfg):
     transformers.set_seed(seed=cfg.train.seed)
 
     # Get the path for "$WORK/data/train/Lorenz"
-    train_data_dir = os.path.expandvars("$WORK/data/train/Lorenz")
-    train_data_paths = [os.path.join(train_data_dir, "5_T-1024.arrow")]
+    train_data_dir = os.path.expandvars("$WORK/data/train/")
+    train_data_paths = [
+        os.path.join(train_data_dir, "Lorenz/0_T-1024.arrow"),
+        os.path.join(train_data_dir, "Lorenz96/0_T-1024.arrow"),
+    ]
     # if cfg.train_data_dir is not None:
     #     train_data_paths = list(
     #         filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))
@@ -187,13 +191,28 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    # Create Trainer instance and start training
-    # TODO: utilize custom callbacks https://huggingface.co/docs/transformers/v4.44.2/en/main_classes/callback#transformers.integrations.WandbCallback
+    def custom_collator(features):
+        # Group features by their last dimension
+        grouped_features = {}
+        for feature in features:
+            key = feature["past_values"].shape[-1]
+            if key not in grouped_features:
+                grouped_features[key] = []
+            grouped_features[key].append(feature)
+
+        sampled_dim = random.choice(list(grouped_features.keys()))
+        batch = {
+            key: torch.stack([f[key] for f in grouped_features[sampled_dim]])
+            for key in grouped_features[sampled_dim][0].keys()
+        }
+        return batch
+
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
-        callbacks=[],  # if not cfg.wandb.log else [WandbCallback()], # this duplicates our current logging. Try using custom callback instead
+        data_collator=custom_collator,  # Use the custom collator
+        callbacks=[],  # if not cfg.wandb.log else [WandbCallback()],
     )
 
     log_on_main("Training", logger)

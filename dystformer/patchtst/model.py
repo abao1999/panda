@@ -5,7 +5,11 @@ PatchTST model with the forward pass exposed
 from typing import Optional
 
 import torch.nn as nn
-from transformers import PatchTSTConfig, PatchTSTForPrediction, PatchTSTForPretraining
+
+from dystformer.patchtst.patchtst import (
+    PatchTSTConfig,
+    PatchTSTForPretraining,
+)
 
 
 class PatchTSTModel(nn.Module):
@@ -25,8 +29,6 @@ class PatchTSTModel(nn.Module):
 
         if mode == "pretrain":
             self.model = PatchTSTForPretraining(self.config)
-        elif mode == "predict":
-            self.model = PatchTSTForPrediction(self.config)
 
         if pretrain_path is not None:
             self.load_pretrained(pretrain_path)
