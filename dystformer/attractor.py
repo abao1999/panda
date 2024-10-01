@@ -3,10 +3,12 @@ Callbacks to check if generated trajectories are valid attractors
 """
 
 import functools
+import json
 import os
 import warnings
 from collections import defaultdict
-from typing import Callable, Dict, Optional
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,24 +23,31 @@ from dystformer.utils import plot_trajs_multivariate, plot_trajs_univariate
 BURN_TIME = 200
 
 
+@dataclass
 class EnsembleCallbackHandler:
     """
     Class to handle callbacks for checking if generated trajectories are valid attractors.
     """
 
-    def __init__(self, verbose: int = 1):
-        self.callbacks = []
-        self.verbose = verbose
-        self.failed_checks = defaultdict(list)
-        self.valid_attractor_ensemble = {}
+    callbacks: List[Callable] = []
+    verbose: int = 1
+    save_json_path: Optional[str] = None
+    failed_checks: Dict[str, List[Tuple[int, str]]] = defaultdict(list)
+    valid_attractor_ensemble: Dict[str, np.ndarray] = {}
+    # valid_params_ensemble: Dict[str, np.ndarray] = {}
+
+    def __post_init__(self):
+        if self.save_json_path is not None:
+            os.makedirs(os.path.dirname(self.save_json_path), exist_ok=True)
 
     def add_callback(self, callback):
         """
         Add a callback to the list of callbacks.
         """
+        assert callable(callback), "Callback must be a callable function"
         self.callbacks.append(callback)
 
-    def check_status_all(self):
+    def check_status_all(self) -> bool:
         """
         Check if all callbacks passed.
         """
@@ -48,7 +57,7 @@ class EnsembleCallbackHandler:
         print("ALL CHECKS PASSED.")
         return True
 
-    def check_status_dyst(self, dyst_name: str):
+    def check_status_dyst(self, dyst_name: str) -> bool:
         """
         Check if all callbacks passed for a given system.
         """
@@ -88,12 +97,8 @@ class EnsembleCallbackHandler:
         if isinstance(callback, functools.partial):
             # case when the test is a functools.partial
             callback_name = callback.func.__name__  # Access the wrapped function's name
-        elif callable(callback):
-            callback_name = callback.__name__  # Directly access the function's name
         else:
-            raise ValueError(
-                "Invalid callback type. Must be a function or functools.partial."
-            )
+            callback_name = callback.__name__  # Directly access the function's name
         if self.verbose >= 1:
             print(f"Executing callback: {callback_name}")
         return callback_name
@@ -102,32 +107,23 @@ class EnsembleCallbackHandler:
         self,
         callback: Callable,
         traj_sample: np.ndarray,
-        dyst_name: Optional[str] = None,
-        sample_idx: Optional[int] = None,
+        dyst_name: str,
+        sample_idx: int,
     ) -> bool:
         """
         Execute a single callback for a given trajectory sample of a system.
         """
-        # make callback verbose if verbose >= 2
         if self.verbose >= 2:
             callback = functools.partial(callback, verbose=True)
-
         # Execute the callback test
         status = callback(traj_sample)
-
         # book keeping
         if not status:
             callback_name = self._get_callback_name(callback)
             if self.verbose >= 1:
-                if dyst_name is not None and sample_idx is not None:
-                    print(
-                        f"FAILED {callback_name} for {dyst_name} at sample {sample_idx}"
-                    )
-                else:
-                    print(f"FAILED {callback_name}")
+                print(f"FAILED {callback_name} for {dyst_name} at sample {sample_idx}")
             # add to failed checks
             self.failed_checks[dyst_name].append((sample_idx, callback_name))
-
         return status
 
     def execute_callbacks(
@@ -140,6 +136,7 @@ class EnsembleCallbackHandler:
         for dyst_name, all_traj in ensemble.items():
             # for each trajectory sample for a given system dyst_name
             valid_attractor_trajs = []
+            # valid_params = []
             for i, traj_sample in enumerate(all_traj):
                 sample_idx = first_sample_idx + i
 
@@ -167,8 +164,10 @@ class EnsembleCallbackHandler:
 
                 if not status:
                     continue
+
                 # if all checks pass, add to valid attractor ensemble
                 valid_attractor_trajs.append(traj_sample)
+                # valid_params.append(params_sampled)
 
             if len(valid_attractor_trajs) == 0:
                 print(f"No valid attractor trajectories found for {dyst_name}")
@@ -179,8 +178,20 @@ class EnsembleCallbackHandler:
             )
             # Add the valid attractor trajectories for this dyst_name system to the ensemble
             self.valid_attractor_ensemble[dyst_name] = np.array(valid_attractor_trajs)
+            # self.valid_params_ensemble[dyst_name] = np.array(valid_params)
+
+        # dump a summary of valid attractor counts and failed checks to a json file
+        if self.save_json_path is not None:
+            valid_attractor_counts = {
+                dyst_name: len(trajs)
+                for dyst_name, trajs in self.valid_attractor_ensemble.items()
+            }
+            with open(self.save_json_path, "w") as f:
+                json.dump(valid_attractor_counts, f)
+                json.dump(self.failed_checks, f)
 
 
+### Start of attractor checks (callbacks) ###
 def check_no_nans(traj: np.ndarray, verbose: bool = False) -> bool:
     """
     Check if a multi-dimensional trajectory contains NaN values.
