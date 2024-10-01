@@ -17,9 +17,8 @@ from dystformer.attractor import (
     check_stationarity,
 )
 from dystformer.sampling import (
-    GaussianParamSampler,
+    BaseSampler,
     InstabilityEvent,
-    OnAttractorInitCondSampler,
     TimeLimitEvent,
 )
 from dystformer.utils import (
@@ -37,8 +36,12 @@ class DystData:
     rseed: int = 999
     num_periods: int = 5
     num_points: int = 1024
+
+    param_sampler: Optional[BaseSampler] = None
+    ic_sampler: Optional[BaseSampler] = None
     num_ics: int = 3
     num_param_perturbations: int = 1
+
     split_coords: bool = True  # by default save trajectories compatible with Chronos
     events: Optional[List] = None
     apply_attractor_tests: bool = False
@@ -57,18 +60,11 @@ class DystData:
             instability_event = InstabilityEvent(threshold=1e4)
             self.events = [time_limit_event, instability_event]
 
-        # NOTE: we are fixing the sampler settings here for now to ensure consistency across runs
-        # Sampler to generate a perturbed parameter set for each dynamical system
-        self.param_sampler = GaussianParamSampler(
-            random_seed=self.rseed, scale=1, verbose=self.verbose
-        )
-        # Sampler to generate initial conditions for each dynamical system
-        self.ic_sampler = OnAttractorInitCondSampler(
-            reference_traj_length=1024,
-            reference_traj_transient=200,
-            events=self.events,
-            verbose=self.verbose,
-        )
+        # ensure that we can still generate data even if no samplers are provided
+        if self.param_sampler is None:
+            self.num_param_perturbations = 1
+        if self.ic_sampler is None:
+            self.num_ics = 1
 
         # Callbacks to check attractor properties
         if self.apply_attractor_tests:
@@ -136,8 +132,9 @@ class DystData:
             self.num_param_perturbations,
         )
         for i, param_rng in zip(range(self.num_param_perturbations), pp_rng_stream):
-            # set the rng for the param sampler
-            self.param_sampler.set_rng(param_rng)
+            if self.param_sampler is not None:
+                self.param_sampler.set_rng(param_rng)
+
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j
 
