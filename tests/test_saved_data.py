@@ -1,3 +1,7 @@
+"""
+Load saved Arrow data files and plot the trajectories.
+"""
+
 import argparse
 import os
 from pathlib import Path
@@ -31,6 +35,8 @@ if __name__ == "__main__":
     else:
         dyst_names_lst = [args.dyst_name]
 
+    print(f"dyst names: {dyst_names_lst}")
+
     for dyst_name in dyst_names_lst:
         filepaths = get_dyst_filepaths(dyst_name, split=args.split)
         print(f"{dyst_name} filepaths: ", filepaths)
@@ -40,11 +46,17 @@ if __name__ == "__main__":
         for filepath in filepaths:
             # create dataset by reading directly from filepath into FileDataset
             gts_dataset = FileDataset(
-                path=Path(filepath), freq="h", one_dim_target=True
+                path=Path(filepath),
+                freq="h",
+                one_dim_target=False,  # NOTE: one_dim_target is important!
             )  # TODO: consider other frequencies?
 
             # extract the coordinates
-            dyst_coords, metadata = stack_and_extract_metadata(gts_dataset)
+            dyst_coords, metadata = stack_and_extract_metadata(
+                gts_dataset,
+                one_dim_target=False,  # NOTE: one_dim_target mportant!
+            )
+
             dyst_coords_samples.append(dyst_coords)
 
             print("data shape: ", dyst_coords.shape)

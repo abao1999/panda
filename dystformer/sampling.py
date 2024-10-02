@@ -1,4 +1,5 @@
 import time
+import warnings
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
@@ -23,6 +24,9 @@ class TimeLimitEvent:
     def __post_init__(self):
         self.start_time = time.time()
 
+    def reset(self):
+        self.start_time = time.time()
+
     def __call__(self, t, y):
         elapsed_time = time.time() - self.start_time
         if elapsed_time > self.max_duration:
@@ -44,7 +48,6 @@ class InstabilityEvent:
         if np.any(np.abs(y) > self.threshold):
             print("y: ", y)
             print("Integration stopped due to instability.")
-            self.terminal = False
             return 0  # Trigger the event
         return 1  # Continue the integration
 
@@ -126,15 +129,14 @@ class OnAttractorInitCondSampler(BaseSampler):
             reference_traj = system.make_trajectory(
                 self.reference_traj_length,
                 events=self.events,
-                verbose=self.verbose,
             )
 
-            if (
-                reference_traj is None
-            ):  # if integrate fails, resulting in an incomplete trajectory
-                raise ValueError(
+            # if integrate fails, resulting in an incomplete trajectory
+            if reference_traj is None:
+                warnings.warn(
                     f"Failed to integrate the system {system.name} with ic {system.ic} and params {system.params}"
                 )
+                return ic
             reference_traj = reference_traj[self.reference_traj_transient :]
             self.trajectory_cache[system.name] = reference_traj
 
