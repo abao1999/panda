@@ -95,6 +95,7 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 + Ensure the fine-tuned model performance doesn't degrade on the timeseries it was previously trained on
 
 ## Notes
++ does it make more sense to reestimate period - a surrogate for the timescale, or the lyapunov exponent - a well defined quantity?
 + Must decide whether we want to use MLM or causal prediction for pretraining
         - MLM is what patchtst does
         - causal prediction is what chronos does
