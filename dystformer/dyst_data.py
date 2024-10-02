@@ -140,6 +140,13 @@ class DystData:
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j
 
+                # reset events that have a reset method
+                if self.events is not None:
+                    for event in self.events:
+                        if hasattr(event, "reset"):
+                            print("Resetting event: ", event)
+                            event.reset()
+
                 print("Making ensemble for sample ", sample_idx)
                 # each ensemble is of type Dict[str, [ndarray]]
                 ensemble = make_trajectory_ensemble(
@@ -148,7 +155,9 @@ class DystData:
                     subset=dysts_names,
                     use_multiprocessing=True,
                     ic_transform=self.ic_sampler if self.num_ics > 1 else None,
-                    param_transform=self.param_sampler,
+                    param_transform=self.param_sampler
+                    if self.num_param_perturbations > 1
+                    else None,
                     ic_rng=param_rng,  # self.ic_sampler.rng
                     use_tqdm=True,
                     standardize=False,
@@ -160,6 +169,7 @@ class DystData:
                 if len(excluded_keys) > 0:
                     warnings.warn(f"INTEGRATION FAILED FOR: {excluded_keys}")
                     for dyst_name in excluded_keys:
+                        # NOTE: to get more fine-grained information about the failed event, we need to modify dysts level
                         self.failed_integrations[dyst_name].append(sample_idx)
 
                 successful_dyst_names = list(ensemble.keys())
@@ -175,8 +185,7 @@ class DystData:
                 # NOTE: when samples_save_interval = 1, this is very slow as we are performing IO every sample
                 # consider deprecating this option, could even multithread this process
 
-                # save samples of trajectory ensembles to arrow files and clear list of ensembles
-                # Essentially a batched version of process_trajs
+                # Batched version of process_trajs: save sampled ensembles to arrow files and clear list of ensembles
                 is_last_sample = (sample_idx + 1) == num_total_samples
                 if ((sample_idx + 1) % samples_save_interval) == 0 or is_last_sample:
                     # process the ensemble list

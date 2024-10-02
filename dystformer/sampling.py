@@ -24,6 +24,9 @@ class TimeLimitEvent:
     def __post_init__(self):
         self.start_time = time.time()
 
+    def reset(self):
+        self.start_time = time.time()
+
     def __call__(self, t, y):
         elapsed_time = time.time() - self.start_time
         if elapsed_time > self.max_duration:

@@ -1,34 +1,120 @@
 {
     "valid_dyst_counts": {
-        "Lorenz": 1,
-        "SprottD": 1,
-        "Aizawa": 1
+        "Lorenz": 4,
+        "SprottO": 4,
+        "Rucklidge": 4,
+        "NoseHoover": 4,
+        "WindmiReduced": 4,
+        "HyperXu": 4,
+        "ThomasLabyrinth": 4,
+        "SprottK": 4,
+        "Dadras": 4,
+        "GlycolyticOscillation": 4,
+        "HyperQi": 3,
+        "SanUmSrisuchinwong": 4,
+        "Halvorsen": 4,
+        "ShimizuMorioka": 3,
+        "ItikBanksTumor": 2
     },
-    "failed_checks": {},
-    "failed_integrations": {
+    "failed_checks": {
         "Tsucs2": [
+            [
+                0,
+                "check_not_fixed_point"
+            ],
+            [
+                1,
+                "check_power_spectrum"
+            ],
+            [
+                2,
+                "check_power_spectrum"
+            ],
+            [
+                3,
+                "check_power_spectrum"
+            ]
+        ],
+        "ShimizuMorioka": [
+            [
+                0,
+                "check_not_fixed_point"
+            ]
+        ],
+        "BlinkingRotlet": [
+            [
+                0,
+                "check_power_spectrum"
+            ],
+            [
+                1,
+                "check_power_spectrum"
+            ],
+            [
+                2,
+                "check_power_spectrum"
+            ],
+            [
+                3,
+                "check_power_spectrum"
+            ]
+        ],
+        "Bouali": [
+            [
+                0,
+                "check_not_fixed_point"
+            ],
+            [
+                1,
+                "check_not_fixed_point"
+            ],
+            [
+                2,
+                "check_not_fixed_point"
+            ],
+            [
+                3,
+                "check_not_fixed_point"
+            ]
+        ],
+        "FluidTrampoline": [
+            [
+                0,
+                "check_power_spectrum"
+            ],
+            [
+                1,
+                "check_power_spectrum"
+            ],
+            [
+                2,
+                "check_power_spectrum"
+            ],
+            [
+                3,
+                "check_power_spectrum"
+            ]
+        ],
+        "ItikBanksTumor": [
+            [
+                0,
+                "check_not_fixed_point"
+            ],
+            [
+                1,
+                "check_not_fixed_point"
+            ]
+        ],
+        "HyperQi": [
+            [
+                1,
+                "check_power_spectrum"
+            ]
+        ]
+    },
+    "failed_integrations": {
+        "AtmosphericRegime": [
             0,
-            1,
-            2,
-            3
-        ],
-        "Blasius": [
-            0,
-            1,
-            2,
-            3
-        ],
-        "Lorenz": [
-            1,
-            2,
-            3
-        ],
-        "SprottD": [
-            1,
-            2,
-            3
-        ],
-        "Aizawa": [
             1,
             2,
             3
