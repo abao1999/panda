@@ -71,5 +71,7 @@ patchtst:
   num_targets: 1
   output_range: null
   num_parallel_samples: 100
-
+  num_mixing_heads: 4
+  d_mixing: 128
+  mixing_dropout: 0.5
 

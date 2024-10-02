@@ -102,6 +102,12 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 + look into different loss functions for the pretraining
 
 ## TODO
+
++ add flash attention support for AMD, see this warning: 
+```
+[W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
+[W sdp_utils.cpp:320] Warning: 1Torch was not compiled with memory efficient attention. (function operator())
+```
 + Check attractor validity for parameter perturbations
 + Check attractor validity for skew system generation
 + For parameter perturbations and skew system generation, need to check that the system didn't bifurcate or diverge. Could just run an ADFuller stationarity test, as well as rule out constant and extremely large values. Make sure our heuristic tests covers all the bases.

@@ -9,6 +9,7 @@ import torch.nn as nn
 from transformers import PatchTSTConfig, PatchTSTPreTrainedModel
 from transformers.models.patchtst.modeling_patchtst import (
     BaseModelOutput,
+    PatchTSTAttention,
     PatchTSTEncoderLayer,
     PatchTSTForPretrainingOutput,
     PatchTSTMasking,
@@ -168,28 +169,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         Returns:
             `PatchTSTModelOutput` or tuple of `torch.Tensor` (if `return_dict`=False or `config.return_dict`=False)
 
-        Examples:
-
-        ```python
-        >>> from huggingface_hub import hf_hub_download
-        >>> import torch
-        >>> from transformers import PatchTSTModel
-
-        >>> file = hf_hub_download(
-        ...     repo_id="hf-internal-testing/etth1-hourly-batch", filename="train-batch.pt", repo_type="dataset"
-        ... )
-        >>> batch = torch.load(file)
-
-        >>> model = PatchTSTModel.from_pretrained("namctin/patchtst_etth1_pretrain")
-
-        >>> # during training, one provides both past and future values
-        >>> outputs = model(
-        ...     past_values=batch["past_values"],
-        ...     future_values=batch["future_values"],
-        ... )
-
-        >>> last_hidden_state = outputs.last_hidden_state
-        ```"""
+        """
 
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
@@ -252,20 +232,17 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         self.model = PatchTSTModel(config=config)
         self.head = PatchTSTMaskPretrainHead(config)
         self.loss = nn.MSELoss(reduction="none")
+        self.mixing_head = PatchTSTAttention(
+            embed_dim=config.context_length,
+            num_heads=config.num_mixing_heads,
+            dropout=config.mixing_dropout,
+            is_decoder=False,
+            bias=False,
+            is_causal=False,
+        )
 
         # Initialize weights and apply final processing
         self.post_init()
-
-    def linear_self_attention(self, x_hat: torch.FloatTensor) -> torch.FloatTensor:
-        """
-        Implements quadratic linear self-attention
-
-        NOTE: this is very inefficient for large T
-        """
-        # x_hat shape: (batch_size, num_channels, T)
-        attention_scores = torch.bmm(x_hat, x_hat.transpose(1, 2))
-        attention_probs = torch.nn.functional.softmax(attention_scores, dim=-1)
-        return torch.bmm(attention_probs, x_hat)
 
     def forward(
         self,
@@ -316,10 +293,11 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         # x_hat: [bs x num_channels x num_patches x patch_length]
         x_hat = self.head(model_output.last_hidden_state)
 
-        # NOTE: this is temporary for experimentation
-        # linear self-attention based mixing for x_hat
-        x_hat = x_hat.view(*x_hat.shape[:2], -1)
-        x_hat = self.linear_self_attention(x_hat)
+        # self attention over the channels (permutation invariantly)
+        x_hat, attn_weights, past_kv = self.mixing_head(
+            x_hat.view(*x_hat.shape[:2], -1),
+            output_attentions=output_attentions,
+        )
 
         # calculate masked_loss
         loss_val = self.loss(

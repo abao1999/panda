@@ -6,10 +6,7 @@ from typing import Optional
 
 import torch.nn as nn
 
-from dystformer.patchtst.patchtst import (
-    PatchTSTConfig,
-    PatchTSTForPretraining,
-)
+from dystformer.patchtst.patchtst import PatchTSTConfig, PatchTSTForPretraining
 
 
 class PatchTSTModel(nn.Module):
@@ -32,6 +29,13 @@ class PatchTSTModel(nn.Module):
 
         if pretrain_path is not None:
             self.load_pretrained(pretrain_path)
+
+    @property
+    def device(self):
+        return self.model.device
+
+    def save_pretrained(self, save_path: str):
+        self.model.save_pretrained(save_path)
 
     def load_pretrained(self, pretrain_path: str, **kwargs):
         """

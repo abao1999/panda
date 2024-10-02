@@ -209,5 +209,3 @@ def ensure_contiguous(model):
         if not param.is_contiguous():
             print(f"Parameter {name} is not contiguous. Making it contiguous.")
             param.data = param.data.contiguous()
-        else:
-            print(f"Parameter {name} is already contiguous.")
