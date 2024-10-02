@@ -7,12 +7,12 @@ from pathlib import Path
 import hydra
 import torch
 import transformers
-import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
+import wandb
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTSTModel
 from dystformer.utils import (
@@ -75,8 +75,7 @@ def main(cfg):
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
-        f"Loading and filtering {len(train_data_paths)} datasets "
-        f"for training: {train_data_paths}",
+        f"Loading and filtering {len(train_data_paths)} datasets for training",
         logger,
     )
 
@@ -140,11 +139,6 @@ def main(cfg):
         )
         dataloader_num_workers = len(train_datasets)
 
-    log_on_main(
-        f"Mixing probabilities: {probability}",
-        logger,
-    )
-
     log_on_main("Initializing model", logger)
 
     shuffled_train_dataset = PatchTSTDataset(
@@ -184,6 +178,8 @@ def main(cfg):
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
         remove_unused_columns=cfg.train.remove_unused_columns,
+        # dispatch_batches=False,
+        # split_batches=True,
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.

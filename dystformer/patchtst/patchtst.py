@@ -98,6 +98,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
 
         encoder_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
+
         for encoder_layer in self.layers:
             if output_hidden_states:
                 encoder_states = encoder_states + (hidden_state,)  # type: ignore
