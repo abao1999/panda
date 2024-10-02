@@ -116,7 +116,7 @@ def plot_trajs_univariate(
     os.makedirs(save_dir, exist_ok=True)
     num_samples = dyst_data.shape[0]
     if num_samples_to_plot is None:
-        # limit plotting to at most 5 samples
+        # limit plotting to at most 6 samples
         num_samples_to_plot = 6 if num_samples > 6 else num_samples
     # Plot the first coordinate
     save_path = os.path.join(save_dir, f"{plot_name}.png")
@@ -137,6 +137,7 @@ def plot_trajs_multivariate(
     plot_name: str = "dyst",
     num_samples_to_plot: Optional[int] = None,
     plot_2d_slice: bool = True,
+    sample_param_interval: int = 1,
 ) -> None:
     """
     Plot multivariate timeseries from dyst_data
@@ -144,23 +145,31 @@ def plot_trajs_multivariate(
     os.makedirs(save_dir, exist_ok=True)
     num_samples = dyst_data.shape[0]
     if num_samples_to_plot is None:
-        # limit plotting to at most 5 samples
+        # limit plotting to at most 6 samples
         num_samples_to_plot = 6 if num_samples > 6 else num_samples
+
+    colors = plt.rcParams["axes.prop_cycle"]
+    colors = colors.by_key()["color"]
 
     if plot_2d_slice:
         # Plot the first two coordinates
         save_path = os.path.join(save_dir, f"{plot_name}.png")
         print("Plotting 2D trajectories and saving to ", save_path)
         plt.figure(figsize=(6, 6))
+        param_color_i = 0
         for sample_idx in range(num_samples_to_plot):
+            curr_color = colors[param_color_i]
             # plot x and y
             plt.plot(
                 dyst_data[sample_idx, 0, :],
                 dyst_data[sample_idx, 1, :],
                 alpha=0.5,
                 linewidth=1,
+                color=curr_color,
             )
             plt.scatter(*dyst_data[sample_idx, :2, 0], marker="*", s=100, alpha=0.5)
+            if (sample_idx + 1) % sample_param_interval == 0:
+                param_color_i += 1
         plt.xlabel("X")
         plt.ylabel("Y")
         plt.title(plot_name.replace("_", " "))
@@ -173,7 +182,9 @@ def plot_trajs_multivariate(
     if dyst_data.shape[1] >= 3:
         fig = plt.figure(figsize=(6, 6))
         ax = fig.add_subplot(111, projection="3d")
+        param_color_i = 0
         for sample_idx in range(num_samples_to_plot):
+            curr_color = colors[param_color_i]
             # plot x and y and z
             ax.plot(
                 dyst_data[sample_idx, 0, :],
@@ -181,8 +192,11 @@ def plot_trajs_multivariate(
                 dyst_data[sample_idx, 2, :],
                 alpha=0.5,
                 linewidth=1,
+                color=curr_color,
             )  # X,Y,Z
             ax.scatter(*dyst_data[sample_idx, :3, 0], marker="*", s=100, alpha=0.5)
+            if (sample_idx + 1) % sample_param_interval == 0:
+                param_color_i += 1
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_zlabel("Z")  # type: ignore
@@ -208,7 +222,7 @@ def plot_forecast_trajs_multivariate(
     os.makedirs(save_dir, exist_ok=True)
     num_samples = dyst_data.shape[0]
     if num_samples_to_plot is None:
-        # limit plotting to at most 5 samples
+        # limit plotting to at most 6 samples
         num_samples_to_plot = 6 if num_samples > 6 else num_samples
 
     colors = plt.rcParams["axes.prop_cycle"]
@@ -219,12 +233,13 @@ def plot_forecast_trajs_multivariate(
     print("Plotting 2D trajectories and saving to ", save_path)
     plt.figure(figsize=(6, 6))
     for sample_idx in range(num_samples_to_plot):
+        curr_color = colors[sample_idx]
         plt.scatter(
             *dyst_data[sample_idx, :2, 0],
             marker="*",
             s=25,
             alpha=1,
-            color=colors[sample_idx],
+            color=curr_color,
         )
         # plot x and y
         plt.plot(
@@ -232,14 +247,14 @@ def plot_forecast_trajs_multivariate(
             dyst_data[sample_idx, 1, :context_length],
             alpha=0.25,
             linewidth=1,
-            color=colors[sample_idx],
+            color=curr_color,
         )
         plt.scatter(
             *dyst_data[sample_idx, :2, context_length],
             marker="*",
             s=100,
             alpha=1,
-            color=colors[sample_idx],
+            color=curr_color,
         )
         # plot x and y
         plt.plot(
@@ -247,7 +262,7 @@ def plot_forecast_trajs_multivariate(
             dyst_data[sample_idx, 1, context_length:],
             alpha=0.5,
             linewidth=2,
-            color=colors[sample_idx],
+            color=curr_color,
         )
     plt.xlabel("X")
     plt.ylabel("Y")
@@ -262,12 +277,13 @@ def plot_forecast_trajs_multivariate(
         fig = plt.figure(figsize=(6, 6))
         ax = fig.add_subplot(111, projection="3d")
         for sample_idx in range(num_samples_to_plot):
+            curr_color = colors[sample_idx]
             ax.scatter(
                 *dyst_data[sample_idx, :3, 0],
                 marker="*",
                 s=25,
                 alpha=1,
-                color=colors[sample_idx],
+                color=curr_color,
             )
             # plot x and y and z
             ax.plot(
@@ -276,14 +292,14 @@ def plot_forecast_trajs_multivariate(
                 dyst_data[sample_idx, 2, :context_length],
                 alpha=0.5,
                 linewidth=1,
-                color=colors[sample_idx],
+                color=curr_color,
             )
             ax.scatter(
                 *dyst_data[sample_idx, :3, context_length],
                 marker="*",
                 s=100,
                 alpha=1,
-                color=colors[sample_idx],
+                color=curr_color,
             )
             ax.plot(
                 dyst_data[sample_idx, 0, context_length:],
@@ -291,7 +307,7 @@ def plot_forecast_trajs_multivariate(
                 dyst_data[sample_idx, 2, context_length:],
                 alpha=0.5,
                 linewidth=2,
-                color=colors[sample_idx],
+                color=curr_color,
             )
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
@@ -320,7 +336,7 @@ def plot_forecast_gt_trajs_multivariate(
     num_samples = gt_data.shape[0]
     assert num_samples == fc_data.shape[0], "Mismatch in number of samples"
     if num_samples_to_plot is None:
-        # limit plotting to at most 5 samples
+        # limit plotting to at most 6 samples
         num_samples_to_plot = 6 if num_samples > 6 else num_samples
 
     colors = plt.rcParams["axes.prop_cycle"]
@@ -331,12 +347,13 @@ def plot_forecast_gt_trajs_multivariate(
     print("Plotting 2D trajectories and saving to ", save_path)
     plt.figure(figsize=(6, 6))
     for sample_idx in range(num_samples_to_plot):
+        curr_color = colors[sample_idx]
         plt.scatter(
             *gt_data[sample_idx, :2, 0],
             marker="*",
             s=25,
             alpha=1,
-            color=colors[sample_idx],
+            color=curr_color,
         )
         # plot x and y
         plt.plot(
@@ -344,7 +361,7 @@ def plot_forecast_gt_trajs_multivariate(
             gt_data[sample_idx, 1, :],
             alpha=0.25,
             linewidth=1,
-            color=colors[sample_idx],
+            color=curr_color,
             label="Ground Truth",
         )
         plt.scatter(
@@ -352,7 +369,7 @@ def plot_forecast_gt_trajs_multivariate(
             marker="*",
             s=100,
             alpha=1,
-            color=colors[sample_idx],
+            color=curr_color,
         )
         # plot x and y
         plt.plot(
@@ -361,7 +378,7 @@ def plot_forecast_gt_trajs_multivariate(
             alpha=0.5,
             linewidth=1,
             linestyle="dashed",  # Set the linestyle to dashed
-            color=colors[sample_idx],
+            color=curr_color,
             label="Forecast",
         )
     plt.xlabel("X")
@@ -383,7 +400,7 @@ def plot_forecast_gt_trajs_multivariate(
                 marker="*",
                 s=25,
                 alpha=1,
-                color=colors[sample_idx],
+                color=curr_color,
             )
             # plot x and y and z
             ax.plot(
@@ -392,7 +409,7 @@ def plot_forecast_gt_trajs_multivariate(
                 gt_data[sample_idx, 2, :],
                 alpha=0.5,
                 linewidth=1,
-                color=colors[sample_idx],
+                color=curr_color,
                 label="Ground Truth",
             )
             ax.scatter(
@@ -400,7 +417,7 @@ def plot_forecast_gt_trajs_multivariate(
                 marker="*",
                 s=100,
                 alpha=1,
-                color=colors[sample_idx],
+                color=curr_color,
             )
             ax.plot(
                 fc_data[sample_idx, 0, context_length:],
@@ -409,7 +426,7 @@ def plot_forecast_gt_trajs_multivariate(
                 alpha=0.5,
                 linewidth=1,
                 linestyle="dashed",  # Set the linestyle to dashed
-                color=colors[sample_idx],
+                color=curr_color,
                 label="Forecast",
             )
         ax.set_xlabel("X")

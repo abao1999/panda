@@ -29,24 +29,36 @@ Currently implemented data augmentations:
 - RandomConvexCombinationTransform
 - RandomProjectedSkewTransform
 
-We provide a script [dyst_data.py](scripts/dyst_data.py) for dataset generation. By default, this randomly splits all dysts into a 0.3 test/train split. You can manually specify your desired subset. Run `python scripts/dyst_data.py`. You can test the generated data and the data augmentations using our test scripts, e.g. `python tests/test_dyst_data.py Lorenz` and `python tests/test_augmentations.py Lorenz Rossler`.
+We provide a script [make_dyst_data.py](scripts/make_dyst_data.py) for dataset generation. By default, this randomly splits all dysts into a 0.3 test/train split. You can manually specify your desired subset. Running `python scripts/make_dyst_data.py` will save trajectories for systems in the train and test splits to their respective data sub-directories. You can test the generated data and the data augmentations using our test scripts, e.g. `python tests/test_saved_data.py Lorenz` and `python tests/test_augmentations.py Lorenz Rossler`. An example workflow:
+
+```
+python tests/make_dyst_data.py
+python tests/test_saved_data.py all --split train
+python tests/test_saved_data.py all --split test
+python tests/test_augmentations.py Lorenz Rossler
+```
 
 We provide a script [skew_product.py](scripts/skew_product.py) to generate trajectories for pairs dynamical systems, where the first system (the driver) is driving the second system (the response). TODO: work in progress
 
 ### Testing Parameter and IC Perturbations
-We provide a script [test_param_perturb.py](scripts/test_param_perturb.py) to test the effect of parameter perturbations on the generated trajectories from `dysts`. An example workflow:
+We provide a script [test_attractor.py](scripts/test_attractor.py) to test parameter perturbations and check if the generated trajectories are valid attractors. An example workflow:
 
 ```
 ./scripts/clean_dataset.sh train Lorenz
-python tests/test_param_perturb.py Lorenz
-python tests/test_dysts_data.py Lorenz
+python tests/test_attractor.py Lorenz
+python tests/test_saved_data.py Lorenz
 ```
 
 This will generate a trajectory ensemble for each parameter perturbation and save the trajectories to Arrow files.
 
-
 ## Training
-Our train and eval scripts use hydra for hierarchical config, and you can log experiments to wandb. You can simply run `CUDA_VISIBLE_DEVICES=0 python scripts/train.py` to run with the default configs. To run with custom configs, 
+Our train and eval scripts use hydra for hierarchical config, and you can log experiments to wandb. You can simply run `CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py` or `CUDA_VISIBLE_DEVICES=0 python scripts/chronos/train.py` to run with the default configs. To run with custom configs, 
+
+### PatchTST Training
+TODO
+
+### Chronos Training
+We are fine-tuning [Chronos](https://github.com/amazon-science/chronos-forecasting) on trajectories from dynamical systems. Chronos is itself a variation of the [T5 architecture](https://huggingface.co/docs/transformers/en/model_doc/t5) fine-tuned on various benchmark univariate timeseries datasets. Specifically, Chronos fine-tunes an deep-narrow [efficient T5](https://huggingface.co/google/t5-efficient-large).
 
 ```
 CUDA_VISIBLE_DEVICES=0 \
@@ -75,9 +87,8 @@ torchrun --nproc-per-node=6 scripts/train.py \
         train.per_device_train_batch_size=8 \
 ```
 
+### Distributed Training
 The torchrun launcher provides capability for distributed data-parallel (DDP) training. You can also try Huggingface's [accelerate](https://huggingface.co/docs/transformers/en/accelerate) launcher. For model-parallel training, see HF's [transformers model parallelism](https://huggingface.co/docs/transformers/v4.15.0/en/parallelism) guide.
-
-We are fine-tuning [Chronos](https://github.com/amazon-science/chronos-forecasting) on trajectories from dynamical systems. Chronos is itself a variation of the [T5 architecture](https://huggingface.co/docs/transformers/en/model_doc/t5) fine-tuned on various benchmark univariate timeseries datasets. Specifically, Chronos fine-tunes an deep-narrow [efficient T5](https://huggingface.co/google/t5-efficient-large).
 
 If you run into a weird miopen error, see: https://github.com/pytorch/pytorch/issues/60477
 
@@ -95,7 +106,7 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 + Ensure the fine-tuned model performance doesn't degrade on the timeseries it was previously trained on
 
 ## Notes
-+ does it make more sense to reestimate period - a surrogate for the timescale, or the lyapunov exponent - a well defined quantity?
++ does it make more sense to reestimate period - a surrogate for the timescale, or the lyapunov exponent - a well defined quantity? What about using first UPO?
 + Must decide whether we want to use MLM or causal prediction for pretraining
         - MLM is what patchtst does
         - causal prediction is what chronos does

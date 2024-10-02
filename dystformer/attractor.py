@@ -7,7 +7,7 @@ import os
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -101,17 +101,20 @@ class EnsembleCallbackHandler:
             self.failed_checks[dyst_name].append((sample_idx, callback_name))
         return status
 
-    def get_valid_attractor_ensemble(
+    def filter_ensemble(
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
-    ) -> Dict[str, np.ndarray]:
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
         Execute all callbacks for all trajectory samples in the ensemble. Save the valid trajectories to the valid_attractor_ensemble dictionary.
         """
         valid_attractor_ensemble = {}  # Dict[str, np.ndarray]
+        # keep track of the failure too, for debugging purposes
+        failed_attractor_ensemble = {}  # Dict[str, np.ndarray]
         # assert first_sample_idx >= 0, "First sample index must be a non-negative integer."
         for dyst_name, all_traj in ensemble.items():
             # for each trajectory sample for a given system dyst_name
             valid_attractor_trajs = []
+            failed_attractor_trajs = []
             for i, traj_sample in enumerate(all_traj):
                 sample_idx = first_sample_idx + i
 
@@ -137,12 +140,19 @@ class EnsembleCallbackHandler:
                     if not status:
                         break
 
+                # if traj sample failed a check, move on to next trajectory sample for this dyst
                 if not status:
+                    # add failed trajectory sample to failed attractor ensemble
+                    failed_attractor_trajs.append(traj_sample)
                     continue
 
                 # if all checks pass, add to valid attractor ensemble
                 valid_attractor_trajs.append(traj_sample)
                 self.valid_dyst_counts[dyst_name] += 1
+
+            if len(failed_attractor_trajs) > 0:
+                # Add the failed attractor trajectories for this dyst_name system to the failed ensemble
+                failed_attractor_ensemble[dyst_name] = np.array(failed_attractor_trajs)
 
             # if no valid attractors found, skip this system
             if len(valid_attractor_trajs) == 0:
@@ -153,9 +163,10 @@ class EnsembleCallbackHandler:
                 print(
                     f"Found {len(valid_attractor_trajs)} valid attractor trajectories for {dyst_name}"
                 )
-            # Add the valid attractor trajectories for this dyst_name system to the ensemble
+            # Add the valid attractor trajectories for this dyst_name system to the valid ensemble
             valid_attractor_ensemble[dyst_name] = np.array(valid_attractor_trajs)
-        return valid_attractor_ensemble
+
+        return valid_attractor_ensemble, failed_attractor_ensemble
 
 
 ### Start of attractor checks (callbacks) ###
