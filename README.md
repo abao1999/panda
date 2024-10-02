@@ -94,7 +94,15 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 + Encoder embeddings and token-level analysis
 + Ensure the fine-tuned model performance doesn't degrade on the timeseries it was previously trained on
 
+## Notes
++ Must decide whether we want to use MLM or causal prediction for pretraining
+        - MLM is what patchtst does
+        - causal prediction is what chronos does
++ look into different loss functions for the pretraining
+
 ## TODO
++ Add support for custom tokenizer and model architecture
+
 + address this rocM warning: `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory`
 + Make dysts data under parameter and ic perturbations
 + Check attractor validity for parameter perturbations
