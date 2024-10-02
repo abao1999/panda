@@ -9,6 +9,7 @@ import torch.nn as nn
 from transformers import PatchTSTConfig, PatchTSTPreTrainedModel
 from transformers.models.patchtst.modeling_patchtst import (
     BaseModelOutput,
+    PatchTSTAttention,
     PatchTSTEncoderLayer,
     PatchTSTForPretrainingOutput,
     PatchTSTMasking,
@@ -168,28 +169,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         Returns:
             `PatchTSTModelOutput` or tuple of `torch.Tensor` (if `return_dict`=False or `config.return_dict`=False)
 
-        Examples:
-
-        ```python
-        >>> from huggingface_hub import hf_hub_download
-        >>> import torch
-        >>> from transformers import PatchTSTModel
-
-        >>> file = hf_hub_download(
-        ...     repo_id="hf-internal-testing/etth1-hourly-batch", filename="train-batch.pt", repo_type="dataset"
-        ... )
-        >>> batch = torch.load(file)
-
-        >>> model = PatchTSTModel.from_pretrained("namctin/patchtst_etth1_pretrain")
-
-        >>> # during training, one provides both past and future values
-        >>> outputs = model(
-        ...     past_values=batch["past_values"],
-        ...     future_values=batch["future_values"],
-        ... )
-
-        >>> last_hidden_state = outputs.last_hidden_state
-        ```"""
+        """
 
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
@@ -251,6 +231,15 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         config.do_mask_input = True
         self.model = PatchTSTModel(config=config)
         self.head = PatchTSTMaskPretrainHead(config)
+        self.loss = nn.MSELoss(reduction="none")
+        self.mixing_head = PatchTSTAttention(
+            embed_dim=config.context_length,
+            num_heads=config.num_mixing_heads,
+            dropout=config.mixing_dropout,
+            is_decoder=False,
+            bias=False,
+            is_causal=False,
+        )
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -283,46 +272,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             `PatchTSTForPretrainingOutput` or tuple of `torch.Tensor` (if `return_dict`=False or
             `config.return_dict`=False)
 
-        Examples:
-
-        ```python
-        >>> from huggingface_hub import hf_hub_download
-        >>> import torch
-        >>> from transformers import PatchTSTConfig, PatchTSTForPretraining
-
-        >>> file = hf_hub_download(
-        ...     repo_id="hf-internal-testing/etth1-hourly-batch", filename="train-batch.pt", repo_type="dataset"
-        ... )
-        >>> batch = torch.load(file)
-
-        >>> # Config for random mask pretraining
-        >>> config = PatchTSTConfig(
-        ...     num_input_channels=7,
-        ...     context_length=512,
-        ...     patch_length=12,
-        ...     stride=12,
-        ...     mask_type='random',
-        ...     random_mask_ratio=0.4,
-        ...     use_cls_token=True,
-        ... )
-        >>> # Config for forecast mask pretraining
-        >>> config = PatchTSTConfig(
-        ...     num_input_channels=7,
-        ...     context_length=512,
-        ...     patch_length=12,
-        ...     stride=12,
-        ...     mask_type='forecast',
-        ...     num_forecast_mask_patches=5,
-        ...     use_cls_token=True,
-        ... )
-        >>> model = PatchTSTForPretraining(config)
-
-        >>> # during training, one provides both past and future values
-        >>> outputs = model(past_values=batch["past_values"])
-
-        >>> loss = outputs.loss
-        >>> loss.backward()
-        ```"""
+        """
 
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
@@ -338,13 +288,23 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             return_dict=True,
         )
 
-        # last_hidden_state: [bs x num_channels x num_patches x patch_length] or
-        # [bs x num_channels x (num_patches+1) x patch_length] if use cls_token
+        # last_hidden_state: [bs x num_channels x num_patches x d_model] or
+        # [bs x num_channels x (num_patches+1) x d_model] if use cls_token
+        # x_hat: [bs x num_channels x num_patches x patch_length]
         x_hat = self.head(model_output.last_hidden_state)
 
+        # self attention over the channels (permutation invariantly)
+        x_hat, attn_weights, past_kv = self.mixing_head(
+            x_hat.view(*x_hat.shape[:2], -1),
+            output_attentions=output_attentions,
+        )
+
         # calculate masked_loss
-        loss = nn.MSELoss(reduction="none")
-        loss_val = loss(x_hat, model_output.patch_input)
+        loss_val = self.loss(
+            x_hat.view(model_output.patch_input.shape), model_output.patch_input
+        )
+
+        # reduce over the patch length dim first, then compute the masked loss over the tokens
         masked_loss = (loss_val.mean(dim=-1) * model_output.mask).sum() / (
             model_output.mask.sum() + 1e-10
         )

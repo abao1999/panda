@@ -94,13 +94,20 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 + Encoder embeddings and token-level analysis
 + Ensure the fine-tuned model performance doesn't degrade on the timeseries it was previously trained on
 
-## Development Goals
-+ Add support for PatchTST
-+ Add support for custom tokenizer and model architecture
+## Notes
++ does it make more sense to reestimate period - a surrogate for the timescale, or the lyapunov exponent - a well defined quantity?
++ Must decide whether we want to use MLM or causal prediction for pretraining
+        - MLM is what patchtst does
+        - causal prediction is what chronos does
++ look into different loss functions for the pretraining
 
 ## TODO
-+ address this rocM warning: `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory`
-+ Make dysts data under parameter and ic perturbations
+
++ add flash attention support for AMD, see this warning: 
+```
+[W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
+[W sdp_utils.cpp:320] Warning: 1Torch was not compiled with memory efficient attention. (function operator())
+```
 + Check attractor validity for parameter perturbations
 + Check attractor validity for skew system generation
 + For parameter perturbations and skew system generation, need to check that the system didn't bifurcate or diverge. Could just run an ADFuller stationarity test, as well as rule out constant and extremely large values. Make sure our heuristic tests covers all the bases.

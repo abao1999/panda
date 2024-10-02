@@ -7,12 +7,12 @@ from pathlib import Path
 import hydra
 import torch
 import transformers
+import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
-import wandb
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTSTModel
 from dystformer.utils import (
@@ -61,14 +61,13 @@ def main(cfg):
 
     # Get the path for "$WORK/data/train/Lorenz"
     train_data_dir = os.path.expandvars("$WORK/data/train/")
-    train_data_paths = [
-        os.path.join(train_data_dir, "Lorenz/0_T-1024.arrow"),
-        os.path.join(train_data_dir, "Lorenz96/0_T-1024.arrow"),
-    ]
-    # if cfg.train_data_dir is not None:
-    #     train_data_paths = list(
-    #         filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))
-    #     )
+    # train_data_paths = [
+    #     os.path.join(train_data_dir, "Lorenz/0_T-1024.arrow"),
+    #     os.path.join(train_data_dir, "Lorenz96/0_T-1024.arrow"),
+    # ]
+    train_data_paths = list(
+        filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
+    )
 
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
@@ -229,9 +228,7 @@ def main(cfg):
         model.save_pretrained(output_dir / "checkpoint-final")
         save_training_info(
             output_dir / "checkpoint-final",
-            model_config=vars(
-                cfg.patchtst
-            ),  # use dataclass asdict for more complex dataclasses
+            model_config=OmegaConf.to_container(cfg.patchtst, resolve=True),  # type: ignore
             training_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
         )
 
