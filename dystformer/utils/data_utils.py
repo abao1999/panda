@@ -98,10 +98,14 @@ def process_trajs(
 
 
 ## Utils for augmentations
-def stack_and_extract_metadata(dataset: Dataset) -> Tuple[np.ndarray, Tuple[Any]]:
+def stack_and_extract_metadata(
+    dataset: Dataset, one_dim_target: bool = True
+) -> Tuple[np.ndarray, Tuple[Any]]:
     """Utility for unpacking gluonts dataset into array and extracting metadata"""
     coords, metadata = zip(*[(coord["target"], coord["start"]) for coord in dataset])
     coordinates = np.stack(coords)
+    if not one_dim_target:
+        coordinates = coordinates.squeeze()
     return coordinates, metadata
 
 

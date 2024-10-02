@@ -30,13 +30,13 @@ def get_dyst_filepaths(dyst_name: str, split: Optional[str] = None) -> List[Path
             dyst_dir = possible_test_dir
         else:
             raise Exception(
-                f"Directory {dyst_name} does not exist in data/train or data/test."
+                f"Directory for {dyst_name} does not exist in data/train or data/test."
             )
 
     else:
         dyst_dir = os.path.join(WORK_DIR, f"data/{split}", dyst_name)
         if not os.path.exists(dyst_dir):
-            raise Exception(f"Directory {dyst_name} does not exist in data/{split}.")
+            raise Exception(f"Directory {dyst_dir} does not exist in data/{split}.")
 
     print(f"Found dyst directory: {dyst_dir}")
     filepaths = sorted(

@@ -1,8 +1,5 @@
 """
 Script to generate and save trajectory ensembles for a given set of dynamical systems.
-
-TODO:
-    - refactor this to be compatible with patchtst (saving full dimensional trajectories)
 """
 
 import os
@@ -70,6 +67,10 @@ def main():
         split="test",
         samples_save_interval=1,
         save_dir=DATA_DIR,
+    )
+
+    dyst_data_generator.save_summary(
+        os.path.join("output", "attractor_checks.json"),
     )
 
 

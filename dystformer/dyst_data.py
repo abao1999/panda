@@ -154,11 +154,9 @@ class DystData:
                     resample=True,
                     subset=dysts_names,
                     use_multiprocessing=True,
-                    ic_transform=self.ic_sampler if self.num_ics > 1 else None,
-                    param_transform=self.param_sampler
-                    if self.num_param_perturbations > 1
-                    else None,
-                    ic_rng=param_rng,  # self.ic_sampler.rng
+                    ic_transform=self.ic_sampler if j > 0 else None,
+                    param_transform=self.param_sampler if i > 0 else None,
+                    ic_rng=param_rng,
                     use_tqdm=True,
                     standardize=False,
                     pts_per_period=self.num_points // self.num_periods,

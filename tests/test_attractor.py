@@ -1,3 +1,7 @@
+"""
+Test the parameter perturbations and attractor validation, and save a summary to a json file.
+"""
+
 import argparse
 import os
 
@@ -46,21 +50,21 @@ if __name__ == "__main__":
         rseed=rseed,
         num_periods=5,
         num_points=1024,
-        num_ics=4,  # only activates ic sampler if > 1
-        num_param_perturbations=1,  # only activates param sampler if > 1
+        num_ics=3,
+        num_param_perturbations=2,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,
         verbose=True,
         split_coords=False,  # false for patchtst
         apply_attractor_tests=True,
-        debug_mode=True,
+        debug_mode=False,
     )
 
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=dysts_names,
         split="debug",
-        samples_save_interval=1,
+        samples_save_interval=2,
         save_dir=DATA_DIR,
     )
 
