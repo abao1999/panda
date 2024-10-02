@@ -43,15 +43,14 @@ if __name__ == "__main__":
         rseed=rseed,
         num_periods=5,
         num_points=1024,
-        num_ics=3,  # only activates ic sampler if > 1
-        num_param_perturbations=4,  # only activates param sampler if > 1
+        num_ics=2,  # only activates ic sampler if > 1
+        num_param_perturbations=2,  # only activates param sampler if > 1
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,
         verbose=True,
         split_coords=False,  # false for patchtst
         apply_attractor_tests=True,
-        output_json_path=os.path.join("tests", "attractor_checks.json"),
     )
 
     dyst_data_generator.save_dyst_ensemble(
@@ -59,4 +58,8 @@ if __name__ == "__main__":
         split="debug",
         samples_save_interval=1,
         save_dir=DATA_DIR,
+    )
+
+    dyst_data_generator.save_summary(
+        os.path.join("tests", "attractor_checks.json"),
     )

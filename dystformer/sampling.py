@@ -45,7 +45,6 @@ class InstabilityEvent:
         if np.any(np.abs(y) > self.threshold):
             print("y: ", y)
             print("Integration stopped due to instability.")
-            self.terminal = False
             return 0  # Trigger the event
         return 1  # Continue the integration
 

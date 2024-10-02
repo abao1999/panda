@@ -1,5 +1,7 @@
+import json
 import os
 import warnings
+from collections import defaultdict
 from dataclasses import dataclass
 from functools import partial
 from typing import Dict, List, Optional
@@ -46,7 +48,6 @@ class DystData:
     events: Optional[List] = None
     apply_attractor_tests: bool = False
     verbose: bool = True
-    output_json_path: Optional[str] = None
     debug_mode: bool = False
 
     def __post_init__(self):
@@ -76,15 +77,16 @@ class DystData:
                     "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
                 )
 
+        # track the failed numerical integrations
+        self.failed_integrations = defaultdict(list)
+
     def _build_attractor_validator(self) -> EnsembleCallbackHandler:
         """
         Builds a list of attractor tests to check for each trajectory ensemble.
         """
         print("Setting up callbacks to test attractor properties")
         # callbacks to check attractor validity when creating traj ensemble of dysts
-        ens_callback_handler = EnsembleCallbackHandler(
-            verbose=1, save_json_path=self.output_json_path
-        )  # verbose=2
+        ens_callback_handler = EnsembleCallbackHandler(verbose=1)  # verbose=2
         ens_callback_handler.add_callback(check_no_nans)
         ens_callback_handler.add_callback(check_boundedness)
         ens_callback_handler.add_callback(check_not_fixed_point)
@@ -157,12 +159,14 @@ class DystData:
                 ensemble, excluded_keys = filter_dict(ensemble)
                 if len(excluded_keys) > 0:
                     warnings.warn(f"INTEGRATION FAILED FOR: {excluded_keys}")
+                    for dyst_name in excluded_keys:
+                        self.failed_integrations[dyst_name].append(sample_idx)
 
                 successful_dyst_names = list(ensemble.keys())
                 print(f"Successful Dysts: {successful_dyst_names}")
                 if len(successful_dyst_names) == 0:
                     print(
-                        "No successful trajectories. Skipping, will not save to arrow files."
+                        "No successful trajectories for this sample. Skipping, will not save to arrow files."
                     )
                     continue
 
@@ -189,7 +193,7 @@ class DystData:
                             split_coords=self.split_coords,
                             verbose=self.verbose,
                         )
-
+                    # clear the ensemble list to reset
                     ensemble_list = []
 
     def _process_ensemble_list(
@@ -213,18 +217,37 @@ class DystData:
         print(f"Checking if attractor properties are valid for {len(ensemble)} systems")
         # Check if attractor properties are valid
         if self.attractor_validator is not None:
-            self.attractor_validator.execute_callbacks(
+            # Filter out invalid attractors and add valid attractors to ensemble list
+            ensemble = self.attractor_validator.get_valid_attractor_ensemble(
                 ensemble, first_sample_idx=sample_idx
             )
-            # all_valid_attractors = self.attractor_validator.check_status_all()
-
-            # Filter out invalid attractors and add valid attractors to ensemble list
-            ensemble = self.attractor_validator.valid_attractor_ensemble
-            print(f"Found {len(ensemble)} valid attractors")
 
         return ensemble
 
+    def save_summary(self, save_json_path: str):
+        """
+        Save a summary of valid attractor counts and failed checks to a json file.
+        """
+        os.makedirs(os.path.dirname(save_json_path), exist_ok=True)
+        print(f"Saving summary to {save_json_path}")
 
-# TODO: lots to do here. Make the attractor validator execution return the filtered ensemble
-# but also make it store a counter dict of all valid attractors and all failed checks
-# so at the end of the dyst data level, we can print out a summary and dump into json
+        if self.attractor_validator is None:
+            summary_dict = {"failed_integrations": self.failed_integrations}
+
+        else:
+            valid_dyst_counts = self.attractor_validator.valid_dyst_counts
+            failed_checks = self.attractor_validator.failed_checks
+            summary_dict = {
+                "valid_dyst_counts": valid_dyst_counts,
+                "failed_checks": failed_checks,
+                "failed_integrations": self.failed_integrations,
+            }
+
+        with open(save_json_path, "w") as f:
+            # Add the attractor validator summary to the json file
+            json.dump(
+                summary_dict,
+                f,
+                indent=4,
+            )  # Added indent for pretty printing
+            f.write("\n")
