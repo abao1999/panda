@@ -38,7 +38,7 @@ python tests/test_saved_data.py all --split test
 python tests/test_augmentations.py Lorenz Rossler
 ```
 
-We provide a script [skew_product.py](scripts/skew_product.py) to generate trajectories for pairs dynamical systems, where the first system (the driver) is driving the second system (the response). TODO: work in progress
+We provide a script [make_skew_systems.py](scripts/make_skew_systems.py) to generate trajectories for pairs dynamical systems, where the first system (the driver) is driving the second system (the response). TODO: work in progress. Example usage: `python scripts/make_skew_systems.py Blasius Aizawa --couple_phase_space True --couple_flows False`
 
 ### Testing Parameter and IC Perturbations
 We provide a script [test_attractor.py](scripts/test_attractor.py) to test parameter perturbations and check if the generated trajectories are valid attractors. An example workflow:
