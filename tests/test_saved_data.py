@@ -22,6 +22,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
     parser.add_argument("--split", help="Split of the data", type=str, default=None)
+    parser.add_argument(
+        "--ics_per_param", help="Num ics per param perturbation", type=int, default=1
+    )
     args = parser.parse_args()
 
     if args.dyst_name == "all":
@@ -68,5 +71,8 @@ if __name__ == "__main__":
 
         # plot the trajectories
         plot_trajs_multivariate(
-            dyst_coords_samples, save_dir="tests/figs", plot_name=dyst_name
+            dyst_coords_samples,
+            save_dir="tests/figs",
+            plot_name=dyst_name,
+            sample_param_interval=args.ics_per_param,
         )

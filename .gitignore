@@ -16,6 +16,7 @@ data/
 *.jpeg
 *.out
 nohup.out
+tests/*.json
 
 # output and logging files
 output/

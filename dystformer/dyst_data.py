@@ -4,7 +4,7 @@ import warnings
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import partial
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from dysts.sampling import BaseSampler
@@ -16,6 +16,7 @@ from dystformer.attractor import (
     check_boundedness,
     check_no_nans,
     check_not_fixed_point,
+    check_not_limit_cycle,
     check_power_spectrum,
     check_stationarity,
 )
@@ -33,6 +34,17 @@ from dystformer.utils import (
 class DystData:
     """
     Class to generate and save trajectory ensembles for a given set of dynamical systems.
+    Args:
+        rseed: random seed for reproducibility
+        num_periods: number of periods to generate for each system
+        num_points: number of points to generate for each system
+        num_ics: number of initial conditions to generate for each system
+        num_param_perturbations: number of parameter perturbations to generate for each system
+        split_coords: whether to split the coordinates into two dimensions
+        events: events to pass to solve_ivp
+        apply_attractor_tests: whether to apply attractor tests
+        verbose: whether to print verbose output
+        debug_mode: flag to save failed trajectory ensembles for debugging
     """
 
     rseed: int = 999
@@ -90,13 +102,13 @@ class DystData:
         ens_callback_handler.add_callback(check_no_nans)
         ens_callback_handler.add_callback(check_boundedness)
         ens_callback_handler.add_callback(check_not_fixed_point)
-        # ens_callback_handler.add_callback(
-        #     partial(
-        #         check_not_limit_cycle,
-        #         tolerance=1e-3,
-        #         min_recurrences=5,
-        #     )
-        # )
+        ens_callback_handler.add_callback(
+            partial(
+                check_not_limit_cycle,
+                tolerance=1e-3,
+                min_recurrences=5,
+            )
+        )
         ens_callback_handler.add_callback(
             partial(
                 check_power_spectrum,
@@ -118,12 +130,27 @@ class DystData:
         split: str = "train",
         samples_save_interval: int = 1,
         save_dir: str = ".",
-    ):
+    ) -> None:
+        """
+        Save a trajectory ensemble for each sample instance (i.e. perturbation and initial condition).
+        If enabled, attractor tests are performed on the ensembles to check if they are valid attractors.
+        Trajectories are saved to Arrow files in the specified save directory.
+        If the attractor tests are enabled, failed trajectories are also saved to Arrow files in a 'failed_attractors' subdirectory.
+        Args:
+            dysts_names: list of dyst names
+            split: split to save the ensembles
+            samples_save_interval: interval to save the ensembles
+            save_dir: directory to save the ensembles
+        """
         print(
             f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}"
         )
 
         save_dyst_dir = os.path.join(save_dir, split)
+        os.makedirs(save_dyst_dir, exist_ok=True)
+        if self.debug_mode:
+            failed_dyst_dir = os.path.join(save_dir, "failed_attractors")
+            os.makedirs(failed_dyst_dir, exist_ok=True)
 
         num_total_samples = self.num_param_perturbations * self.num_ics
         ensemble_list = []
@@ -154,7 +181,7 @@ class DystData:
                     resample=True,
                     subset=dysts_names,
                     use_multiprocessing=True,
-                    ic_transform=self.ic_sampler if j > 0 else None,
+                    ic_transform=self.ic_sampler if sample_idx > 0 else None,
                     param_transform=self.param_sampler if i > 0 else None,
                     ic_rng=param_rng,
                     use_tqdm=True,
@@ -180,23 +207,32 @@ class DystData:
 
                 ensemble_list.append(ensemble)
 
-                # NOTE: when samples_save_interval = 1, this is very slow as we are performing IO every sample
-                # consider deprecating this option, could even multithread this process
-
                 # Batched version of process_trajs: save sampled ensembles to arrow files and clear list of ensembles
                 is_last_sample = (sample_idx + 1) == num_total_samples
                 if ((sample_idx + 1) % samples_save_interval) == 0 or is_last_sample:
                     # process the ensemble list
-                    ensemble = self._process_ensemble_list(ensemble_list, sample_idx)
-                    if not self.debug_mode:
-                        # save the processed ensemble to arrow files
+                    ensemble, failed_ensemble = self._process_ensemble_list(
+                        ensemble_list, sample_idx
+                    )
+                    # save the processed ensemble to arrow files
+                    print(
+                        f"Saving all valid sampled trajectories from {len(ensemble)} systems to arrow files within {save_dyst_dir}"
+                    )
+                    process_trajs(
+                        save_dyst_dir,
+                        ensemble,
+                        split_coords=self.split_coords,
+                        verbose=self.verbose,
+                    )
+
+                    # also save the failed ensembles to arrow files in a failures subdirectory
+                    if failed_ensemble is not None and self.debug_mode:
                         print(
-                            f"Saving all valid sampled trajectories from {len(ensemble)} systems to arrow files within {save_dyst_dir}"
+                            f"Saving all failed sampled trajectories from {len(failed_ensemble)} systems to arrow files within {failed_dyst_dir}"
                         )
-                        os.makedirs(save_dyst_dir, exist_ok=True)
                         process_trajs(
-                            save_dyst_dir,
-                            ensemble,
+                            failed_dyst_dir,
+                            failed_ensemble,
                             split_coords=self.split_coords,
                             verbose=self.verbose,
                         )
@@ -207,7 +243,7 @@ class DystData:
         self,
         ensemble_list: List[Dict[str, np.ndarray]],
         sample_idx: int,
-    ) -> Dict[str, np.ndarray]:
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
         Process the ensemble list by checking for valid attractors and filtering out invalid ones.
         Also, transposes and stacks trajectories to get shape (num_samples, num_dims, num_timesteps).
@@ -220,16 +256,16 @@ class DystData:
             ).transpose(0, 2, 1)
             for key in [key for d in ensemble_list for key in d.keys()]
         }
+        failed_ensemble = {}
 
         print(f"Checking if attractor properties are valid for {len(ensemble)} systems")
         # Check if attractor properties are valid
         if self.attractor_validator is not None:
             # Filter out invalid attractors and add valid attractors to ensemble list
-            ensemble = self.attractor_validator.get_valid_attractor_ensemble(
+            ensemble, failed_ensemble = self.attractor_validator.filter_ensemble(
                 ensemble, first_sample_idx=sample_idx
             )
-
-        return ensemble
+        return ensemble, failed_ensemble
 
     def save_summary(self, save_json_path: str):
         """
