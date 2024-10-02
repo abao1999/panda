@@ -117,7 +117,7 @@ def plot_trajs_univariate(
     num_samples = dyst_data.shape[0]
     if num_samples_to_plot is None:
         # limit plotting to at most 5 samples
-        num_samples_to_plot = 5 if num_samples > 5 else num_samples
+        num_samples_to_plot = 6 if num_samples > 6 else num_samples
     # Plot the first coordinate
     save_path = os.path.join(save_dir, f"{plot_name}.png")
     print("Plotting 2D trajectories and saving to ", save_path)
@@ -145,7 +145,7 @@ def plot_trajs_multivariate(
     num_samples = dyst_data.shape[0]
     if num_samples_to_plot is None:
         # limit plotting to at most 5 samples
-        num_samples_to_plot = 5 if num_samples > 5 else num_samples
+        num_samples_to_plot = 6 if num_samples > 6 else num_samples
 
     if plot_2d_slice:
         # Plot the first two coordinates
@@ -209,7 +209,7 @@ def plot_forecast_trajs_multivariate(
     num_samples = dyst_data.shape[0]
     if num_samples_to_plot is None:
         # limit plotting to at most 5 samples
-        num_samples_to_plot = 5 if num_samples > 5 else num_samples
+        num_samples_to_plot = 6 if num_samples > 6 else num_samples
 
     colors = plt.rcParams["axes.prop_cycle"]
     colors = colors.by_key()["color"]
@@ -321,7 +321,7 @@ def plot_forecast_gt_trajs_multivariate(
     assert num_samples == fc_data.shape[0], "Mismatch in number of samples"
     if num_samples_to_plot is None:
         # limit plotting to at most 5 samples
-        num_samples_to_plot = 5 if num_samples > 5 else num_samples
+        num_samples_to_plot = 6 if num_samples > 6 else num_samples
 
     colors = plt.rcParams["axes.prop_cycle"]
     colors = colors.by_key()["color"]

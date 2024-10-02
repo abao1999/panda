@@ -26,8 +26,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     dysts_names = args.dysts_names
 
-    _, train = split_systems(0.3, seed=999, sys_class="continuous_no_delay")
-    dysts_names = train[:20]
+    _, dysts_names = split_systems(0.3, seed=999, sys_class="continuous")
+    # dysts_names = train[:20]
     print("dysts_names: ", dysts_names)
 
     # set random seed
@@ -50,8 +50,8 @@ if __name__ == "__main__":
         rseed=rseed,
         num_periods=5,
         num_points=1024,
-        num_ics=3,
-        num_param_perturbations=2,
+        num_ics=2,
+        num_param_perturbations=3,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,
@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=dysts_names,
-        split="debug",
+        split="train",  # "debug"
         samples_save_interval=2,
         save_dir=DATA_DIR,
     )
