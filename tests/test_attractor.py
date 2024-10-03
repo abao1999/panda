@@ -50,22 +50,22 @@ if __name__ == "__main__":
     dyst_data_generator = DystData(
         rseed=rseed,
         num_periods=5,
-        num_points=1024,  # Note: 3x the default
-        num_ics=2,
-        num_param_perturbations=2,
+        num_points=1024 * 3,  # Note: 3x the default
+        num_ics=1,
+        num_param_perturbations=4,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,
         verbose=True,
         split_coords=False,  # false for patchtst
         apply_attractor_tests=True,
-        debug_mode=True,
+        debug_mode=True,  # save the failed attractors
     )
 
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=dysts_names,
         split="debug",
-        samples_process_interval=1,
+        samples_process_interval=2,
         save_dir=DATA_DIR,
     )
 

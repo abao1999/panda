@@ -16,7 +16,7 @@ from dystformer.attractor import (
     check_boundedness,
     check_no_nans,
     check_not_fixed_point,
-    check_not_limit_cycle,
+    check_not_spiral_decay,
     check_power_spectrum,
     check_stationarity,
 )
@@ -102,13 +102,14 @@ class DystData:
         ens_callback_handler.add_callback(check_no_nans)
         ens_callback_handler.add_callback(check_boundedness)
         ens_callback_handler.add_callback(check_not_fixed_point)
-        ens_callback_handler.add_callback(
-            partial(
-                check_not_limit_cycle,
-                tolerance=1e-3,
-                min_recurrences=5,
-            )
-        )
+        ens_callback_handler.add_callback(check_not_spiral_decay)
+        # ens_callback_handler.add_callback(
+        #     partial(
+        #         check_not_limit_cycle,
+        #         tolerance=1e-3,
+        #         min_recurrences=5,
+        #     )
+        # )
         ens_callback_handler.add_callback(
             partial(
                 check_power_spectrum,

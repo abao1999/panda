@@ -239,7 +239,6 @@ def check_boundedness(
 def check_not_fixed_point(
     traj: np.ndarray,
     min_variance_threshold: float = 1e-3,
-    window_prop: float = 0.5,
     verbose: bool = False,
 ) -> bool:
     """
@@ -270,22 +269,53 @@ def check_not_fixed_point(
         if verbose:
             print("The system trajectory appears to approach a fixed point.")
         return False
-
-    # Split trajectory into two halves and check variance is not too low in second half compared to first half
-    intermediate_window = traj[:, BURN_TIME:]  # Exclude the burn-in period
-    n = intermediate_window.shape[1]
-    cutoff = int(window_prop * n)
-    rolling_variance_first = np.var(intermediate_window[:, :cutoff], axis=1)
-    rolling_variance_second = np.var(intermediate_window[:, cutoff:], axis=1)
-    if verbose:
-        print("rolling_variance_first: ", rolling_variance_first)
-        print("rolling_variance_second: ", rolling_variance_second)
-    if np.all(rolling_variance_second < 0.2 * rolling_variance_first):
-        if verbose:
-            print("Variance is decaying in the second half of the trajectory.")
-        return False
-
     return True
+
+
+def check_not_spiral_decay(traj: np.ndarray, verbose: bool = False) -> bool:
+    """
+    Check if a multi-dimensional trajectory is spiraling towards a fixed point.
+    Actually, this may also check the variance decay in the trajectory to detect a fixed point.
+
+    traj: D x T array, where D is the number of dimensions and T is the number of time steps.
+    """
+    # Split trajectory into two halves and check variance is not too low in second half compared to first half
+    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
+    n = traj.shape[1]
+    # find peaks for each coordinate in the trajectory
+    max_peak_indices = [find_peaks(t, prominence=0.1)[0] for t in traj]
+    min_peaks_indices = [find_peaks(-t, prominence=0.1)[0] for t in traj]
+    if verbose:
+        print("Number of peaks: ", len(max_peak_indices))
+        print("Number of peaks: ", len(min_peaks_indices))
+
+    # Interpolation for envelope
+    upper_envelope = np.asarray(
+        [np.interp(np.arange(n), i, t[i]) for (i, t) in zip(max_peak_indices, traj)]
+    )
+    lower_envelope = np.asarray(
+        [np.interp(np.arange(n), i, t[i]) for (i, t) in zip(min_peaks_indices, traj)]
+    )
+
+    # line fitting, line params shape: [1+1, D]
+    line_params = np.polyfit(np.arange(n), traj.T, 1)
+    # D x n vector of fitted lines
+    line_fit = (
+        line_params[0][:, np.newaxis] * np.arange(n) + line_params[1][:, np.newaxis]
+    )
+
+    # check if the fitted lines are within the envelope
+    within_envelope = (line_fit < upper_envelope) & (line_fit > lower_envelope)
+    all_within_envelope = np.all(within_envelope)
+
+    if not all_within_envelope:
+        return True
+
+    # check monotonicity of the fitted lines
+    diffs = np.diff(line_fit, axis=1)  # D x (n-1)
+    monotonic_decrease = np.all(diffs <= 0)
+
+    return not monotonic_decrease
 
 
 def check_not_limit_cycle(trajectory, tolerance=1e-3, min_recurrences=5, verbose=False):
