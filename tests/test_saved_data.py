@@ -23,6 +23,9 @@ if __name__ == "__main__":
     parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
     parser.add_argument("--split", help="Split of the data", type=str, default=None)
     parser.add_argument(
+        "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
+    )
+    parser.add_argument(
         "--ics_per_param", help="Num ics per param perturbation", type=int, default=1
     )
     args = parser.parse_args()
@@ -51,13 +54,12 @@ if __name__ == "__main__":
             gts_dataset = FileDataset(
                 path=Path(filepath),
                 freq="h",
-                one_dim_target=False,  # NOTE: one_dim_target is important!
+                one_dim_target=args.one_dim_target,
             )  # TODO: consider other frequencies?
 
             # extract the coordinates
             dyst_coords, metadata = stack_and_extract_metadata(
                 gts_dataset,
-                one_dim_target=False,  # NOTE: one_dim_target mportant!
             )
 
             dyst_coords_samples.append(dyst_coords)

@@ -50,9 +50,9 @@ if __name__ == "__main__":
     dyst_data_generator = DystData(
         rseed=rseed,
         num_periods=5,
-        num_points=1024 * 3,
-        num_ics=1,
-        num_param_perturbations=6,
+        num_points=1024,  # Note: 3x the default
+        num_ics=2,
+        num_param_perturbations=2,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=dysts_names,
         split="debug",
-        samples_save_interval=3,
+        samples_process_interval=1,
         save_dir=DATA_DIR,
     )
 

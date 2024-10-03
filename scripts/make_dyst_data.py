@@ -43,8 +43,8 @@ def main():
         rseed=rseed,
         num_periods=5,
         num_points=1024,
-        num_ics=5,  # only activates ic sampler if > 1
-        num_param_perturbations=1,  # only activates param sampler if > 1
+        num_ics=3,
+        num_param_perturbations=1,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,
@@ -57,7 +57,7 @@ def main():
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=train,
         split="train",
-        samples_save_interval=1,
+        samples_process_interval=1,
         save_dir=DATA_DIR,
     )
 
@@ -65,7 +65,7 @@ def main():
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=test,
         split="test",
-        samples_save_interval=1,
+        samples_process_interval=1,
         save_dir=DATA_DIR,
     )
 

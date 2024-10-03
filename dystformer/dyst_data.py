@@ -128,8 +128,8 @@ class DystData:
         self,
         dysts_names: List[str],
         split: str = "train",
-        samples_save_interval: int = 1,
-        save_dir: str = ".",
+        samples_process_interval: int = 1,
+        save_dir: Optional[str] = None,
     ) -> None:
         """
         Save a trajectory ensemble for each sample instance (i.e. perturbation and initial condition).
@@ -139,18 +139,23 @@ class DystData:
         Args:
             dysts_names: list of dyst names
             split: split to save the ensembles
-            samples_save_interval: interval to save the ensembles
+            samples_process_interval: interval to save the ensembles
             save_dir: directory to save the ensembles
         """
         print(
             f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}"
         )
 
-        save_dyst_dir = os.path.join(save_dir, split)
-        os.makedirs(save_dyst_dir, exist_ok=True)
-        if self.debug_mode:
-            failed_dyst_dir = os.path.join(save_dir, "failed_attractors")
-            os.makedirs(failed_dyst_dir, exist_ok=True)
+        if save_dir is not None:
+            save_dyst_dir = os.path.join(save_dir, split)
+            os.makedirs(save_dyst_dir, exist_ok=True)
+            if self.debug_mode:
+                failed_dyst_dir = os.path.join(save_dir, "failed_attractors")
+                os.makedirs(failed_dyst_dir, exist_ok=True)
+            print(f"valid attractors will be saved to {save_dyst_dir}")
+            print(f"failed attractors will be saved to {failed_dyst_dir}")
+        else:
+            warnings.warn("save_dir is None, will not save trajectories.")
 
         num_total_samples = self.num_param_perturbations * self.num_ics
         ensemble_list = []
@@ -209,11 +214,18 @@ class DystData:
 
                 # Batched version of process_trajs: save sampled ensembles to arrow files and clear list of ensembles
                 is_last_sample = (sample_idx + 1) == num_total_samples
-                if ((sample_idx + 1) % samples_save_interval) == 0 or is_last_sample:
+                if ((sample_idx + 1) % samples_process_interval) == 0 or is_last_sample:
                     # process the ensemble list
                     ensemble, failed_ensemble = self._process_ensemble_list(
                         ensemble_list, sample_idx
                     )
+                    # clear the ensemble list to reset
+                    ensemble_list = []
+
+                    if save_dir is None:
+                        print(ensemble)
+                        continue
+
                     # save the processed ensemble to arrow files
                     print(
                         f"Saving all valid sampled trajectories from {len(ensemble)} systems to arrow files within {save_dyst_dir}"
@@ -236,8 +248,6 @@ class DystData:
                             split_coords=self.split_coords,
                             verbose=self.verbose,
                         )
-                    # clear the ensemble list to reset
-                    ensemble_list = []
 
     def _process_ensemble_list(
         self,

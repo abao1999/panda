@@ -46,30 +46,36 @@ def get_dyst_filepaths(dyst_name: str, split: Optional[str] = None) -> List[Path
     return filepaths
 
 
-def get_dyst_datasets(dyst_name: str) -> List[Dataset]:
+def get_dyst_datasets(
+    dyst_name: str, split: Optional[str] = None, one_dim_target: bool = True
+) -> List[Dataset]:
     """
     Returns list of datasets associated with dyst_name, converted to FileDataset
     """
-    filepaths = get_dyst_filepaths(dyst_name)
+    filepaths = get_dyst_filepaths(dyst_name, split=split)
 
     gts_datasets_list = []
     # for every file in the directory
     for filepath in filepaths:
         # create dataset by reading directly from filepath into FileDataset
         gts_dataset = FileDataset(
-            path=Path(filepath), freq="h", one_dim_target=True
+            path=Path(filepath), freq="h", one_dim_target=one_dim_target
         )  # TODO: consider other frequencies?
         gts_datasets_list.append(gts_dataset)
     return gts_datasets_list
 
 
-def get_dysts_datasets_dict(dysts_names: List[str]) -> Dict[str, List[Dataset]]:
+def get_dysts_datasets_dict(
+    dysts_names: List[str], split: Optional[str] = None, one_dim_target: bool = True
+) -> Dict[str, List[Dataset]]:
     """
     Returns a dictionary with key as dyst_name and value as list of FileDatasets loaded from that dyst_name folder
     """
     gts_datasets_dict = defaultdict(list)
     for dyst_name in dysts_names:
-        gts_datasets_dict[dyst_name] = get_dyst_datasets(dyst_name)
+        gts_datasets_dict[dyst_name] = get_dyst_datasets(
+            dyst_name, split=split, one_dim_target=one_dim_target
+        )
     assert list(gts_datasets_dict.keys()) == dysts_names, "Mismatch in dyst names"
     return gts_datasets_dict
 
@@ -93,7 +99,9 @@ def accumulate_dyst_samples(
             gts_dataset = augmentation_fn(gts_dataset)
 
         # extract the coordinates
-        dyst_coords, _ = stack_and_extract_metadata(gts_dataset)
+        dyst_coords, _ = stack_and_extract_metadata(
+            gts_dataset,
+        )
         dyst_coords_samples.append(dyst_coords)
         print("data shape: ", dyst_coords.shape)
 

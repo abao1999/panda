@@ -29,13 +29,13 @@ Currently implemented data augmentations:
 - RandomConvexCombinationTransform
 - RandomProjectedSkewTransform
 
-We provide a script [make_dyst_data.py](scripts/make_dyst_data.py) for dataset generation. By default, this randomly splits all dysts into a 0.3 test/train split. You can manually specify your desired subset. Running `python scripts/make_dyst_data.py` will save trajectories for systems in the train and test splits to their respective data sub-directories. You can test the generated data and the data augmentations using our test scripts, e.g. `python tests/test_saved_data.py Lorenz` and `python tests/test_augmentations.py Lorenz Rossler`. An example workflow:
+We provide a script [make_dyst_data.py](scripts/make_dyst_data.py) for dataset generation. By default, this randomly splits all dysts into a 0.3 test/train split. You can manually specify your desired subset. Running `python scripts/make_dyst_data.py` will save trajectories for systems in the train and test splits to their respective data sub-directories. You can test the generated data and the data augmentations using our test scripts, e.g. `python tests/test_saved_data.py Lorenz` and `python tests/test_augmentations.py Lorenz Rossler`. Note that the `--one_dim_target` flag is required for Chronos dataset format, where the coordinates are split and then saved. An example workflow:
 
 ```
 python tests/make_dyst_data.py
 python tests/test_saved_data.py all --split train
 python tests/test_saved_data.py all --split test
-python tests/test_augmentations.py Lorenz Rossler
+python tests/test_augmentations.py Lorenz Rossler --split train
 ```
 
 We provide a script [make_skew_systems.py](scripts/make_skew_systems.py) to generate trajectories for pairs dynamical systems, where the first system (the driver) is driving the second system (the response). TODO: work in progress. Example usage: `python scripts/make_skew_systems.py Blasius Aizawa --couple_phase_space True --couple_flows False`

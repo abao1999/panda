@@ -45,7 +45,8 @@ class InstabilityEvent:
     terminal: bool = True
 
     def __call__(self, t, y):
-        if np.any(np.abs(y) > self.threshold):
+        if np.abs(y[-1]) > self.threshold:
+            # if np.any(np.abs(y) > self.threshold):
             print("y: ", y)
             print("Integration stopped due to instability.")
             return 0  # Trigger the event

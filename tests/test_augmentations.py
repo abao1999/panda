@@ -1,16 +1,14 @@
 import argparse
 from functools import partial
-from typing import Dict, List
+from typing import List
 
 import numpy as np
-from gluonts.dataset import Dataset
 
 from dystformer import augmentations
 from dystformer.utils import (
     accumulate_dyst_samples,
     get_dysts_datasets_dict,
     plot_trajs_multivariate,
-    plot_trajs_univariate,
     sample_index_pairs,
     stack_and_extract_metadata,
 )
@@ -36,11 +34,15 @@ AUG_CLS_KWARGS = {
 }
 
 
-def apply_augmentations_system(dysts_names: List[str]) -> None:
+def apply_augmentations_system(
+    dysts_names: List[str], split: str = "train", one_dim_target: bool = True
+) -> None:
     """
     Apply augmentations on the system scale
     """
-    gts_datasets_dict = get_dysts_datasets_dict(dysts_names)
+    gts_datasets_dict = get_dysts_datasets_dict(
+        dysts_names, split=split, one_dim_target=one_dim_target
+    )
     for dyst_name in dysts_names:
         # for every system-scale augmentation
         for augmentation_cls_name in AUG_CLS_DICT["system_scale"]:
@@ -54,16 +56,18 @@ def apply_augmentations_system(dysts_names: List[str]) -> None:
             augmentation_fn = partial(augmentation_cls, **kwargs)
             # accumulate coords in sample dimension, while applying augmentation to each coords
             dyst_coords_samples = accumulate_dyst_samples(
-                dyst_name, gts_datasets_dict, augmentation_fn
+                dyst_name,
+                gts_datasets_dict,
+                augmentation_fn,
             )
 
-            # Plot the univariate timeseries after augmentation
-            plot_trajs_univariate(
-                dyst_coords_samples,
-                selected_dim=1,
-                save_dir="tests/figs",
-                plot_name=f"{dyst_name}_univariate_{augmentation_cls_name}",
-            )
+            # # Plot the univariate timeseries after augmentation
+            # plot_trajs_univariate(
+            #     dyst_coords_samples,
+            #     selected_dim=1,
+            #     save_dir="tests/figs",
+            #     plot_name=f"{dyst_name}_univariate_{augmentation_cls_name}",
+            # )
 
             plot_trajs_multivariate(
                 dyst_coords_samples,
@@ -73,8 +77,10 @@ def apply_augmentations_system(dysts_names: List[str]) -> None:
 
 
 def apply_augmentations_ensemble(
-    gts_datasets_dict: Dict[str, List[Dataset]],
+    dysts_names: List[str],
+    split: str = "train",
     num_pairs_dysts: int = 1,
+    one_dim_target: bool = True,
 ) -> None:
     """
     Apply augmentations on the ensemble scale, given dict that maps dyst_name to list of all associated datasets
@@ -82,6 +88,9 @@ def apply_augmentations_ensemble(
         i.e. dyst1 sample i combined with dyst2 sample i
                 where sample i is assumed to be consistent (e.g. same initial conditions, parameter perturbs) across all dysts
     """
+    gts_datasets_dict = get_dysts_datasets_dict(
+        dysts_names, split=split, one_dim_target=one_dim_target
+    )
     # for every ensemble-scale augmentation
     for augmentation_cls_name in AUG_CLS_DICT["ensemble_scale"]:
         print(augmentation_cls_name)
@@ -110,7 +119,9 @@ def apply_augmentations_ensemble(
                     gts_datasets_dict[dyst2][sample_idx],
                 )
 
-                dyst_pair_coords, _ = stack_and_extract_metadata(gts_dataset)
+                dyst_pair_coords, _ = stack_and_extract_metadata(
+                    gts_dataset,
+                )
                 dyst_pair_coords_samples.append(dyst_pair_coords)
                 print("augmented data shape: ", dyst_pair_coords.shape)
 
@@ -118,11 +129,11 @@ def apply_augmentations_ensemble(
             print(dyst_pair_coords_samples.shape)
 
             # Plot the univariate timeseries after ensemble-scale augmentation
-            plot_trajs_univariate(
-                dyst_pair_coords_samples,
-                selected_dim=1,
-                plot_name=f"{'_'.join([dyst1, dyst2])}_univariate_{augmentation_cls_name}",
-            )
+            # plot_trajs_univariate(
+            #     dyst_pair_coords_samples,
+            #     selected_dim=1,
+            #     plot_name=f"{'_'.join([dyst1, dyst2])}_univariate_{augmentation_cls_name}",
+            # )
             plot_trajs_multivariate(
                 dyst_pair_coords_samples,
                 save_dir="tests/figs",
@@ -136,16 +147,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "dysts_names", help="Names of the dynamical systems", nargs="+", type=str
     )
+    parser.add_argument("--split", help="Split of the data", type=str, default=None)
+    parser.add_argument(
+        "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
+    )
     args = parser.parse_args()
 
     dysts_names = args.dysts_names
 
     print("Applying system-scale transformations")
-    apply_augmentations_system(dysts_names)
+    apply_augmentations_system(
+        dysts_names, split=args.split, one_dim_target=args.one_dim_target
+    )
 
     print("Applying ensemble-scale transformations")
-    gts_datasets_dict = get_dysts_datasets_dict(
-        dysts_names
-    )  # repeated computation, but for simplicity
-    print("Avaialble data files for ensemble-scale transform: ", gts_datasets_dict)
-    apply_augmentations_ensemble(gts_datasets_dict, num_pairs_dysts=1)
+    apply_augmentations_ensemble(
+        dysts_names,
+        split=args.split,
+        num_pairs_dysts=1,
+        one_dim_target=args.one_dim_target,
+    )
