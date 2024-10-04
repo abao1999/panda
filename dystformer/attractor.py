@@ -11,6 +11,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+from dysts.analysis import max_lyapunov_exponent_rosenstein
 from scipy.fft import fft, fftfreq
 from scipy.signal import find_peaks
 from scipy.stats import t as student_t
@@ -29,11 +30,14 @@ class EnsembleCallbackHandler:
     """
 
     verbose: int = 1
+    plot_save_dir: Optional[str] = None
 
     def __post_init__(self):
         self.callbacks = []  # List[Callable]
         self.failed_checks = defaultdict(list)  # Dict[str, List[Tuple[int, str]]]
         self.valid_dyst_counts = defaultdict(int)  # Dict[str, int]
+        if self.plot_save_dir is not None:
+            os.makedirs(self.plot_save_dir, exist_ok=True)
 
     def add_callback(self, callback):
         """
@@ -81,8 +85,8 @@ class EnsembleCallbackHandler:
     def _execute_callback(
         self,
         callback: Callable,
-        traj_sample: np.ndarray,
         dyst_name: str,
+        traj_sample: np.ndarray,
         sample_idx: int,
     ) -> bool:
         """
@@ -91,7 +95,7 @@ class EnsembleCallbackHandler:
         if self.verbose >= 2:
             callback = functools.partial(callback, verbose=True)
         # Execute the callback test
-        status = callback(traj_sample)
+        status = callback(traj_sample)  # TODO: add dyst_name optional argument
         # book keeping
         if not status:
             callback_name = self._get_callback_name(callback)
@@ -132,8 +136,8 @@ class EnsembleCallbackHandler:
                 for callback in self.callbacks:
                     status = self._execute_callback(
                         callback,
+                        dyst_name,
                         traj_sample,
-                        dyst_name=dyst_name,
                         sample_idx=sample_idx,
                     )
                     # break upon first failure
@@ -173,6 +177,8 @@ class EnsembleCallbackHandler:
 def check_no_nans(traj: np.ndarray, verbose: bool = False) -> bool:
     """
     Check if a multi-dimensional trajectory contains NaN values.
+    Returns:
+        bool: False if the system contains NaN values, True otherwise.
     """
     if np.isnan(traj).any():
         if verbose:
@@ -182,17 +188,24 @@ def check_no_nans(traj: np.ndarray, verbose: bool = False) -> bool:
 
 
 def check_boundedness(
-    traj: np.ndarray, max_num_stds: float = 1e2, verbose: bool = False
+    traj: np.ndarray,
+    abs_threshold: float = 1e4,
+    max_num_stds: float = 1e2,
+    verbose: bool = False,
 ) -> bool:
     """
     Check if a multi-dimensional trajectory is bounded (not diverging).
 
     Args:
         traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
+        abs_threshold: Maximum absolute value of the trajectory to consider as diverging.
         max_num_stds: Maximum number of standard deviations from the initial point to consider as diverging.
+    Returns:
+        bool: False if the system is bounded, True otherwise.
     """
 
-    if np.any(np.abs(traj) > 1e3):
+    # NOTE: this should have already been caught by integration instability event
+    if np.any(np.abs(traj) > abs_threshold):
         if verbose:
             print("Trajectory appears to be diverging.")
         return False
@@ -203,30 +216,13 @@ def check_boundedness(
 
     # Calculate the Euclidean distance from the first point in the trajectory at each time point
     distances = np.linalg.norm(traj - initial_point, axis=0)
-    if verbose:
-        print("std of distances: ", np.std(distances))
 
     # Check if the trajectory is diverging
     is_diverging = np.max(distances) > max_num_stds * np.std(distances)
 
-    # # NOTE: looking at trends seems brittle, need very long horizon to be reliable
-    # if is_diverging: # double check by looking at trend
-    #     # Fit a polynomial to the distances to check the trend
-    #     time_points = np.linspace(0, 1, distances.size)  # Normalize time to [0, 1]
-    #     poly_degree = 1  # Linear fit
-    #     poly_coeffs = np.polyfit(time_points, distances, deg=poly_degree)
-
-    #     # Determine the trend by examining the leading coefficient of the polynomial fit
-    #     # For linear (degree 1), this would be the slope. For higher degrees, examine leading term.
-    #     leading_coefficient = poly_coeffs[0]  # Coefficient of the highest degree term
-
-    #     print("Slope: ", leading_coefficient)
-
-    #     if np.abs(leading_coefficient) < np.std(distances): # TODO: does this make sense?
-    #         is_diverging = False  # Reverse the divergence status
-
     if verbose:
         print(f"Maximum distance from initial point: {np.max(distances)}")
+        print(f"Standard deviation of distances: {np.std(distances)}")
         if is_diverging:
             print("Trajectory appears to be diverging.")
         else:
@@ -238,7 +234,8 @@ def check_boundedness(
 # Function to check if the system goes to a fixed point
 def check_not_fixed_point(
     traj: np.ndarray,
-    min_variance_threshold: float = 1e-3,
+    tail_prop: float = 0.05,
+    atol: float = 1e-3,
     verbose: bool = False,
 ) -> bool:
     """
@@ -252,42 +249,117 @@ def check_not_fixed_point(
     Returns:
         bool: False if the system is approaching a fixed point, True otherwise.
     """
+    n = traj.shape[1]
+    tail = int(tail_prop * n)
     # Check if the trajectory has collapsed to a fixed point
-    if np.allclose(traj[:, -1], traj[:, -2], atol=1e-3):
-        # if np.allclose(traj[:, -99:-50], traj[:, -50:-1], atol=1e-3):
-        if verbose:
-            print("System may have collapsed to a fixed point.")
-        return False
+    # if np.allclose(traj[:, -1], traj[:, -2], atol=atol):
+    # Compute the Euclidean distance between consecutive points
+    distances = np.linalg.norm(np.diff(traj[:, -tail:], axis=1), axis=0)
 
-    # Check of the last 100 points have near zero variance
-    final_segment = traj[:, -100:]  # Last 100 points
-    variance = np.var(final_segment, axis=1)
-    near_zero_variance = np.any(variance < min_variance_threshold)  # maybe use all?
-    if verbose:
-        print(f"Variance of state variables over the final segment: {variance}")
-    if near_zero_variance:
+    # Check if all distances are below the specified tolerance
+    # if np.allclose(traj[:, -tail - 1 : -1] - traj[:, -tail:], 0, atol=atol):
+    if np.allclose(distances, 0, atol=atol):
         if verbose:
-            print("The system trajectory appears to approach a fixed point.")
+            print(
+                f"System may have collapsed to a fixed point, determined with atol={atol}."
+            )
         return False
     return True
 
 
-def check_not_spiral_decay(traj: np.ndarray, verbose: bool = False) -> bool:
+def check_not_variance_decay(
+    traj: np.ndarray,
+    tail_prop: float = 0.05,
+    min_variance_threshold: float = 1e-3,
+    verbose: bool = False,
+) -> bool:
+    """
+    Check if a multi-dimensional trajectory is approaching a fixed point.
+    Actually, this checks the variance decay in the trajectory to detect a fixed point.
+
+    Args:
+        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+        last_n (int): Number of points to consider for the variance decay check.
+        min_variance_threshold (float): Minimum variance threshold for detecting a fixed point.
+        variance_num_ooms_threshold (float): Number of order of magnitudes threshold for variance comparison between initial and final segments.
+    Returns:
+        bool: False if the system has monotonically decaying variance, True otherwise.
+    """
+    if tail_prop < 0 or tail_prop > 1:
+        raise ValueError("tail_prop must be between 0 and 1.")
+    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
+    n = traj.shape[1]
+    last_n = int(tail_prop * n)
+
+    # Check if the last_n points have near zero variance
+    final_segment = traj[:, -last_n:]  # Last n points
+    final_variance = np.var(final_segment, axis=1)
+    near_zero_variance = np.any(final_variance < min_variance_threshold)
+    if near_zero_variance:
+        if verbose:
+            print("The system trajectory appears to approach a fixed point.")
+        return False
+
+    # # split signal into K bins and compute variance in each bin and fit a line to the variances
+    # # if the slope of the line is negative, the variance is decreasing near monotonically
+    # # if the slope is positive, the variance is increasing near monotonically
+    # # if the slope is zero, the variance is constant near monotonically
+    # num_bins = 10
+    # bin_size = int(n / num_bins)
+    # variances = []
+    # for i in range(num_bins):
+    #     start = i * bin_size
+    #     end = (i + 1) * bin_size
+    #     bin = traj[:, start:end]
+    #     variances.append(np.var(bin, axis=1))
+    # slopes = np.polyfit(np.arange(num_bins), np.array(variances), 1)[0]
+    # if slopes < 0:
+    #     if verbose:
+    #         print("The system trajectory appears to approach a fixed point.")
+    #     return False
+    return True
+
+
+def check_not_spiral_decay(
+    traj: np.ndarray,
+    rel_prominence_threshold: Optional[float] = None,
+    verbose: bool = False,
+) -> bool:
     """
     Check if a multi-dimensional trajectory is spiraling towards a fixed point.
     Actually, this may also check the variance decay in the trajectory to detect a fixed point.
-
-    traj: D x T array, where D is the number of dimensions and T is the number of time steps.
+    Args:
+        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+    Returns:
+        bool: True if the trajectory does not spiral towards a fixed point, False otherwise.
     """
     # Split trajectory into two halves and check variance is not too low in second half compared to first half
     traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     n = traj.shape[1]
     # find peaks for each coordinate in the trajectory
-    max_peak_indices = [find_peaks(t, prominence=0.1)[0] for t in traj]
-    min_peaks_indices = [find_peaks(-t, prominence=0.1)[0] for t in traj]
+    max_peak_indices = [
+        find_peaks(t, prominence=rel_prominence_threshold)[0] for t in traj
+    ]
+    min_peaks_indices = [
+        find_peaks(-t, prominence=rel_prominence_threshold)[0] for t in traj
+    ]
     if verbose:
         print("Number of peaks: ", len(max_peak_indices))
         print("Number of peaks: ", len(min_peaks_indices))
+
+    # If no peaks are found, just pass this test lazily
+    if len(max_peak_indices) == 0 or len(min_peaks_indices) == 0:
+        if verbose:
+            print("No peaks found. Passing lazily")
+        return True
+
+    # Check if peak indices are empty before interpolation
+    if any(len(indices) == 0 for indices in max_peak_indices) or any(
+        len(indices) == 0 for indices in min_peaks_indices
+    ):
+        if verbose:
+            print("One or more peak indices are empty. Passing interpolation.")
+        return True
 
     # Interpolation for envelope
     upper_envelope = np.asarray(
@@ -318,31 +390,34 @@ def check_not_spiral_decay(traj: np.ndarray, verbose: bool = False) -> bool:
     return not monotonic_decrease
 
 
-def check_not_limit_cycle(trajectory, tolerance=1e-3, min_recurrences=5, verbose=False):
+def check_not_limit_cycle(
+    traj: np.ndarray,
+    tolerance: float = 1e-3,
+    min_recurrences: int = 5,
+    verbose: bool = False,
+) -> bool:
     """
     Checks if a multidimensional trajectory is collapsing to a limit cycle.
-
-    Parameters:
-    - trajectory (array-like): 2D array where rows are time steps and columns are dimensions.
-    - tolerance (float): Tolerance for detecting revisits to the same region in phase space.
-    - min_recurrences (int): Minimum number of recurrences to consider a limit cycle.
-
+    Args:
+        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+        tolerance (float): Tolerance for detecting revisits to the same region in phase space.
+        min_recurrences (int): Minimum number of recurrences to consider a limit cycle.
     Returns:
-    - bool: False if the trajectory is collapsing to a limit cycle, otherwise True.
+        bool: True if the trajectory is not collapsing to a limit cycle, False otherwise.
     """
-    trajectory = np.asarray(trajectory)
-    num_dims, n = trajectory.shape
+    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
+    num_dims, n = traj.shape
 
     # Step 1: Dimensionality Reduction using PCA (if more than 3 dimensions)
     if num_dims > 3:
         pca = PCA(n_components=3)
-        reduced_trajectory = pca.fit_transform(trajectory)
+        reduced_traj = pca.fit_transform(traj)
     else:
-        reduced_trajectory = trajectory
+        reduced_traj = traj
 
     # Step 2: Recurrence Detection using Distance Matrix
     dist_matrix = np.linalg.norm(
-        reduced_trajectory[:, np.newaxis] - reduced_trajectory[np.newaxis, :], axis=-1
+        reduced_traj[:, np.newaxis] - reduced_traj[np.newaxis, :], axis=-1
     )
 
     # Consider recurrences within a certain tolerance
@@ -365,6 +440,27 @@ def check_not_limit_cycle(trajectory, tolerance=1e-3, min_recurrences=5, verbose
     return True
 
 
+def check_lyapunov_exponent(
+    traj: np.ndarray,
+    verbose: bool = False,
+) -> bool:
+    """
+    Check if the Lyapunov exponent of the trajectory is greater than 1.
+    Args:
+        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+    Returns:
+        bool: False if the Lyapunov exponent is less than 1, True otherwise.
+    """
+    lyapunov_exponent = max_lyapunov_exponent_rosenstein(traj.T)
+    if verbose:
+        print(f"Max Lyapunov exponent: {lyapunov_exponent}")
+    if lyapunov_exponent < 0:
+        if verbose:
+            print("The trajectory does not exhibit chaotic behavior.")
+        return False
+    return True
+
+
 def check_power_spectrum_1d(
     signal,
     rel_peak_height_threshold: float = 1e-5,
@@ -375,14 +471,16 @@ def check_power_spectrum_1d(
 ) -> bool:
     """
     Analyzes the power spectrum of a 1D signal to find significant peaks and plots the spectrum on a log scale.
-
-    Parameters:
-    - signal (array-like): The input 1D signal.
-    - peak_height_threshold (float): Minimum relative height of a peak to be considered significant.
-    - prominence_threshold (float): Minimum prominence of a peak to be considered significant.
+    Args:
+        signal (array-like): The input 1D signal.
+        peak_height_threshold (float): Minimum relative height of a peak to be considered significant.
+        prominence_threshold (float): Minimum prominence of a peak to be considered significant.
+        plot_save_dir (str): Directory to save the plot.
+        plot_name (str): Name of the plot.
+        verbose (bool): Whether to print verbose output.
     """
-    # Convert the signal to a numpy array
-    signal = np.asarray(signal[BURN_TIME:])  # Exclude the burn-in period
+    if signal.ndim != 1:
+        raise ValueError("signal must be a 1D array")
     n = len(signal)
 
     # Compute the FFT and the power spectrum
@@ -465,14 +563,28 @@ def check_power_spectrum_1d(
 
 def check_power_spectrum(
     traj: np.ndarray,
+    rel_peak_height_threshold: float = 1e-5,
+    rel_prominence_threshold: Optional[float] = None,
     plot_save_dir: Optional[str] = None,
     verbose: bool = False,
 ) -> bool:
+    """
+    Check if a multi-dimensional trajectory has a power spectrum that is significant.
+    Args:
+        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+        plot_save_dir (str): Directory to save the plot.
+        verbose (bool): Whether to print verbose output.
+    Returns:
+        bool: True if the power spectrum is significant, False otherwise.
+    """
+    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     num_dims = traj.shape[0]
     for d in range(num_dims):
         x = traj[d, :]
         status = check_power_spectrum_1d(
             x,
+            rel_peak_height_threshold=rel_peak_height_threshold,
+            rel_prominence_threshold=rel_prominence_threshold,
             plot_name=f"power_spectrum_dim{d}",
             plot_save_dir=plot_save_dir,
             verbose=verbose,
@@ -480,6 +592,166 @@ def check_power_spectrum(
         if not status:
             if verbose:
                 print(f"Power spectrum check failed for dimension {d}")
+            return check_lyapunov_exponent(traj, verbose=verbose)
+    return True
+
+
+def check_near_recurrences_backup(
+    signal: np.ndarray,
+    rel_revisit_threshold: float = 0.1,
+    revisit_count: int = 3,
+    window_prop: float = 0.5,
+    verbose: bool = False,
+) -> bool:
+    """
+    Check if a 1D signal revisits near the starting point multiple times.
+    Set a revisit threshold as a multiple (rel_revisit_threshold) of the standard deviation of the signal.
+    Look at an intermediate window of the signal[int(window_prop * length(signal)):] to check for revisits.
+    Set a target value as the mean of the signal.
+    If values in the intermediate window are within the revisit threshold of the target value, count them as revisits.
+    If the number of revisits is less than revisit_count, the check fails (not enough revisits)
+
+    Parameters:
+    - signal (array-like): The input 1D signal.
+    - rel_revisit_threshold (float): Threshold relative distance to consider as revisiting near the starting point.
+    - revisit_count (int): Minimum number of times the signal should revisit near the starting point.
+    - window_prop (float): Proportion of the signal to consider for revisits.
+    """
+    signal = np.asarray(signal[BURN_TIME:])  # Exclude the burn-in period
+    n = len(signal)
+
+    # target = signal[BURN_TIME:] # starting point after burn time
+    target = np.mean(signal)  # mean of signal
+    revisit_threshold = rel_revisit_threshold * np.std(signal)
+    cutoff = int(window_prop * n)
+    intermediate_window = signal[cutoff:]
+    revisit_indices = np.where(
+        np.abs(intermediate_window - target) < revisit_threshold
+    )[0]
+    if verbose:
+        print("Number of revisits: ", len(revisit_indices))
+    if len(revisit_indices) < revisit_count:
+        return False
+
+    return True
+
+
+def check_near_recurrences_1d(
+    signal: np.ndarray,
+    split_prop: float = 0.5,
+    tolerance: float = 1e-3,
+    num_periods: Optional[int] = None,
+    recurrence_ratio_threshold: Optional[float] = None,
+    verbose: bool = False,
+) -> bool:
+    """
+    Check the number of times a 1D signal revisits near a baseline (mean or line fit).
+    Args:
+        signal (ndarray): 1D array of shape (n,), where n is the number of timepoints.
+        split_prop (float): Proportion of the signal to consider for revisits.
+        tolerance (float): Tolerance for detecting revisits to the same region in phase space.
+        num_periods (int): Number of periods to consider for revisits.
+        recurrence_ratio_threshold (float): Minimum ratio of recurrence mismatch to consider as recurring.
+    Returns:
+        bool: True if the signal has enough near-recurrences, False otherwise.
+    """
+    if split_prop < 0 or split_prop > 1:
+        raise ValueError("split_prop must be between 0 and 1")
+    if signal.ndim != 1:
+        raise ValueError("signal must be a 1D array")
+    n = len(signal)
+
+    # baseline = np.mean(signal)  # mean of signal
+    # make baseline a line fit to the signal
+    x = np.arange(n)
+    coef = np.polyfit(x, signal, 1)
+    baseline = coef[0] * x + coef[1]
+
+    # split signal into two segments based on split_prop
+    n_split = int(split_prop * n)
+    first_segment = signal[:n_split]  # First n_split points
+    second_segment = signal[n_split:]  # Second n_split points
+
+    # calculate the absolute deviation of segments from the baseline
+    abs_deviation_first = np.abs(first_segment - baseline[:n_split])
+    abs_deviation_second = np.abs(second_segment - baseline[n_split:])
+
+    recur_indices_first = np.asarray(abs_deviation_first < tolerance).nonzero()[0]
+    recur_indices_second = np.asarray(abs_deviation_second < tolerance).nonzero()[0]
+
+    num_recurs_first = len(recur_indices_first)
+    num_recurs_second = len(recur_indices_second)
+
+    if num_recurs_first == 0 or num_recurs_second == 0:
+        # reject if both segments have no recurrences
+        if verbose:
+            print("The signal does not have any recurrences in both segments.")
+        return False
+
+    # Check the number of recurrences for the two segments
+    if num_periods is not None:
+        if num_recurs_first < int(num_periods * split_prop):
+            return False
+        if num_recurs_second < int(num_periods * split_prop):
+            return False
+    elif recurrence_ratio_threshold is not None:
+        if recurrence_ratio_threshold < 1:
+            raise ValueError(
+                "recurrence_ratio_threshold must be greater than or equal to 1."
+            )
+        # reject based on ratio of recurrence mismatch
+        recurrence_ratio = num_recurs_first / num_recurs_second
+        if recurrence_ratio > recurrence_ratio_threshold:
+            if verbose:
+                print(
+                    f"The signal has more than {recurrence_ratio_threshold}x recurrences in the first segment ({num_recurs_first}) than in the second segment ({num_recurs_second})."
+                )
+            return False
+        elif recurrence_ratio < 1 / recurrence_ratio_threshold:
+            if verbose:
+                print(
+                    f"The signal has more than {recurrence_ratio_threshold}x more recurrences in the second segment ({num_recurs_second}) than in the first segment ({num_recurs_first})."
+                )
+            return False
+
+    return True
+
+
+def check_near_recurrences(
+    traj: np.ndarray,
+    split_prop: float = 0.5,
+    tolerance: float = 1e-3,
+    num_periods: Optional[int] = None,
+    recurrence_ratio_threshold: Optional[float] = None,
+    verbose: bool = False,
+) -> bool:
+    """
+    Check if every coordinate in a multi-dimensional trajectory revisits near a baseline (mean or line fit) multiple times.
+    Args:
+        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+        split_prop (float): Proportion of the signal to consider for revisits.
+        tolerance (float): Tolerance for detecting revisits to the same region in phase space.
+        num_periods (int): Number of periods to consider for revisits.
+        recurrence_ratio_threshold (float): Minimum ratio of recurrence mismatch to consider as recurring.
+    Returns:
+        bool: True if the trajectory has enough near-recurrences, False otherwise.
+    """
+    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
+    num_dims = traj.shape[0]
+
+    for d in range(num_dims):
+        if verbose:
+            print(f"Checking stationarity for dimension {d} by counting recurrences")
+        coord = traj[d, :]
+        status = check_near_recurrences_1d(
+            coord,
+            split_prop=split_prop,
+            tolerance=tolerance,
+            num_periods=num_periods,
+            recurrence_ratio_threshold=recurrence_ratio_threshold,
+            verbose=verbose,
+        )
+        if not status:
             return False
     return True
 
@@ -487,42 +759,26 @@ def check_power_spectrum(
 def check_stationarity(
     traj: np.ndarray,
     verbose: bool = False,
-    method: str = "recurrence",
+    method: str = "statsmodels",
 ) -> bool:
     """
     ADF checks for presence of a unit root, with null hypothesis that time_series is non-stationary.
     KPSS checks for stationarity around a constant (or deterministic trend), with null hypothesis that time_series is stationary.
     NOTE: may only be sensible for long enough time horizon.
-    For this reason, we default to a 'recurrence' test, which checks if the trajectory revisits near a target point multiple times.
 
     Args:
-        traj (ndarray): 2D array of shape (dim, T), where each row is a time series.
+        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
         method (str): 'statsmodels' to use statsmodels ADF and KPSS tests,
                     'custom' to use custom tests.
                     None to use custom check
+    Returns:
+        bool: True if the trajectory is stationary, False otherwise.
     """
-    num_dims = traj.shape[
-        0
-    ]  # assuming first dimension is the state dimension, shape is (dim, T)
+    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
+    # assuming first dimension is the state dimension, shape is (dim, T)
+    num_dims = traj.shape[0]
 
-    if method == "recurrence":
-        for d in range(num_dims):
-            if verbose:
-                print(f"Checking stationarity for dimension {d}")
-            coord = traj[d, :]
-            status = check_recurrence(
-                coord,
-                rel_revisit_threshold=0.2,
-                revisit_count=3,
-                window_prop=0.5,
-                verbose=verbose,
-            )
-            # if verbose:
-            #     print(f"status for dim {d}: {status}")
-            if not status:
-                return False
-        return True
-
+    # If not using recurrence test, check for stationarity using stationarity tests
     for d in range(num_dims):
         if verbose:
             print(f"Checking stationarity for dimension {d}")
@@ -559,57 +815,6 @@ def check_stationarity(
                 print("Mixed results, inconclusive")
                 print("ADF: ", status_adf)
                 print("KPSS: ", status_kpss)
-    return True
-
-
-# from scipy.stats import linregress
-# from scipy.signal import detrend
-def check_recurrence(
-    signal: np.ndarray,
-    rel_revisit_threshold: float = 0.1,
-    revisit_count: int = 3,
-    window_prop: float = 0.5,
-    verbose: bool = False,
-) -> bool:
-    """
-    Check if a 1D signal revisits near the starting point multiple times.
-    Set a revisit threshold as a multiple (rel_revisit_threshold) of the standard deviation of the signal.
-    Look at an intermediate window of the signal[int(window_prop * length(signal)):] to check for revisits.
-    Set a target value as the mean of the signal.
-    If values in the intermediate window are within the revisit threshold of the target value, count them as revisits.
-    If the number of revisits is less than revisit_count, the check fails (not enough revisits)
-
-    Parameters:
-    - signal (array-like): The input 1D signal.
-    - rel_revisit_threshold (float): Threshold relative distance to consider as revisiting near the starting point.
-    - revisit_count (int): Minimum number of times the signal should revisit near the starting point.
-    - window_prop (float): Proportion of the signal to consider for revisits.
-    """
-    signal = np.asarray(signal[BURN_TIME:])  # Exclude the burn-in period
-    n = len(signal)
-
-    # # Criterion 1: Trend check # NOTE: only reliable for long time horizon
-    # detrended_signal = detrend(signal)
-    # slope, _, _, p_value, _ = linregress(np.arange(n), signal)
-    # print("Slope: ", slope)
-    # if p_value < 0.05:  # Significance level for trend
-    #     print("Trend check failed")
-    #     return False
-
-    # Criterion 2: Recurrence check
-    # target = signal[BURN_TIME:] # starting point after burn time
-    target = np.mean(signal)  # mean of signal
-    revisit_threshold = rel_revisit_threshold * np.std(signal)
-    cutoff = int(window_prop * n)
-    intermediate_window = signal[cutoff:]
-    revisit_indices = np.where(
-        np.abs(intermediate_window - target) < revisit_threshold
-    )[0]
-    if verbose:
-        print("Number of revisits: ", len(revisit_indices))
-    if len(revisit_indices) < revisit_count:
-        return False
-
     return True
 
 

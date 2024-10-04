@@ -4,7 +4,7 @@ import warnings
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import partial
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from dysts.sampling import BaseSampler
@@ -14,11 +14,11 @@ from tqdm import trange
 from dystformer.attractor import (
     EnsembleCallbackHandler,
     check_boundedness,
+    check_lyapunov_exponent,
     check_no_nans,
     check_not_fixed_point,
     check_not_spiral_decay,
     check_power_spectrum,
-    check_stationarity,
 )
 from dystformer.sampling import (
     InstabilityEvent,
@@ -61,6 +61,7 @@ class DystData:
     apply_attractor_tests: bool = False
     verbose: bool = True
     debug_mode: bool = False
+    attractor_validator_kwargs: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.events is None:
@@ -96,33 +97,50 @@ class DystData:
         """
         Builds a list of attractor tests to check for each trajectory ensemble.
         """
+        if self.attractor_validator_kwargs is None:
+            self.attractor_validator_kwargs = {}
         print("Setting up callbacks to test attractor properties")
         # callbacks to check attractor validity when creating traj ensemble of dysts
-        ens_callback_handler = EnsembleCallbackHandler(verbose=1)  # verbose=2
+        ens_callback_handler = EnsembleCallbackHandler(
+            **self.attractor_validator_kwargs
+        )
         ens_callback_handler.add_callback(check_no_nans)
-        ens_callback_handler.add_callback(check_boundedness)
-        ens_callback_handler.add_callback(check_not_fixed_point)
-        ens_callback_handler.add_callback(check_not_spiral_decay)
+        ens_callback_handler.add_callback(
+            partial(check_boundedness, abs_threshold=1e4, max_num_stds=1e2)
+        )
+        ens_callback_handler.add_callback(
+            partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1)
+        )
         # ens_callback_handler.add_callback(
         #     partial(
-        #         check_not_limit_cycle,
-        #         tolerance=1e-3,
-        #         min_recurrences=5,
+        #         check_not_variance_decay,
+        #         tail_prop=0.1,
+        #         min_variance_threshold=1e-3,
         #     )
         # )
+        # uses peak finding algorithm scipy.find_peaks, which is sensitive to prominence
+        ens_callback_handler.add_callback(
+            partial(check_not_spiral_decay, rel_prominence_threshold=None)
+        )
+
+        # ens_callback_handler.add_callback(
+        #     partial(
+        #         check_near_recurrences,
+        #         split_prop=0.5,
+        #         tolerance=1e-3,
+        #         num_periods=None,  # assume unknown
+        #         recurrence_ratio_threshold=2,
+        #     )
+        # )
+        # uses peak finding algorithm scipy.find_peaks, which is sensitive to prominence
         ens_callback_handler.add_callback(
             partial(
                 check_power_spectrum,
-                plot_save_dir=None,  # FIGS_SAVE_DIR # NOTE: set to None when actually generating data so we don't plot thousands of times
+                rel_peak_height_threshold=1e-5,
+                rel_prominence_threshold=None,
             )
         )
-        ens_callback_handler.add_callback(
-            partial(
-                check_stationarity,
-                method="recurrence",  # "statsmodels", # adfuller and kpss only maybe reliable for long horizon
-            )
-        )
-
+        ens_callback_handler.add_callback(check_lyapunov_exponent)
         return ens_callback_handler
 
     def save_dyst_ensemble(

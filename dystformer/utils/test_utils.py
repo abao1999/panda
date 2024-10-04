@@ -174,12 +174,14 @@ def plot_trajs_multivariate(
                 alpha=0.5,
                 linewidth=1,
                 color=curr_color,
+                label=f"Sample {sample_idx}",
             )
             plt.scatter(*dyst_data[sample_idx, :2, 0], marker="*", s=100, alpha=0.5)
             if (sample_idx + 1) % sample_param_interval == 0:
                 param_color_i += 1
         plt.xlabel("X")
         plt.ylabel("Y")
+        plt.legend()
         plt.title(plot_name.replace("_", " "))
         plt.savefig(save_path, dpi=300)
         plt.close()
@@ -201,6 +203,7 @@ def plot_trajs_multivariate(
                 alpha=0.5,
                 linewidth=1,
                 color=curr_color,
+                label=f"Sample {sample_idx}",
             )  # X,Y,Z
             ax.scatter(*dyst_data[sample_idx, :3, 0], marker="*", s=100, alpha=0.5)
             if (sample_idx + 1) % sample_param_interval == 0:
@@ -208,6 +211,7 @@ def plot_trajs_multivariate(
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_zlabel("Z")  # type: ignore
+        plt.legend()
         ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
         ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
         plt.title(plot_name.replace("_", " "))
