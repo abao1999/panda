@@ -59,13 +59,17 @@ if __name__ == "__main__":
         verbose=True,
         split_coords=False,  # false for patchtst
         apply_attractor_tests=True,
+        attractor_validator_kwargs={
+            "verbose": 1,
+            "plot_save_dir": None,
+        },
         debug_mode=True,  # save the failed attractors
     )
 
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=dysts_names,
         split="debug",
-        samples_process_interval=2,
+        samples_process_interval=1,
         save_dir=DATA_DIR,
     )
 
