@@ -60,32 +60,7 @@ See `scripts/patchtst/run_finetune.sh` for an example script.
 ### Chronos Training
 We are fine-tuning [Chronos](https://github.com/amazon-science/chronos-forecasting) on trajectories from dynamical systems. Chronos is itself a variation of the [T5 architecture](https://huggingface.co/docs/transformers/en/model_doc/t5) fine-tuned on various benchmark univariate timeseries datasets. Specifically, Chronos fine-tunes an deep-narrow [efficient T5](https://huggingface.co/google/t5-efficient-large).
 
-```
-CUDA_VISIBLE_DEVICES=0 \
-python scripts/train.py \
-            model_id=amazon/chronos-t5-small \
-            run_name=finetune_1 \
-            wandb.log=True \
-            train.max_steps=1000 \
-            train.save_steps=1000 \
-            train.log_steps=50 \
-```
-(See `scripts/run_finetune.sh` for some example scripts). You can also run distributed training across multiple GPUs with `torchrun --nproc-per-node=6 scripts/train.py` (in this case, 6 GPUs). To run with custom configs,
-
-```
-torchrun --nproc-per-node=6 scripts/train.py \
-        model_id=amazon/chronos-t5-large \
-        n_tokens=4096 \
-        context_length=512 \
-        prediction_length=64 \
-        run_name=finetune_large \
-        wandb.log=True \
-        wandb.group_name=finetune_large \
-        train.max_steps=100_000 \
-        train.save_steps=10_000 \
-        train.log_steps=100 \
-        train.per_device_train_batch_size=8 \
-```
+See `scripts/run_finetune.sh` for some example scripts. 
 
 ### Distributed Training
 The torchrun launcher provides capability for distributed data-parallel (DDP) training. You can also try Huggingface's [accelerate](https://huggingface.co/docs/transformers/en/accelerate) launcher. For model-parallel training, see HF's [transformers model parallelism](https://huggingface.co/docs/transformers/v4.15.0/en/parallelism) guide.
