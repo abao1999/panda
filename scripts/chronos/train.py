@@ -31,7 +31,7 @@ from dystformer.utils import (
 )
 
 
-@hydra.main(config_path="../config", config_name="config", version_base=None)
+@hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
     # set up wandb project and logging if enabled
     if cfg.wandb.log:
@@ -76,6 +76,7 @@ def main(cfg):
         train_data_paths = list(
             filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))
         )
+    log_on_main(f"train_data_paths: {train_data_paths}", logger)
 
     # add any additional arrow data filepaths specified to our training set
     if cfg.extra_train_data_paths is not None:
@@ -108,7 +109,7 @@ def main(cfg):
         )
         for data_path in train_data_paths
     ]
-
+    
     # apply augmentations on the fly
     # TODO: understand the fine-tuning details more. Do we want to aggregate the samples together, on the fly?
     # TODO: also will probably need to re-weight probabilities to take into account the type of augmentation
@@ -163,11 +164,6 @@ def main(cfg):
             logger,
         )
         dataloader_num_workers = len(train_datasets)
-
-    log_on_main(
-        f"Mixing probabilities: {probability}",
-        logger,
-    )
 
     log_on_main("Initializing model", logger)
 

@@ -63,7 +63,7 @@ def main(cfg):
     train_data_dir = os.path.expandvars("$WORK/data/train/")
     # train_data_paths = [
     #     os.path.join(train_data_dir, "Lorenz/0_T-1024.arrow"),
-    #     os.path.join(train_data_dir, "Lorenz96/0_T-1024.arrow"),
+    #     # os.path.join(train_data_dir, "ThomasLabyrinth/0_T-1024.arrow"),
     # ]
     train_data_paths = list(
         filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
@@ -178,8 +178,8 @@ def main(cfg):
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
         remove_unused_columns=cfg.train.remove_unused_columns,
-        # dispatch_batches=False,
-        # split_batches=True,
+        dispatch_batches=False,
+        split_batches=False,
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.

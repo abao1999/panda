@@ -1,6 +1,6 @@
 chronos:
   # configuration for model and tokenizer
-  model_id: amazon/chronos-t5-large
+  model_id: amazon/chronos-t5-small
   # model_id: google/t5-efficient-large
   model_type: seq2seq
 
@@ -43,7 +43,7 @@ patchtst:
   d_model: 128
   num_attention_heads: 4
   share_embedding: true
-  channel_attention: false
+  channel_attention: false # TODO: figure out what this does
   ffn_dim: 512
   norm_type: "batchnorm"
   norm_eps: 1e-05

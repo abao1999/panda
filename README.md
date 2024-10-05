@@ -55,7 +55,7 @@ This will generate a trajectory ensemble for each parameter perturbation and sav
 Our train and eval scripts use hydra for hierarchical config, and you can log experiments to wandb. You can simply run `CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py` or `CUDA_VISIBLE_DEVICES=0 python scripts/chronos/train.py` to run with the default configs. To run with custom configs, 
 
 ### PatchTST Training
-TODO
+See `scripts/patchtst/run_finetune.sh` for an example script.
 
 ### Chronos Training
 We are fine-tuning [Chronos](https://github.com/amazon-science/chronos-forecasting) on trajectories from dynamical systems. Chronos is itself a variation of the [T5 architecture](https://huggingface.co/docs/transformers/en/model_doc/t5) fine-tuned on various benchmark univariate timeseries datasets. Specifically, Chronos fine-tunes an deep-narrow [efficient T5](https://huggingface.co/google/t5-efficient-large).
@@ -95,16 +95,6 @@ If you run into a weird miopen error, see: https://github.com/pytorch/pytorch/is
 ## Evaluation
 To evalute the performance of a fine-tuned model, run `python scripts/evaluate.py` after setting the appropriate configuration in `configs/evaluation.yaml`. In particular, set `model_id` to point to the directory of your saved fine-tuned model checkpoint. The list of dynamical systems used for evaluation is also set in the configuration, but will default to using the test/train split.
 
-## Experiments
-+ Define a subset of 100 systems for training, randomly sample a dynamical system, make a trajectory from it, apply any augmentation, and then use that dataset for that batch. Set aside 30 attractors to test generalization. Can further augment training dataset with skew product systems.
-
-## Ideas for Trained Models
-+ Look at generalization to heldout dynamical systems
-+ Probe for Koopman like internal dynamics
-+ Error propagation to explain why long context beats precision limit of numerical integration
-+ Encoder embeddings and token-level analysis
-+ Ensure the fine-tuned model performance doesn't degrade on the timeseries it was previously trained on
-
 ## Notes
 + does it make more sense to reestimate period - a surrogate for the timescale, or the lyapunov exponent - a well defined quantity? What about using first UPO?
 + Must decide whether we want to use MLM or causal prediction for pretraining
@@ -112,14 +102,16 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
         - causal prediction is what chronos does
 + look into different loss functions for the pretraining
 
-## TODO
+## Development Goals
 
-+ add flash attention support for AMD, see this warning: 
+Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
+
++ [HIGH | HARD] fix dataset iterator to produce batches with consistent dimensions without that jank collator
++ [MEDIUM | MEDIUM] sample systems uniformly according to the distribution of phase space dimension
++ [LOW | EASY] address the warning `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory` 
++ [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
++ [LOW | HARD] add flash attention support for AMD, see this warning: 
 ```
 [W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
 [W sdp_utils.cpp:320] Warning: 1Torch was not compiled with memory efficient attention. (function operator())
 ```
-+ address this warning `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory
-+ Check attractor validity for parameter perturbations
-+ Check attractor validity for skew system generation
-+ For parameter perturbations and skew system generation, need to check that the system didn't bifurcate or diverge. Could just run an ADFuller stationarity test, as well as rule out constant and extremely large values. Make sure our heuristic tests covers all the bases.
