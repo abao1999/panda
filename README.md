@@ -106,6 +106,9 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
++ [HIGH | EASY] test if renormalization of the predictions are important for performance (see `dystformer/patchtst/patchtst.py`)
++ [MEDIUM | MEDIUM] test different loss functions 
++ [MEDIUM | MEDIUM] implement patchtst for causal prediction pretraining
 + [HIGH | HARD] fix dataset iterator to produce batches with consistent dimensions without that jank collator
 + [MEDIUM | MEDIUM] sample systems uniformly according to the distribution of phase space dimension
 + [LOW | EASY] address the warning `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory` 
