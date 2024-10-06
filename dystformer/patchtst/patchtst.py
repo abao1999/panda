@@ -233,14 +233,16 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         self.model = PatchTSTModel(config=config)
         self.head = PatchTSTMaskPretrainHead(config)
         self.loss = nn.MSELoss(reduction="none")
-        self.mixing_head = PatchTSTAttention(
-            embed_dim=config.context_length,
-            num_heads=config.num_mixing_heads,
-            dropout=config.mixing_dropout,
-            is_decoder=False,
-            bias=False,
-            is_causal=False,
-        )
+
+        if config.mix_channels:
+            self.mixing_head = PatchTSTAttention(
+                embed_dim=config.context_length,
+                num_heads=config.num_mixing_heads,
+                dropout=config.mixing_dropout,
+                is_decoder=False,
+                bias=False,
+                is_causal=False,
+            )
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -295,15 +297,14 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         x_hat = self.head(model_output.last_hidden_state)
 
         # self attention over the channels (permutation invariantly)
-        x_hat, attn_weights, past_kv = self.mixing_head(
-            x_hat.view(*x_hat.shape[:2], -1),
-            output_attentions=output_attentions,
-        )
+        if self.config.mix_channels:
+            x_hat, attn_weights, past_kv = self.mixing_head(
+                x_hat.view(*x_hat.shape[:2], -1),
+                output_attentions=output_attentions,
+            )  # x_hat: [bs x num_channels x num_patches x d_model]
 
         # calculate masked_loss
-        loss_val = self.loss(
-            x_hat.view(model_output.patch_input.shape), model_output.patch_input
-        )
+        loss_val = self.loss(x_hat, model_output.patch_input)
 
         # reduce over the patch length dim first, then compute the masked loss over the tokens
         masked_loss = (loss_val.mean(dim=-1) * model_output.mask).sum() / (

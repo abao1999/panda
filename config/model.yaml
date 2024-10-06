@@ -74,4 +74,5 @@ patchtst:
   num_mixing_heads: 4
   d_mixing: 128
   mixing_dropout: 0.5
+  mix_channels: false
 

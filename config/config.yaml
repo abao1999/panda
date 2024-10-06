@@ -20,5 +20,6 @@ run_name: null
 wandb:
   log: False
   project_name: dystformer
+  entity: gilpinlab
   group_name: fine-tuning
   resume: False

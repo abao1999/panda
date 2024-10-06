@@ -33,6 +33,7 @@ def main(cfg):
     if cfg.wandb.log:
         run = wandb.init(
             project=cfg.wandb.project_name,
+            entity=cfg.wandb.entity,
             name=cfg.run_name,
             config=dict(cfg),
             sync_tensorboard=False,  # auto-upload tensorboard metrics
