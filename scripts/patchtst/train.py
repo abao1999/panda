@@ -221,7 +221,7 @@ def main(cfg):
     # save final model checkpoint and training info locally
     if is_main_process():
         # ensure_contiguous(model)
-        model.save_pretrained(output_dir / "checkpoint-final")
+        model.save_pretrained(output_dir / "checkpoint-final")  # type: ignore
         save_training_info(
             output_dir / "checkpoint-final",
             model_config=OmegaConf.to_container(cfg.patchtst, resolve=True),  # type: ignore

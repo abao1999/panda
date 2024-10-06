@@ -171,8 +171,8 @@ class DystData:
             if self.debug_mode:
                 failed_dyst_dir = os.path.join(save_dir, "failed_attractors")
                 os.makedirs(failed_dyst_dir, exist_ok=True)
-            print(f"valid attractors will be saved to {save_dyst_dir}")
-            print(f"failed attractors will be saved to {failed_dyst_dir}")
+                print(f"valid attractors will be saved to {save_dyst_dir}")
+                print(f"failed attractors will be saved to {failed_dyst_dir}")
         else:
             warnings.warn("save_dir is None, will not save trajectories.")
 

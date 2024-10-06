@@ -1,8 +1,8 @@
 """
 PatchTST model with the forward pass exposed
-"""
 
-from typing import Optional
+TODO: This whole thing is kinda useless, figure out how to gracefully deprecate
+"""
 
 import torch.nn as nn
 
@@ -10,9 +10,7 @@ from dystformer.patchtst.patchtst import PatchTSTConfig, PatchTSTForPretraining
 
 
 class PatchTSTModel(nn.Module):
-    def __init__(
-        self, config: dict, mode: str = "predict", pretrain_path: Optional[str] = None
-    ):
+    def __init__(self, config: dict, mode: str = "predict"):
         super().__init__()
 
         self.mode = mode
@@ -27,9 +25,6 @@ class PatchTSTModel(nn.Module):
         if mode == "pretrain":
             self.model = PatchTSTForPretraining(self.config)
 
-        if pretrain_path is not None:
-            self.load_pretrained(pretrain_path)
-
     @property
     def device(self):
         return self.model.device
@@ -37,11 +32,15 @@ class PatchTSTModel(nn.Module):
     def save_pretrained(self, save_path: str):
         self.model.save_pretrained(save_path)
 
-    def load_pretrained(self, pretrain_path: str, **kwargs):
+    @classmethod
+    def from_pretrained(cls, pretrain_path: str, **kwargs):
         """
         Load a pretrained model from a path.
         """
-        self.model.from_pretrained(pretrain_path, **kwargs)
+        config = PatchTSTConfig.from_pretrained(pretrain_path)
+        model = cls(config=config.to_dict(), mode=kwargs.get("mode", "predict"))
+        model.model = PatchTSTForPretraining.from_pretrained(pretrain_path)
+        return model
 
     def forward(self, *args, **kwargs):
         """
@@ -50,6 +49,6 @@ class PatchTSTModel(nn.Module):
         # pretraining mode does require forecasts as it does MLM
         # TODO: move this logic to the dataset to optimize forward pass cost
         if self.mode == "pretrain":
-            kwargs.pop("future_values")
+            kwargs.pop("future_values", None)
 
         return self.model(*args, **kwargs)

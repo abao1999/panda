@@ -81,9 +81,7 @@ class PatchTSTDataset(IterableDataset, ShuffleMixin):
     def preprocess_entry(self, entry: dict, mode: str) -> dict:
         entry = {f: entry[f] for f in ["start", "target"]}
         entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
-
         entry["target"] = self.imputation_method(entry["target"])
-
         return entry
 
     def _create_instance_splitter(self, mode: str):

@@ -27,13 +27,13 @@ def main():
     test, train = split_systems(0.3, seed=rseed, sys_class="continuous")
 
     # events for solve_ivp
-    time_limit_event = TimeLimitEvent(max_duration=60 * 2)  # 2 min time limit
+    time_limit_event = TimeLimitEvent(max_duration=60 * 3)  # 2 min time limit
     instability_event = InstabilityEvent(threshold=1e4)
     events = [time_limit_event, instability_event]
 
     param_sampler = GaussianParamSampler(random_seed=rseed, scale=0.5, verbose=True)
     ic_sampler = OnAttractorInitCondSampler(
-        reference_traj_length=1024,
+        reference_traj_length=2048,
         reference_traj_transient=200,
         events=events,
         verbose=True,
@@ -41,10 +41,10 @@ def main():
 
     dyst_data_generator = DystData(
         rseed=rseed,
-        num_periods=5,
-        num_points=1024,
+        num_periods=10,
+        num_points=2048,
         num_ics=3,
-        num_param_perturbations=1,
+        num_param_perturbations=3,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,

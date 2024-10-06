@@ -1,5 +1,8 @@
+# TODO: clean this up, remove unnecessary options
+
 eval:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data
+  checkpoint_path: /stor/work/AMDG_Gilpin_Summer2024/checkpoints
   split: train
   output_dir: ./eval_results
   output_fname: null
