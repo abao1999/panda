@@ -3,14 +3,22 @@ import os
 import random
 from functools import partial
 from pathlib import Path
+from typing import Dict, List
 
 import hydra
+import numpy as np
 import torch
 import transformers
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
-from transformers import Trainer, TrainingArguments
+from transformers import (
+    Trainer,
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
+    TrainingArguments,
+)
 
 import wandb
 from dystformer.patchtst.dataset import PatchTSTDataset
@@ -25,6 +33,115 @@ from dystformer.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class BatchSizeLoggerCallback(TrainerCallback):
+    def on_step_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
+        # Access the current batch from kwargs
+        current_batch = kwargs.get("inputs")
+        if current_batch:
+            # Get the batch size from the 'past_values' tensor
+            batch_size = current_batch["past_values"].shape[
+                0
+            ]  # Assuming 'past_values' is the key
+            wandb.log({"batch_size": batch_size}, step=state.global_step)
+
+
+def fixed_dim_collator(
+    features: List[Dict[str, torch.Tensor]],
+) -> Dict[str, torch.Tensor]:
+    """
+    Collates trajectories by sampling a fixed dimension and filtering out any
+    trajectories that do not match the sampled dimension.
+    Args:
+        features: list of dictionaries with "past_values" and "future_values" tensors
+            with shapes [num_dimensions, context_length] and [num_dimensions, prediction_length].
+            The input list has length batch_size * num_visible_devices.
+
+    Returns:
+        Dict with "past_values" and "future_values" flattened and equalized in dimension 0,
+            with size equalized_dim*batch_size
+    """
+
+    grouped_features = {}
+    for feature in features:
+        key = feature["past_values"].shape[-1]
+        if key not in grouped_features:
+            grouped_features[key] = []
+        grouped_features[key].append(feature)
+
+    sampled_dim = random.choice(list(grouped_features.keys()))
+    batch = {
+        key: torch.stack([f[key] for f in grouped_features[sampled_dim]])
+        for key in grouped_features[sampled_dim][0].keys()
+    }
+    return batch
+
+
+def dimensional_collator(
+    features: List[Dict[str, torch.Tensor]],
+    equalized_dim: int,
+) -> Dict[str, torch.Tensor]:
+    """
+    Collates trajectories into flat data by stacking along dimension
+
+    Args:
+        features: list of dictionaries with "past_values" and "future_values" tensors
+            with shapes [num_dimensions, context_length] and [num_dimensions, prediction_length].
+            The input list has length batch_size * num_visible_devices.
+
+    Returns:
+        Dict with "past_values" and "future_values" flattened and equalized in dimension 0,
+            with size equalized_dim*batch_size
+    """
+    dims = np.asarray([feature["past_values"].shape[-1] for feature in features])
+    batch_size = len(features)
+    min_dim = min(dims)
+
+    # ensure that the equalization dimension satisfies the constraint:
+    # k * min(dims) <= k * equalized_dim <= sum(dims) <= k * max(dims)
+    # NOTE: this will still cause non-uniform batch sizes,
+    #  but only in multiples of the number of devices
+    while not (batch_size * min_dim <= batch_size * equalized_dim <= sum(dims)):
+        if equalized_dim < min_dim:
+            equalized_dim = min_dim
+        else:  # decrement until the constraint is satisfied
+            equalized_dim -= 1
+
+    # randomly choose dimensions to remove in order to equalize across the batch
+    equalization_budget = sum(dims) - batch_size * equalized_dim
+
+    if equalization_budget > 0:
+        cuts = np.random.choice(equalization_budget, size=len(features) - 1)
+        num_remove = np.diff(
+            np.concatenate([[0], np.sort(cuts), [equalization_budget]])
+        )
+
+        # resample if the constraints are not satisfied
+        while np.any(num_remove > dims):
+            cuts = np.random.choice(equalization_budget, size=len(features) - 1)
+            num_remove = np.diff(
+                np.concatenate([[0], np.sort(cuts), [equalization_budget]])
+            )
+    else:
+        num_remove = np.zeros(len(features))
+
+    num_keep = (dims - num_remove).astype(int)
+    batch = {
+        k: torch.concat(
+            [
+                feat[k][
+                    :, np.random.choice(feat[k].shape[1], size=nkeep, replace=False)
+                ]
+                for nkeep, feat in zip(num_keep, features)
+            ],
+            dim=1,
+        )
+        for k in features[0].keys()
+    }
+    batch["dims"] = torch.from_numpy(num_keep).to(torch.int32)
+
+    return batch
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -178,6 +295,7 @@ def main(cfg):
         tf32=use_tf32,  # remove this if not using Ampere GPUs (e.g., A100)
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
+        ddp_backend="nccl",
         remove_unused_columns=cfg.train.remove_unused_columns,
         dispatch_batches=False,
         split_batches=False,
@@ -187,28 +305,16 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    def custom_collator(features):
-        # Group features by their last dimension
-        grouped_features = {}
-        for feature in features:
-            key = feature["past_values"].shape[-1]
-            if key not in grouped_features:
-                grouped_features[key] = []
-            grouped_features[key].append(feature)
-
-        sampled_dim = random.choice(list(grouped_features.keys()))
-        batch = {
-            key: torch.stack([f[key] for f in grouped_features[sampled_dim]])
-            for key in grouped_features[sampled_dim][0].keys()
-        }
-        return batch
-
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
-        data_collator=custom_collator,  # Use the custom collator
-        callbacks=[],  # if not cfg.wandb.log else [WandbCallback()],
+        data_collator=partial(
+            dimensional_collator, equalized_dim=6
+        ),  # Use the custom collator
+        callbacks=[
+            BatchSizeLoggerCallback()
+        ],  # if not cfg.wandb.log else [WandbCallback()],
     )
 
     log_on_main("Training", logger)
@@ -216,12 +322,10 @@ def main(cfg):
 
     # terminate wandb run after training
     if cfg.wandb.log:
-        # wandb.log(results) # log results to wandb
         run.finish()
 
     # save final model checkpoint and training info locally
     if is_main_process():
-        # ensure_contiguous(model)
         model.save_pretrained(output_dir / "checkpoint-final")  # type: ignore
         save_training_info(
             output_dir / "checkpoint-final",
