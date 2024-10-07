@@ -250,6 +250,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
     def forward(
         self,
         past_values: torch.Tensor,
+        dims: Optional[torch.Tensor] = None,
         past_observed_mask: Optional[torch.Tensor] = None,
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -281,6 +282,13 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             return_dict if return_dict is not None else self.config.use_return_dict
         )
 
+        # using stacked collator: basically simulates a batch of univariate timeseries
+        # past_values: [num_timesteps, sum(dims)]
+        if dims is not None:
+            past_values = past_values.view(
+                past_values.shape[-1], past_values.shape[0], 1
+            )
+
         # past_values: [bs x num_channels x num_patches x d_model] or
         # [bs x num_channels x (num_patches+1) x d_model] if use cls_token
         model_output = self.model(
@@ -298,11 +306,23 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
 
         # self attention over the channels (permutation invariantly)
         if self.config.mix_channels:
-            x_hat, attn_weights, past_kv = self.mixing_head(
-                x_hat.view(*x_hat.shape[:2], -1),
-                output_attentions=output_attentions,
-            )  # x_hat: [bs x num_channels x num_patches x d_model]
+            if dims is None:
+                x_hat, attn_weights, past_kv = self.mixing_head(
+                    x_hat.view(*x_hat.shape[:2], -1),
+                    output_attentions=output_attentions,
+                )  # x_hat: [bs x num_channels x num_patches x d_model]
+            else:  # couple coordinates by the dimensions from the stacked collator
+                x_hats = []
+                for traj in torch.split(x_hat, dims, dim=0):
+                    x_hat, attn_weights, past_kv = self.mixing_head(
+                        traj.view(*traj.shape[:2], -1),
+                        output_attentions=output_attentions,
+                    )  # x_hat: [dim x 1 x num_patches x d_model]
+                    x_hats.append(x_hat)
+                x_hat = torch.cat(x_hats, dim=0)
 
+        # TODO: use torch.split here if using stacked collator
+        # TODO: are coordinates coupled in the loss?
         # calculate masked_loss
         loss_val = self.loss(x_hat, model_output.patch_input)
 

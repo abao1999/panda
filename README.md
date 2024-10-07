@@ -89,12 +89,14 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
 + [HIGH | HARD] SUPER IMPORTANT: fix dataset iterator to produce batches with consistent dimensions without that jank collator, without this, each gpu wont have the same workload and utilization will suck
++ [HIGH | HARD] limit cycle test for generating data
 + [HIGH | EASY] test if renormalization of the predictions are important for performance (see `dystformer/patchtst/patchtst.py`)
++ [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension
++ [MEDIUM | MEDIUM] time lag feature augmentation
 + [MEDIUM | MEDIUM] implement a better parameter sampler for generating dyst data
 + [MEDIUM | MEDIUM] test different loss functions 
-+ [MEDIUM | MEDIUM] implement patchtst for causal prediction pretraining
++ [LOW | MEDIUM] implement patchtst for causal prediction pretraining
 + [MEDIUM | MEDIUM] sample systems uniformly according to the distribution of phase space dimension
-+ [LOW | EASY] patchtst model class is kinda useless, doesnt provide much functionality, deprecate?
 + [LOW | EASY] address the warning `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory` 
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
 + [LOW | HARD] add flash attention support for AMD, see this warning: 
