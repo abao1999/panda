@@ -4,9 +4,11 @@ Callbacks to check if generated trajectories are valid attractors
 
 import functools
 import os
+import time
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass
+from multiprocessing import Pool
 from typing import Callable, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -23,6 +25,19 @@ from dystformer.utils import plot_trajs_multivariate, plot_trajs_univariate
 BURN_TIME = 200
 
 
+def timer(func):
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        """Timer wrapper function"""
+        start = time.time()
+        result = func(self, *args, **kwargs)
+        end = time.time()
+        print("Exection Time: {} seconds".format(end - start))
+        return result
+
+    return wrapper
+
+
 @dataclass
 class EnsembleCallbackHandler:
     """
@@ -36,6 +51,8 @@ class EnsembleCallbackHandler:
         self.callbacks = []  # List[Callable]
         self.failed_checks = defaultdict(list)  # Dict[str, List[Tuple[int, str]]]
         self.valid_dyst_counts = defaultdict(int)  # Dict[str, int]
+        self.failed_samples = defaultdict(list)  # Dict[str, List[int]]
+        self.valid_samples = defaultdict(list)  # Dict[str, List[int]]
         if self.plot_save_dir is not None:
             os.makedirs(self.plot_save_dir, exist_ok=True)
 
@@ -60,14 +77,12 @@ class EnsembleCallbackHandler:
                 all_traj, save_dir=save_dir, plot_name=dyst_name, plot_2d_slice=False
             )
             if plot_univariate:
-                num_dims = all_traj.shape[1]
-                for dim_idx in range(3 if num_dims > 3 else num_dims):
-                    plot_trajs_univariate(
-                        all_traj,
-                        selected_dim=dim_idx,
-                        save_dir=save_dir,
-                        plot_name=f"{dyst_name}_univariate_dim{dim_idx}",
-                    )
+                plot_trajs_univariate(
+                    all_traj,
+                    selected_dim=None,
+                    save_dir=os.path.join(save_dir, "univariate"),
+                    plot_name=dyst_name,
+                )
 
     def _get_callback_name(self, callback: Callable) -> str:
         """
@@ -91,6 +106,14 @@ class EnsembleCallbackHandler:
     ) -> bool:
         """
         Execute a single callback for a given trajectory sample of a system.
+        Args:
+            callback: the callback (attractor check) function to execute
+            dyst_name: name of the dyst
+            traj_sample: the trajectory sample to check
+            sample_idx: index of the sample
+
+        Returns:
+            bool: True if the callback passed, False otherwise
         """
         if self.verbose >= 2:
             callback = functools.partial(callback, verbose=True)
@@ -103,60 +126,90 @@ class EnsembleCallbackHandler:
                 print(f"FAILED {callback_name} for {dyst_name} at sample {sample_idx}")
             # add to failed checks
             self.failed_checks[dyst_name].append((sample_idx, callback_name))
+            self.failed_samples[dyst_name].append(sample_idx)
         return status
 
+    def _filter_dyst(
+        self, dyst_name: str, all_traj: np.ndarray, first_sample_idx: int = 0
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Split all trajectories of a given dyst into valid and failed trajectories
+        Args:
+            dyst_name: name of the dyst
+            all_traj: all trajectories of a given dyst
+            first_sample_idx: index of the first sample of the dyst
+
+        Returns:
+            valid_attractor_trajs: valid trajectories of dyst_name
+            failed_attractor_trajs: failed trajectories of dyst_name
+        """
+        # for each trajectory sample for a given system dyst_name
+        valid_attractor_trajs = []
+        failed_attractor_trajs = []
+        for i, traj_sample in enumerate(all_traj):
+            sample_idx = first_sample_idx + i
+
+            # Make sure traj_sample is a 2D array
+            if (
+                traj_sample.ndim == 1
+            ):  # handles case where just a single trajectory sample was stored in dict
+                traj_sample = np.expand_dims(traj_sample, axis=0)
+            if self.verbose >= 1:
+                print(
+                    f"Checking trajectory sample {sample_idx} for {dyst_name}, with shape {traj_sample.shape}"
+                )
+
+            # Execute all callbacks
+            for callback in self.callbacks:
+                status = self._execute_callback(
+                    callback,
+                    dyst_name,
+                    traj_sample,
+                    sample_idx=sample_idx,
+                )
+                # break upon first failure
+                if not status:
+                    break
+
+            # if traj sample failed a check, move on to next trajectory sample for this dyst
+            if not status:
+                # add failed trajectory sample to failed attractor ensemble
+                failed_attractor_trajs.append(traj_sample)
+                continue
+
+            # if all checks pass, add to valid attractor ensemble
+            valid_attractor_trajs.append(traj_sample)
+            self.valid_dyst_counts[dyst_name] += 1
+            self.valid_samples[dyst_name].append(sample_idx)
+
+        return np.array(valid_attractor_trajs), np.array(failed_attractor_trajs)
+
+    @timer
     def filter_ensemble(
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
-        Execute all callbacks for all trajectory samples in the ensemble. Save the valid trajectories to the valid_attractor_ensemble dictionary.
+        Execute all callbacks for all trajectory samples in the ensemble, and split the ensemble into valid and failed ensembles.
+        Args:
+            ensemble: The trajectory ensemble to filter
+            first_sample_idx: The index of the first sample for the generated trajectories of the ensemble
+
+        Returns:
+            valid_attractor_ensemble: A new ensemble with only the valid trajectories
+            failed_attractor_ensemble: A new ensemble with only the failed trajectories
         """
         valid_attractor_ensemble = {}  # Dict[str, np.ndarray]
         # keep track of the failure too, for debugging purposes
         failed_attractor_ensemble = {}  # Dict[str, np.ndarray]
         # assert first_sample_idx >= 0, "First sample index must be a non-negative integer."
         for dyst_name, all_traj in ensemble.items():
-            # for each trajectory sample for a given system dyst_name
-            valid_attractor_trajs = []
-            failed_attractor_trajs = []
-            for i, traj_sample in enumerate(all_traj):
-                sample_idx = first_sample_idx + i
-
-                # Make sure traj_sample is a 2D array
-                if (
-                    traj_sample.ndim == 1
-                ):  # handles case where just a single trajectory sample was stored in dict
-                    traj_sample = np.expand_dims(traj_sample, axis=0)
-                if self.verbose >= 1:
-                    print(
-                        f"Checking trajectory sample {sample_idx} for {dyst_name}, with shape {traj_sample.shape}"
-                    )
-
-                # Execute all callbacks
-                for callback in self.callbacks:
-                    status = self._execute_callback(
-                        callback,
-                        dyst_name,
-                        traj_sample,
-                        sample_idx=sample_idx,
-                    )
-                    # break upon first failure
-                    if not status:
-                        break
-
-                # if traj sample failed a check, move on to next trajectory sample for this dyst
-                if not status:
-                    # add failed trajectory sample to failed attractor ensemble
-                    failed_attractor_trajs.append(traj_sample)
-                    continue
-
-                # if all checks pass, add to valid attractor ensemble
-                valid_attractor_trajs.append(traj_sample)
-                self.valid_dyst_counts[dyst_name] += 1
+            valid_attractor_trajs, failed_attractor_trajs = self._filter_dyst(
+                dyst_name, all_traj, first_sample_idx
+            )
 
             if len(failed_attractor_trajs) > 0:
                 # Add the failed attractor trajectories for this dyst_name system to the failed ensemble
-                failed_attractor_ensemble[dyst_name] = np.array(failed_attractor_trajs)
+                failed_attractor_ensemble[dyst_name] = failed_attractor_trajs
 
             # if no valid attractors found, skip this system
             if len(valid_attractor_trajs) == 0:
@@ -168,8 +221,39 @@ class EnsembleCallbackHandler:
                     f"Found {len(valid_attractor_trajs)} valid attractor trajectories for {dyst_name}"
                 )
             # Add the valid attractor trajectories for this dyst_name system to the valid ensemble
-            valid_attractor_ensemble[dyst_name] = np.array(valid_attractor_trajs)
+            valid_attractor_ensemble[dyst_name] = valid_attractor_trajs
 
+        return valid_attractor_ensemble, failed_attractor_ensemble
+
+    def multiprocessed_filter_ensemble(
+        self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+        """
+        Multiprocessed version of self.filter_ensemble
+        """
+        with Pool() as pool:
+            # List of Tuples of np.ndarrays
+            results = pool.starmap(
+                self._filter_dyst,
+                [
+                    (self, dyst_name, all_traj, first_sample_idx)
+                    for dyst_name, all_traj in ensemble.items()
+                ],
+            )
+
+        # Process the multiprocessed output
+        combined_ensemble = dict(zip(list(ensemble.keys()), results))
+        # Separate the valid and failed ensembles
+        valid_attractor_ensemble = {
+            dyst_name: valid_trajs
+            for dyst_name, (valid_trajs, _) in combined_ensemble.items()
+            if valid_trajs.shape[0] > 0
+        }
+        failed_attractor_ensemble = {
+            dyst_name: failed_trajs
+            for dyst_name, (_, failed_trajs) in combined_ensemble.items()
+            if failed_trajs.shape[0] > 0
+        }
         return valid_attractor_ensemble, failed_attractor_ensemble
 
 
@@ -251,13 +335,9 @@ def check_not_fixed_point(
     """
     n = traj.shape[1]
     tail = int(tail_prop * n)
-    # Check if the trajectory has collapsed to a fixed point
-    # if np.allclose(traj[:, -1], traj[:, -2], atol=atol):
     # Compute the Euclidean distance between consecutive points
     distances = np.linalg.norm(np.diff(traj[:, -tail:], axis=1), axis=0)
 
-    # Check if all distances are below the specified tolerance
-    # if np.allclose(traj[:, -tail - 1 : -1] - traj[:, -tail:], 0, atol=atol):
     if np.allclose(distances, 0, atol=atol):
         if verbose:
             print(

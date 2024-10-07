@@ -44,9 +44,15 @@ We provide a script [make_skew_systems.py](scripts/make_skew_systems.py) to gene
 We provide a script [test_attractor.py](scripts/test_attractor.py) to test parameter perturbations and check if the generated trajectories are valid attractors. An example workflow:
 
 ```
-./scripts/clean_dataset.sh train Lorenz
+./scripts/clean_dataset.sh train all
 python tests/test_attractor.py Lorenz
 python tests/test_saved_data.py Lorenz
+```
+
+To investigate all failed attractors, run:
+```
+python tests/test_attractor.py all
+python tests/test_saved_data.py all --split failed_attractors --metadata_path tests/attractor_checks.json --samples_subset failed_samples
 ```
 
 This will generate a trajectory ensemble for each parameter perturbation and save the trajectories to Arrow files.

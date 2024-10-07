@@ -3,8 +3,11 @@ Load saved Arrow data files and plot the trajectories.
 """
 
 import argparse
+import json
 import os
+import warnings
 from pathlib import Path
+from typing import Dict, List, Optional
 
 import numpy as np
 from gluonts.dataset.common import FileDataset
@@ -12,39 +15,36 @@ from gluonts.dataset.common import FileDataset
 from dystformer.utils import (
     get_dyst_filepaths,
     plot_trajs_multivariate,
+    plot_trajs_univariate,
     stack_and_extract_metadata,
 )
 
 WORK_DIR = os.getenv("WORK", "")
 DATA_DIR = os.path.join(WORK_DIR, "data")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
-    parser.add_argument("--split", help="Split of the data", type=str, default=None)
-    parser.add_argument(
-        "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
-    )
-    parser.add_argument(
-        "--ics_per_param", help="Num ics per param perturbation", type=int, default=1
-    )
-    args = parser.parse_args()
 
-    if args.dyst_name == "all":
-        # get all folder names in DATA_DIR/{split}
-        if args.split is None:
-            raise ValueError("Split must be provided for 'all' argument")
-        split_dir = os.path.join(DATA_DIR, args.split)
-        dyst_names_lst = [
-            folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
-        ]
-    else:
-        dyst_names_lst = [args.dyst_name]
-
-    print(f"dyst names: {dyst_names_lst}")
-
+def plot_saved_data(
+    dyst_names_lst: List[str],
+    split: str,
+    one_dim_target: bool = False,
+    plot_univariate: bool = False,
+    samples_subset_dict: Optional[Dict[str, List[int]]] = None,
+) -> None:
+    """
+    Plot saved Arrow data files.
+    """
     for dyst_name in dyst_names_lst:
-        filepaths = get_dyst_filepaths(dyst_name, split=args.split)
+        samples_subset = None  # default to plotting all samples sequentially
+        if samples_subset_dict is not None:
+            if dyst_name not in samples_subset_dict:
+                warnings.warn(
+                    f"No samples subset found for {dyst_name}, plotting all samples sequentially"
+                )
+            else:
+                samples_subset = samples_subset_dict[dyst_name]
+                print(f"Plotting samples subset {samples_subset} for {dyst_name}")
+
+        filepaths = get_dyst_filepaths(dyst_name, split=split)
         print(f"{dyst_name} filepaths: ", filepaths)
 
         # NOTE: this is same as accumulate_dyst_samples in tests/test_augmentations.py
@@ -54,7 +54,7 @@ if __name__ == "__main__":
             gts_dataset = FileDataset(
                 path=Path(filepath),
                 freq="h",
-                one_dim_target=args.one_dim_target,
+                one_dim_target=one_dim_target,
             )  # TODO: consider other frequencies?
 
             # extract the coordinates
@@ -76,5 +76,71 @@ if __name__ == "__main__":
             dyst_coords_samples,
             save_dir="tests/figs",
             plot_name=dyst_name,
-            sample_param_interval=args.ics_per_param,
+            samples_subset=samples_subset,
         )
+
+        if plot_univariate:
+            plot_trajs_univariate(
+                dyst_coords_samples,
+                selected_dim=None,  # plot all dimensions
+                save_dir="tests/figs/univariate",
+                plot_name=dyst_name,
+                samples_subset=samples_subset,
+            )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
+    parser.add_argument("--split", help="Split of the data", type=str, default=None)
+    parser.add_argument(
+        "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
+    )
+    parser.add_argument(
+        "--plot_univariate", action=argparse.BooleanOptionalAction, default=False
+    )
+    parser.add_argument(
+        "--metadata_path",
+        help="Path to metadata json file",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--samples_subset",
+        help="samples subset",
+        type=str,
+        choices=["failed_samples", "valid_samples"],
+        default=None,
+    )
+    args = parser.parse_args()
+
+    if args.dyst_name == "all":
+        # get all folder names in DATA_DIR/{split}
+        if args.split is None:
+            raise ValueError("Split must be provided for 'all' argument")
+        split_dir = os.path.join(DATA_DIR, args.split)
+        dyst_names_lst = [
+            folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
+        ]
+    else:
+        dyst_names_lst = [args.dyst_name]
+
+    print(f"dyst names: {dyst_names_lst}")
+
+    # optionally make plot labels aware of the samples subset (e.g the samples that succeeded or failed ethe tests)
+    samples_subset_dict = None  # default to plotting all samples sequentially
+    if args.metadata_path is not None and args.samples_subset is not None:
+        metadata = json.load(open(args.metadata_path, "r"))
+        if args.samples_subset not in metadata:
+            raise ValueError(
+                f"Samples subset {args.samples_subset} not found in metadata file {args.metadata_path}"
+            )
+        samples_subset_dict = metadata[args.samples_subset]
+
+    plot_saved_data(
+        dyst_names_lst,
+        split=args.split,
+        one_dim_target=args.one_dim_target,
+        plot_univariate=args.plot_univariate,
+        samples_subset_dict=samples_subset_dict,
+    )

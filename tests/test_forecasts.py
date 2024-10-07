@@ -122,7 +122,7 @@ if __name__ == "__main__":
     #     context_length=context_length,
     #     save_dir="eval_results/figs",
     #     plot_name=f"{dyst_name}_forecast",
-    #     num_samples_to_plot=4,
+    #     n_samples_plot=4,
     # )
 
     # plot the forecasted and ground truth trajectories
@@ -132,5 +132,5 @@ if __name__ == "__main__":
         context_length=context_length,
         save_dir="eval_results/figs",
         plot_name=f"{dyst_name}_forecast_gt",
-        num_samples_to_plot=4,
+        n_samples_plot=4,
     )

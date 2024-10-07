@@ -1,172 +1,107 @@
 import os
-from collections import defaultdict
-from pathlib import Path
-
-# for type hints
-from typing import Callable, Dict, List, Optional
+import warnings
+from typing import List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
-from gluonts.dataset import Dataset
-from gluonts.dataset.common import FileDataset
 
-from dystformer.utils import stack_and_extract_metadata
-
-WORK_DIR = os.getenv("WORK", "")
-
-
-def get_dyst_filepaths(dyst_name: str, split: Optional[str] = None) -> List[Path]:
-    """
-    [dyst_name].arrow could either be in data/train or data/test
-    Check if [dyst_name].arrow is in either data/train or data/test
-    """
-    if split is None:
-        possible_train_dir = os.path.join(WORK_DIR, "data/train", dyst_name)
-        possible_test_dir = os.path.join(WORK_DIR, "data/test", dyst_name)
-
-        if os.path.exists(possible_train_dir):
-            dyst_dir = possible_train_dir
-        elif os.path.exists(possible_test_dir):
-            dyst_dir = possible_test_dir
-        else:
-            raise Exception(
-                f"Directory for {dyst_name} does not exist in data/train or data/test."
-            )
-
-    else:
-        dyst_dir = os.path.join(WORK_DIR, f"data/{split}", dyst_name)
-        if not os.path.exists(dyst_dir):
-            raise Exception(f"Directory {dyst_dir} does not exist in data/{split}.")
-
-    print(f"Found dyst directory: {dyst_dir}")
-    filepaths = sorted(
-        list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0])
-    )
-    print(f"Found {len(filepaths)} files in {dyst_dir}")
-    return filepaths
-
-
-def get_dyst_datasets(
-    dyst_name: str, split: Optional[str] = None, one_dim_target: bool = True
-) -> List[Dataset]:
-    """
-    Returns list of datasets associated with dyst_name, converted to FileDataset
-    """
-    filepaths = get_dyst_filepaths(dyst_name, split=split)
-
-    gts_datasets_list = []
-    # for every file in the directory
-    for filepath in filepaths:
-        # create dataset by reading directly from filepath into FileDataset
-        gts_dataset = FileDataset(
-            path=Path(filepath), freq="h", one_dim_target=one_dim_target
-        )  # TODO: consider other frequencies?
-        gts_datasets_list.append(gts_dataset)
-    return gts_datasets_list
-
-
-def get_dysts_datasets_dict(
-    dysts_names: List[str], split: Optional[str] = None, one_dim_target: bool = True
-) -> Dict[str, List[Dataset]]:
-    """
-    Returns a dictionary with key as dyst_name and value as list of FileDatasets loaded from that dyst_name folder
-    """
-    gts_datasets_dict = defaultdict(list)
-    for dyst_name in dysts_names:
-        gts_datasets_dict[dyst_name] = get_dyst_datasets(
-            dyst_name, split=split, one_dim_target=one_dim_target
-        )
-    assert list(gts_datasets_dict.keys()) == dysts_names, "Mismatch in dyst names"
-    return gts_datasets_dict
-
-
-def accumulate_dyst_samples(
-    dyst_name: str,
-    gts_datasets_dict: Dict[str, List[Dataset]],
-    augmentation_fn: Optional[Callable[[Dataset], Dataset]] = None,
-) -> np.ndarray:
-    """
-    Accumulate samples from all datasets associated with dyst_name
-    Params:
-        augmentation_fn: System-scale augmentation function that takes in GluonTS Dataset and returns Iterator
-    Returns a numpy array of shape (num_samples, num_dims, num_timesteps)
-    """
-    dyst_coords_samples = []
-    # loop through all sample files for dyst_name system
-    for gts_dataset in gts_datasets_dict[dyst_name]:
-        if augmentation_fn is not None:
-            # Apply augmentation, which takes in GluonTS Dataset and returns ListDataset
-            gts_dataset = augmentation_fn(gts_dataset)
-
-        # extract the coordinates
-        dyst_coords, _ = stack_and_extract_metadata(
-            gts_dataset,
-        )
-        dyst_coords_samples.append(dyst_coords)
-        print("data shape: ", dyst_coords.shape)
-
-    dyst_coords_samples = np.array(dyst_coords_samples)
-    print(dyst_coords_samples.shape)
-    return dyst_coords_samples
+N_SAMPLES_PLOT = 6
+COLORS = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
 
 # Plotting utils
 def plot_trajs_univariate(
     dyst_data: np.ndarray,
-    selected_dim: int = 0,
+    selected_dim: Optional[int] = None,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
-    num_samples_to_plot: Optional[int] = None,
+    samples_subset: Optional[List[int]] = None,
+    n_samples_plot: Optional[int] = None,
 ) -> None:
     """
     Plot univariate timeseries from dyst_data
     """
     os.makedirs(save_dir, exist_ok=True)
-    num_samples = dyst_data.shape[0]
-    if num_samples_to_plot is None:
-        # limit plotting to at most 6 samples
-        num_samples_to_plot = 6 if num_samples > 6 else num_samples
-    # Plot the first coordinate
-    save_path = os.path.join(save_dir, f"{plot_name}.png")
-    print("Plotting 2D trajectories and saving to ", save_path)
+    if n_samples_plot is None:
+        num_tot_samples = dyst_data.shape[0]
+        n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
+    else:
+        n_samples_plot = min(N_SAMPLES_PLOT, n_samples_plot)
 
-    plt.figure(figsize=(6, 6))
-    for sample_idx in range(num_samples_to_plot):
-        plt.plot(dyst_data[sample_idx, selected_dim, :], alpha=0.5, linewidth=1)
-    plt.xlabel("timesteps")
-    plt.title(plot_name.replace("_", " "))
-    plt.savefig(save_path, dpi=300)
-    plt.close()
+    if samples_subset is not None:
+        if n_samples_plot > len(samples_subset):
+            warnings.warn(
+                f"Number of samples to plot is greater than the number of samples in the subset. Plotting all {len(samples_subset)} samples in the subset."
+            )
+            n_samples_plot = len(samples_subset)
+
+    if selected_dim is None:
+        dims = list(range(dyst_data.shape[1]))
+    else:
+        dims = [selected_dim]
+
+    for dim_idx in dims:
+        plot_name_dim = f"{plot_name}_dim{dim_idx}"
+        save_path = os.path.join(save_dir, f"{plot_name_dim}.png")
+        print(
+            f"Plotting 2D trajectories for {plot_name}, dimension {dim_idx} and saving to {save_path}"
+        )
+        plt.figure(figsize=(6, 6))
+        for sample_idx in range(n_samples_plot):
+            label_sample_idx = sample_idx
+            if samples_subset is not None:
+                label_sample_idx = samples_subset[sample_idx]
+            curr_color = COLORS[label_sample_idx]
+            plt.plot(
+                dyst_data[sample_idx, dim_idx, :],
+                alpha=0.5,
+                linewidth=1,
+                color=curr_color,
+                label=f"Sample {label_sample_idx}",
+            )
+        plt.xlabel("timesteps")
+        plt.title(plot_name_dim.replace("_", " "))
+        plt.legend()
+        plt.savefig(save_path, dpi=300)
+        plt.close()
 
 
 def plot_trajs_multivariate(
     dyst_data: np.ndarray,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
-    num_samples_to_plot: Optional[int] = None,
+    samples_subset: Optional[List[int]] = None,
+    n_samples_plot: Optional[int] = None,
     plot_2d_slice: bool = True,
-    sample_param_interval: int = 1,
 ) -> None:
     """
     Plot multivariate timeseries from dyst_data
     """
-    os.makedirs(save_dir, exist_ok=True)
-    num_samples = dyst_data.shape[0]
-    if num_samples_to_plot is None:
-        # limit plotting to at most 6 samples
-        num_samples_to_plot = 6 if num_samples > 6 else num_samples
 
-    colors = plt.rcParams["axes.prop_cycle"]
-    colors = colors.by_key()["color"]
+    os.makedirs(save_dir, exist_ok=True)
+    if n_samples_plot is None:
+        num_tot_samples = dyst_data.shape[0]
+        n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
+    else:
+        n_samples_plot = min(N_SAMPLES_PLOT, n_samples_plot)
+
+    if samples_subset is not None:
+        if n_samples_plot > len(samples_subset):
+            warnings.warn(
+                f"Number of samples to plot is greater than the number of samples in the subset. Plotting all {len(samples_subset)} samples in the subset."
+            )
+            n_samples_plot = len(samples_subset)
 
     if plot_2d_slice:
         # Plot the first two coordinates
         save_path = os.path.join(save_dir, f"{plot_name}.png")
         print("Plotting 2D trajectories and saving to ", save_path)
         plt.figure(figsize=(6, 6))
-        param_color_i = 0
-        for sample_idx in range(num_samples_to_plot):
-            curr_color = colors[param_color_i]
+        for sample_idx in range(n_samples_plot):
+            label_sample_idx = sample_idx
+            if samples_subset is not None:
+                label_sample_idx = samples_subset[sample_idx]
+            curr_color = COLORS[label_sample_idx]
             # plot x and y
             plt.plot(
                 dyst_data[sample_idx, 0, :],
@@ -174,11 +109,24 @@ def plot_trajs_multivariate(
                 alpha=0.5,
                 linewidth=1,
                 color=curr_color,
-                label=f"Sample {sample_idx}",
+                label=f"Sample {label_sample_idx}",
             )
-            plt.scatter(*dyst_data[sample_idx, :2, 0], marker="*", s=100, alpha=0.5)
-            if (sample_idx + 1) % sample_param_interval == 0:
-                param_color_i += 1
+            # plot IC
+            plt.scatter(
+                *dyst_data[sample_idx, :2, 0],
+                marker="*",
+                s=100,
+                alpha=0.5,
+                c=curr_color,
+            )
+            # plot final point
+            plt.scatter(
+                *dyst_data[sample_idx, :2, -1],
+                marker="x",
+                s=100,
+                alpha=0.5,
+                c=curr_color,
+            )
         plt.xlabel("X")
         plt.ylabel("Y")
         plt.legend()
@@ -192,9 +140,11 @@ def plot_trajs_multivariate(
     if dyst_data.shape[1] >= 3:
         fig = plt.figure(figsize=(6, 6))
         ax = fig.add_subplot(111, projection="3d")
-        param_color_i = 0
-        for sample_idx in range(num_samples_to_plot):
-            curr_color = colors[param_color_i]
+        for sample_idx in range(n_samples_plot):
+            label_sample_idx = sample_idx
+            if samples_subset is not None:
+                label_sample_idx = samples_subset[sample_idx]
+            curr_color = COLORS[label_sample_idx]
             # plot x and y and z
             ax.plot(
                 dyst_data[sample_idx, 0, :],
@@ -203,11 +153,24 @@ def plot_trajs_multivariate(
                 alpha=0.5,
                 linewidth=1,
                 color=curr_color,
-                label=f"Sample {sample_idx}",
+                label=f"Sample {label_sample_idx}",
             )  # X,Y,Z
-            ax.scatter(*dyst_data[sample_idx, :3, 0], marker="*", s=100, alpha=0.5)
-            if (sample_idx + 1) % sample_param_interval == 0:
-                param_color_i += 1
+            # plot IC
+            ax.scatter(
+                *dyst_data[sample_idx, :3, 0],
+                marker="*",
+                s=100,
+                alpha=0.5,
+                c=curr_color,
+            )
+            # plot final point
+            ax.scatter(
+                *dyst_data[sample_idx, :3, -1],
+                marker="x",
+                s=100,
+                alpha=0.5,
+                c=curr_color,
+            )
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_zlabel("Z")  # type: ignore
@@ -224,7 +187,7 @@ def plot_forecast_trajs_multivariate(
     context_length: int,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
-    num_samples_to_plot: Optional[int] = None,
+    n_samples_plot: Optional[int] = None,
 ) -> None:
     """
     Plot multivariate timeseries from dyst_data
@@ -232,20 +195,18 @@ def plot_forecast_trajs_multivariate(
     dyst_name = plot_name.split("_")[0]
     print("Plotting forecast vs ground truth for ", dyst_name)
     os.makedirs(save_dir, exist_ok=True)
-    num_samples = dyst_data.shape[0]
-    if num_samples_to_plot is None:
-        # limit plotting to at most 6 samples
-        num_samples_to_plot = 6 if num_samples > 6 else num_samples
-
-    colors = plt.rcParams["axes.prop_cycle"]
-    colors = colors.by_key()["color"]
+    if n_samples_plot is None:
+        num_tot_samples = dyst_data.shape[0]
+        n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
+    else:
+        n_samples_plot = min(N_SAMPLES_PLOT, n_samples_plot)
 
     # Plot the first two coordinates
     save_path = os.path.join(save_dir, f"{plot_name}.png")
     print("Plotting 2D trajectories and saving to ", save_path)
     plt.figure(figsize=(6, 6))
-    for sample_idx in range(num_samples_to_plot):
-        curr_color = colors[sample_idx]
+    for sample_idx in range(n_samples_plot):
+        curr_color = COLORS[sample_idx]
         plt.scatter(
             *dyst_data[sample_idx, :2, 0],
             marker="*",
@@ -288,8 +249,8 @@ def plot_forecast_trajs_multivariate(
     if dyst_data.shape[1] >= 3:
         fig = plt.figure(figsize=(6, 6))
         ax = fig.add_subplot(111, projection="3d")
-        for sample_idx in range(num_samples_to_plot):
-            curr_color = colors[sample_idx]
+        for sample_idx in range(n_samples_plot):
+            curr_color = COLORS[sample_idx]
             ax.scatter(
                 *dyst_data[sample_idx, :3, 0],
                 marker="*",
@@ -337,7 +298,7 @@ def plot_forecast_gt_trajs_multivariate(
     context_length: int,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
-    num_samples_to_plot: Optional[int] = None,
+    n_samples_plot: Optional[int] = None,
 ) -> None:
     """
     Plot multivariate timeseries from ground trugh and forecasted data
@@ -345,21 +306,19 @@ def plot_forecast_gt_trajs_multivariate(
     dyst_name = plot_name.split("_")[0]
     print("Plotting forecast vs ground truth for ", dyst_name)
     os.makedirs(save_dir, exist_ok=True)
-    num_samples = gt_data.shape[0]
-    assert num_samples == fc_data.shape[0], "Mismatch in number of samples"
-    if num_samples_to_plot is None:
-        # limit plotting to at most 6 samples
-        num_samples_to_plot = 6 if num_samples > 6 else num_samples
-
-    colors = plt.rcParams["axes.prop_cycle"]
-    colors = colors.by_key()["color"]
+    if n_samples_plot is None:
+        num_tot_samples = gt_data.shape[0]
+        assert num_tot_samples == fc_data.shape[0], "Mismatch in number of samples"
+        n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
+    else:
+        n_samples_plot = min(N_SAMPLES_PLOT, n_samples_plot)
 
     # Plot the first two coordinates
     save_path = os.path.join(save_dir, f"{plot_name}.png")
     print("Plotting 2D trajectories and saving to ", save_path)
     plt.figure(figsize=(6, 6))
-    for sample_idx in range(num_samples_to_plot):
-        curr_color = colors[sample_idx]
+    for sample_idx in range(n_samples_plot):
+        curr_color = COLORS[sample_idx]
         plt.scatter(
             *gt_data[sample_idx, :2, 0],
             marker="*",
@@ -406,7 +365,7 @@ def plot_forecast_gt_trajs_multivariate(
     if gt_data.shape[1] >= 3:
         fig = plt.figure(figsize=(6, 6))
         ax = fig.add_subplot(111, projection="3d")
-        for sample_idx in range(num_samples_to_plot):
+        for sample_idx in range(n_samples_plot):
             ax.scatter(
                 *gt_data[sample_idx, :3, 0],
                 marker="*",

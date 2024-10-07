@@ -49,8 +49,8 @@ if __name__ == "__main__":
 
     dyst_data_generator = DystData(
         rseed=rseed,
-        num_periods=5,
-        num_points=1024 * 3,  # Note: 3x the default
+        num_periods=20,
+        num_points=1024 * 4,  # Note: 3x the default
         num_ics=1,
         num_param_perturbations=4,
         param_sampler=param_sampler,
