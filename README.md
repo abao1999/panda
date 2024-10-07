@@ -91,7 +91,7 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 + [HIGH | HARD] SUPER IMPORTANT: fix dataset iterator to produce batches with consistent dimensions without that jank collator, without this, each gpu wont have the same workload and utilization will suck
 + [HIGH | HARD] limit cycle test for generating data
 + [HIGH | EASY] test if renormalization of the predictions are important for performance (see `dystformer/patchtst/patchtst.py`)
-+ [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension
++ [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
 + [MEDIUM | MEDIUM] time lag feature augmentation
 + [MEDIUM | MEDIUM] implement a better parameter sampler for generating dyst data
 + [MEDIUM | MEDIUM] test different loss functions 
@@ -104,3 +104,4 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 [W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
 [W sdp_utils.cpp:320] Warning: 1Torch was not compiled with memory efficient attention. (function operator())
 ```
++ [LOW | EASY] Plotting utils to make it easy to debug computed quantities used in attractor checks e.g. power spectrum, polynomial fits, etc.
