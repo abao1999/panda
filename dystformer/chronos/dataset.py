@@ -263,14 +263,14 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             Map(
                 partial(self.preprocess_entry, mode=self.mode),
                 dataset,
-            )
+            )  # iterator yields num_dim univariate time series with fixed length num_timesteps
             for dataset in self.datasets
         ]
 
         if self.mode == "train":
             iterables = [
                 self.create_training_data(dataset) for dataset in preprocessed_datasets
-            ]
+            ]  # each iterable is cycle iterator over the individual channels for a trajectory
         elif self.mode == "test":
             iterables = [
                 self.create_test_data(dataset) for dataset in preprocessed_datasets
@@ -299,6 +299,9 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             while True:
                 idx = np.random.choice(range(len(iterators)), p=probs)
                 try:
+                    # iterators[idx] is a cycler over the individual channels for a trajectory
+                    # calling next pulls random channel/dim from the sampled trajectory (idx)
+                    # the fact that iterators[idx] is a cycler ensures each dim is seen with sufficient iterations
                     data = next(iterators[idx])
                     yield self.to_hf_format(data)
                 except StopIteration:
@@ -307,5 +310,6 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
                         return
                     probs = [prob / sum(probs) for prob in probs]
         else:
+            # cyclers aren't used here, so just chain iterators sequentially
             for entry in itertools.chain(*iterators):
                 yield self.to_hf_format(entry)

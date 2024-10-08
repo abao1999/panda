@@ -1,19 +1,15 @@
 import os
-from collections import defaultdict
 from datetime import datetime
 from itertools import combinations
 from pathlib import Path
 
 # for type hints
-from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from dysts.systems import get_attractor_list
 from gluonts.dataset import Dataset
 from gluonts.dataset.arrow import ArrowWriter
-from gluonts.dataset.common import FileDataset
-
-WORK_DIR = os.getenv("WORK", "")
 
 
 def split_systems(
@@ -129,106 +125,54 @@ def sample_index_pairs(
 
 
 def filter_dict(d: Dict[str, np.ndarray]) -> Tuple[Dict[str, np.ndarray], List[str]]:
-    # List to store the filtered out keys
+    """
+    Filter a dictionary by removing key-value pairs where the value is None.
+
+    Args:
+        d (Dict[str, np.ndarray]): The input dictionary to filter.
+
+    Returns:
+        Tuple[Dict[str, np.ndarray], List[str]]: A tuple containing:
+            - The filtered dictionary with None values removed.
+            - A list of keys that were excluded (i.e., had None values).
+    """
     excluded_keys = []
     for key in list(d.keys()):
-        if d[key] is None:  # or d[key].shape[0] < req_num_vals:
-            excluded_keys.append(key)  # Collect the key
-            del d[key]  # Remove the key from the dictionary
+        if d[key] is None:
+            excluded_keys.append(key)
+            del d[key]
     return d, excluded_keys
 
 
-### Utils for loading saved data ###
-def get_dyst_filepaths(dyst_name: str, split: Optional[str] = None) -> List[Path]:
+def get_system_filepaths(
+    system_name: str, base_dir: Union[str, Path], split: str = "train"
+) -> List[Path]:
     """
-    [dyst_name].arrow could either be in data/train or data/test
-    Check if [dyst_name].arrow is in either data/train or data/test
+    Retrieve sorted filepaths for a given dynamical system.
+
+    This function finds and sorts all Arrow files for a specified dynamical system
+    within a given directory structure.
+
+    Args:
+        system_name (str): The name of the dynamical system.
+        base_dir (Union[str, Path]): The base directory containing the data.
+        split (str, optional): The data split to use (e.g., "train", "test"). Defaults to "train".
+
+    Returns:
+        List[Path]: A sorted list of Path objects for the Arrow files of the specified system.
+
+    Raises:
+        Exception: If the directory for the specified system does not exist.
+
+    Note:
+        The function assumes that the Arrow files are named with a numeric prefix
+        (e.g., "1_T-1024.arrow") and sorts them based on this prefix.
     """
-    if split is None:
-        possible_train_dir = os.path.join(WORK_DIR, "data/train", dyst_name)
-        possible_test_dir = os.path.join(WORK_DIR, "data/test", dyst_name)
+    dyst_dir = os.path.join(base_dir, split, system_name)
+    if not os.path.exists(dyst_dir):
+        raise Exception(f"Directory {dyst_dir} does not exist.")
 
-        if os.path.exists(possible_train_dir):
-            dyst_dir = possible_train_dir
-        elif os.path.exists(possible_test_dir):
-            dyst_dir = possible_test_dir
-        else:
-            raise Exception(
-                f"Directory for {dyst_name} does not exist in data/train or data/test."
-            )
-
-    else:
-        dyst_dir = os.path.join(WORK_DIR, f"data/{split}", dyst_name)
-        if not os.path.exists(dyst_dir):
-            raise Exception(f"Directory {dyst_dir} does not exist in data/{split}.")
-
-    print(f"Found dyst directory: {dyst_dir}")
     filepaths = sorted(
         list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0])
     )
-    print(f"Found {len(filepaths)} files in {dyst_dir}")
     return filepaths
-
-
-def get_dyst_datasets(
-    dyst_name: str, split: Optional[str] = None, one_dim_target: bool = True
-) -> List[Dataset]:
-    """
-    Returns list of datasets associated with dyst_name, converted to FileDataset
-    """
-    filepaths = get_dyst_filepaths(dyst_name, split=split)
-
-    gts_datasets_list = []
-    # for every file in the directory
-    for filepath in filepaths:
-        # create dataset by reading directly from filepath into FileDataset
-        gts_dataset = FileDataset(
-            path=Path(filepath), freq="h", one_dim_target=one_dim_target
-        )  # TODO: consider other frequencies?
-        gts_datasets_list.append(gts_dataset)
-    return gts_datasets_list
-
-
-def get_dysts_datasets_dict(
-    dysts_names: List[str], split: Optional[str] = None, one_dim_target: bool = True
-) -> Dict[str, List[Dataset]]:
-    """
-    Returns a dictionary with key as dyst_name and value as list of FileDatasets loaded from that dyst_name folder
-    """
-    gts_datasets_dict = defaultdict(list)
-    for dyst_name in dysts_names:
-        gts_datasets_dict[dyst_name] = get_dyst_datasets(
-            dyst_name, split=split, one_dim_target=one_dim_target
-        )
-    assert list(gts_datasets_dict.keys()) == dysts_names, "Mismatch in dyst names"
-    return gts_datasets_dict
-
-
-def accumulate_dyst_samples(
-    dyst_name: str,
-    gts_datasets_dict: Dict[str, List[Dataset]],
-    augmentation_fn: Optional[Callable[[Dataset], Dataset]] = None,
-) -> np.ndarray:
-    """
-    Accumulate samples from all datasets associated with dyst_name
-    Params:
-        augmentation_fn: System-scale augmentation function that takes in GluonTS Dataset and returns Iterator
-    Returns a numpy array of shape (num_samples, num_dims, num_timesteps)
-    """
-    dyst_coords_samples = []
-    # loop through all sample files for dyst_name system
-    for gts_dataset in gts_datasets_dict[dyst_name]:
-        if augmentation_fn is not None:
-            # Apply augmentation, which takes in GluonTS Dataset and returns ListDataset
-            gts_dataset = augmentation_fn(gts_dataset)
-
-        # extract the coordinates
-        dyst_coords, _ = stack_and_extract_metadata(
-            gts_dataset,
-        )
-        dyst_coords_samples.append(dyst_coords)
-        print("data shape: ", dyst_coords.shape)
-
-    dyst_coords_samples = np.array(dyst_coords_samples)
-    print(dyst_coords_samples.shape)
-    return dyst_coords_samples

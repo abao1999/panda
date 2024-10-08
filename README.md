@@ -96,9 +96,9 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 + [MEDIUM | MEDIUM] implement a better parameter sampler for generating dyst data
 + [MEDIUM | MEDIUM] test different loss functions 
 + [LOW | MEDIUM] implement patchtst for causal prediction pretraining
-+ [MEDIUM | MEDIUM] sample systems uniformly according to the distribution of phase space dimension
 + [LOW | EASY] address the warning `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory` 
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
++ [LOW | EASY] deprecate a lot of the bloated data_utils, also a lot of the unused test scripts
 + [LOW | HARD] add flash attention support for AMD, see this warning: 
 ```
 [W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
