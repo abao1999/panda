@@ -14,9 +14,6 @@ from gluonts.itertools import Filter
 from omegaconf import OmegaConf
 from transformers import (
     Trainer,
-    TrainerCallback,
-    TrainerControl,
-    TrainerState,
     TrainingArguments,
 )
 
@@ -35,24 +32,13 @@ from dystformer.utils import (
 logger = logging.getLogger(__name__)
 
 
-class BatchSizeLoggerCallback(TrainerCallback):
-    def on_step_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
-        # Access the current batch from kwargs
-        current_batch = kwargs.get("inputs")
-        if current_batch:
-            # Get the batch size from the 'past_values' tensor
-            batch_size = current_batch["past_values"].shape[
-                0
-            ]  # Assuming 'past_values' is the key
-            wandb.log({"batch_size": batch_size}, step=state.global_step)
-
-
-def fixed_dim_collator(
+def random_dim_collator(
     features: List[Dict[str, torch.Tensor]],
 ) -> Dict[str, torch.Tensor]:
     """
-    Collates trajectories by sampling a fixed dimension and filtering out any
+    Collates trajectories by sampling a dimension and filtering out any
     trajectories that do not match the sampled dimension.
+
     Args:
         features: list of dictionaries with "past_values" and "future_values" tensors
             with shapes [num_dimensions, context_length] and [num_dimensions, prediction_length].
@@ -265,6 +251,7 @@ def main(cfg):
         context_length=cfg.patchtst.context_length,
         prediction_length=cfg.patchtst.prediction_length,
         mode="train",
+        fixed_dim=cfg.fixed_dim,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     model = PatchTSTModel(dict(cfg.patchtst), mode="pretrain")
@@ -305,16 +292,16 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
+    collation_method = {
+        "random_dim": random_dim_collator,
+        "dimensional": partial(dimensional_collator, equalized_dim=6),
+    }.get(cfg.collate_method)
+
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
-        data_collator=partial(
-            dimensional_collator, equalized_dim=6
-        ),  # Use the custom collator
-        callbacks=[
-            BatchSizeLoggerCallback()
-        ],  # if not cfg.wandb.log else [WandbCallback()],
+        data_collator=collation_method,
     )
 
     log_on_main("Training", logger)

@@ -11,6 +11,9 @@ min_past: 60
 
 max_missing_prop: 0.9
 
+collate_method: null
+fixed_dim: 3
+
 # augmentations
 augmentations:
   system: # system-scale augmentations

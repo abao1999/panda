@@ -1,12 +1,9 @@
 """
 Dataset for PatchTST
-
-TODO:
-    - The augmentations can be rewritten to handle 2D arrays for this dataset
-      since patchTST does not adhere to the chronos dataset structure
 """
 
 import itertools
+from dataclasses import dataclass
 from functools import partial
 from typing import Iterator, List, Optional
 
@@ -16,7 +13,6 @@ from gluonts.itertools import Cyclic, Map
 from gluonts.transform import (
     ExpectedNumInstanceSampler,
     InstanceSplitter,
-    LeavesMissingValues,
     MissingValueImputation,
     TestSplitSampler,
     ValidationSplitSampler,
@@ -47,41 +43,36 @@ class PseudoShuffledIterableDataset(IterableDataset):
             yield shuffle_buffer.pop(idx)
 
 
-class ShuffleMixin:
+@dataclass
+class PatchTSTDataset(IterableDataset):
+    datasets: list
+    probabilities: List[float]
+    context_length: int = 512
+    prediction_length: int = 64
+    min_past: Optional[int] = None
+    imputation_method: Optional[MissingValueImputation] = None
+    mode: str = "train"
+    np_dtype: np.dtype = np.dtype(np.float32)
+    fixed_dim: Optional[int] = None
+
+    def __post_init__(self):
+        assert len(self.probabilities) == len(self.datasets)
+        assert self.mode in ("train", "validation", "test")
+
     def shuffle(self, shuffle_buffer_length: int = 100):
         return PseudoShuffledIterableDataset(self, shuffle_buffer_length)
-
-
-class PatchTSTDataset(IterableDataset, ShuffleMixin):
-    def __init__(
-        self,
-        datasets: list,
-        probabilities: List[float],
-        context_length: int = 512,
-        prediction_length: int = 64,
-        min_past: Optional[int] = None,
-        imputation_method: Optional[MissingValueImputation] = None,
-        mode: str = "train",
-        np_dtype: np.dtype = np.dtype(np.float32),
-    ) -> None:
-        super().__init__()
-
-        assert len(probabilities) == len(datasets)
-        assert mode in ("train", "validation", "test")
-
-        self.datasets = datasets
-        self.probabilities = probabilities
-        self.context_length = context_length
-        self.prediction_length = prediction_length
-        self.min_past = min_past or prediction_length
-        self.imputation_method = imputation_method or LeavesMissingValues()
-        self.mode = mode
-        self.np_dtype = np_dtype
 
     def preprocess_entry(self, entry: dict, mode: str) -> dict:
         entry = {f: entry[f] for f in ["start", "target"]}
         entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
-        entry["target"] = self.imputation_method(entry["target"])
+
+        if mode == "train" and isinstance(self.fixed_dim, int):
+            total_dims = entry["target"].shape[0]
+            sampled_dims = np.random.choice(
+                total_dims, size=self.fixed_dim, replace=False
+            )
+            entry["target"] = entry["target"][sampled_dims]
+
         return entry
 
     def _create_instance_splitter(self, mode: str):

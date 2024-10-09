@@ -88,6 +88,7 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
++ [HIGH | EASY] CONTACT_SUPPORT. address the warning `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory` 
 + [HIGH | HARD] SUPER IMPORTANT: fix dataset iterator to produce batches with consistent dimensions without that jank collator, without this, each gpu wont have the same workload and utilization will suck
 + [HIGH | HARD] limit cycle test for generating data
 + [HIGH | EASY] test if renormalization of the predictions are important for performance (see `dystformer/patchtst/patchtst.py`)
@@ -96,7 +97,6 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 + [MEDIUM | MEDIUM] implement a better parameter sampler for generating dyst data
 + [MEDIUM | MEDIUM] test different loss functions 
 + [LOW | MEDIUM] implement patchtst for causal prediction pretraining
-+ [LOW | EASY] address the warning `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory` 
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
 + [LOW | EASY] deprecate a lot of the bloated data_utils, also a lot of the unused test scripts
 + [LOW | HARD] add flash attention support for AMD, see this warning: 

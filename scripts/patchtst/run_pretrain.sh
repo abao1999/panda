@@ -15,7 +15,6 @@
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/patchtst/train.py \
-        run_name=patchtst_lorenz_overfit \
         shuffle_buffer_length=100_000 \
         patchtst.context_length=512 \
         patchtst.prediction_length=64 \
@@ -23,7 +22,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.patch_stride=16 \
         patchtst.num_hidden_layers=8 \
         patchtst.num_attention_heads=8 \
-        patchtst.d_model=128 \
+        patchtst.d_model=512 \
         train.per_device_train_batch_size=256 \
         train.max_steps=300_000 \
         train.save_steps=100_000 \
