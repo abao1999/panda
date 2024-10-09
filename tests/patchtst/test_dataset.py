@@ -207,7 +207,12 @@ def main(cfg):
         fixed_dim=cfg.fixed_dim,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    check_dim_distribution(num_batches=1000, batch_size=16, dataset=dataset, cfg=cfg)
+    check_dim_distribution(
+        num_batches=1000,
+        batch_size=cfg.train.per_device_train_batch_size,
+        dataset=dataset,
+        cfg=cfg,
+    )
 
 
 if __name__ == "__main__":
