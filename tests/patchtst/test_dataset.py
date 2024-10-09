@@ -205,6 +205,7 @@ def main(cfg):
         prediction_length=cfg.patchtst.prediction_length,
         mode="train",
         fixed_dim=cfg.fixed_dim,
+        delay_embed_prob=cfg.delay_embed_prob,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     check_dim_distribution(

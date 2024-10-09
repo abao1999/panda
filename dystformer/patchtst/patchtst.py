@@ -486,9 +486,9 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         x_hat = self.head(x_hat)
 
         # renormalize time series and calculate masked_loss
-        x_hat = x_hat * scale + loc
-        model_input = model_output.patch_input * scale + loc
-        loss_val = self.loss(x_hat, model_input)
+        # x_hat = x_hat * scale + loc
+        # model_input = model_output.patch_input * scale + loc
+        loss_val = self.loss(x_hat, model_output.patch_input)
 
         # reduce over the patch length dim first, then compute the masked loss over the tokens
         masked_loss = (loss_val.mean(dim=-1) * model_output.mask).sum() / (

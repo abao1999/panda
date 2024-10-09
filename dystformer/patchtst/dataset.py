@@ -54,6 +54,7 @@ class PatchTSTDataset(IterableDataset):
     mode: str = "train"
     np_dtype: np.dtype = np.dtype(np.float32)
     fixed_dim: Optional[int] = None
+    delay_embed_prob: float = 0.0
 
     def __post_init__(self):
         assert len(self.probabilities) == len(self.datasets)
@@ -72,6 +73,21 @@ class PatchTSTDataset(IterableDataset):
                 total_dims, size=self.fixed_dim, replace=False
             )
             entry["target"] = entry["target"][sampled_dims]
+
+        if mode == "train" and self.delay_embed_prob > np.random.rand():
+            # Randomly select a dimension
+            num_dims = entry["target"].shape[0]
+            selected_dim = np.random.randint(num_dims)
+            selected_series = entry["target"][selected_dim]
+
+            # Create delay embeddings
+            delay_embeddings = np.stack(
+                [np.roll(selected_series, shift) for shift in range(num_dims)]
+            )[:, num_dims - 1 :]  # cut off rolling artifacts
+            print(delay_embeddings.shape)
+
+            # Replace the original target with delay embeddings
+            entry["target"] = delay_embeddings
 
         return entry
 

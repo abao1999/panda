@@ -32,6 +32,31 @@ from dystformer.utils import (
 logger = logging.getLogger(__name__)
 
 
+def fixed_dim_collator(
+    features: List[Dict[str, torch.Tensor]],
+    fixed_dim: int,
+) -> Dict[str, torch.Tensor]:
+    """
+    Collates trajectories by randomly sampling a fixed number of dimensions and filtering out any
+    trajectories that do not match the sampled dimension.
+
+    NOTE:
+    - this doesnt perform any out-of-bounds checks and assumes that you can just sample the dims
+    in other words, this collator is brittle, but will work for the continuous systems
+    - this does the exact same thing as setting cfg.fixed_dim = 3
+
+    NOTE: will be deprecated
+    """
+    sampled_dims = [
+        torch.randperm(f["past_values"].shape[1])[:fixed_dim] for f in features
+    ]
+    batch = {
+        key: torch.stack([f[key][:, sampled_dims[i]] for i, f in enumerate(features)])
+        for key in features[0].keys()
+    }
+    return batch
+
+
 def random_dim_collator(
     features: List[Dict[str, torch.Tensor]],
 ) -> Dict[str, torch.Tensor]:
@@ -48,7 +73,6 @@ def random_dim_collator(
         Dict with "past_values" and "future_values" flattened and equalized in dimension 0,
             with size equalized_dim*batch_size
     """
-
     grouped_features = {}
     for feature in features:
         key = feature["past_values"].shape[-1]
@@ -294,7 +318,8 @@ def main(cfg):
 
     collation_method = {
         "random_dim": random_dim_collator,
-        "dimensional": partial(dimensional_collator, equalized_dim=6),
+        "fixed_dim": partial(fixed_dim_collator, fixed_dim=3),
+        "" "dimensional": partial(dimensional_collator, equalized_dim=6),
     }.get(cfg.collate_method)
 
     trainer = Trainer(

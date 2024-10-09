@@ -12,7 +12,8 @@ min_past: 60
 max_missing_prop: 0.9
 
 collate_method: null
-fixed_dim: 3
+fixed_dim: null
+delay_embed_prob: 0.0
 
 # augmentations
 augmentations:
