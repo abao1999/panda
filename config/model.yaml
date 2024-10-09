@@ -54,7 +54,6 @@ patchtst:
   mixing_pre_norm: true
 
 chronos:
-  # configuration for model and tokenizer
   model_id: amazon/chronos-t5-small
   # model_id: google/t5-efficient-large
   model_type: seq2seq
@@ -74,13 +73,11 @@ chronos:
   eos_token_id: 1
   use_eos_token: true
 
-  # tokenizer
   tokenizer_class: "MeanScaleUniformBins"
   tokenizer_kwargs:
     low_limit: -15.0
     high_limit: 15.0
 
-  # more params for chronos config
   temperature: 1.0
   top_k: 50
   top_p: 1.0

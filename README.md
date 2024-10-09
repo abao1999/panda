@@ -89,7 +89,6 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
 + [HIGH | EASY] CONTACT_SUPPORT. address the warning `libibverbs: Warning: couldn't load driver 'libmlx4-rdmav34.so': libmlx4-rdmav34.so: cannot open shared object file: No such file or directory` 
-+ [HIGH | HARD] SUPER IMPORTANT: fix dataset iterator to produce batches with consistent dimensions without that jank collator, without this, each gpu wont have the same workload and utilization will suck
 + [HIGH | HARD] limit cycle test for generating data
 + [HIGH | EASY] test if renormalization of the predictions are important for performance (see `dystformer/patchtst/patchtst.py`)
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
