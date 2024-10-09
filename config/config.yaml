@@ -4,7 +4,6 @@ defaults:
   - train
   - evaluation
   - dataset
-  - figures
   # - override hydra/job_logging: disabled 
   - override hydra/hydra_logging: disabled 
 

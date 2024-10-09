@@ -10,10 +10,6 @@ import numpy as np
 from dysts.base import BaseDyn
 from scipy.integrate import solve_ivp
 
-from dystformer.utils import (
-    is_float_or_sequence_of_floats,
-)
-
 
 @dataclass
 class SkewSystem:
@@ -200,14 +196,10 @@ def construct_basic_affine_map(
     Returns:
     A: the affine map matrix (2D array), block matrix (n + 2m) x (n + m + 1)
     """
-    # check if kappa is a float or a list of floats
-    if isinstance(kappa, int):
-        kappa = float(kappa)
-    assert is_float_or_sequence_of_floats(
-        kappa
-    ), "kappa must be a float or a list of floats"
     I_n = np.eye(n)  # n x n identity matrix
     I_m = np.eye(m)  # m x m identity matrix
+
+    assert type(kappa) in [float, np.ndarray], "coupling strength kappa must be a float or a list of floats"  # type: ignore
 
     if isinstance(kappa, float):
         bottom_block = np.hstack(

@@ -104,4 +104,4 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 [W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
 [W sdp_utils.cpp:320] Warning: 1Torch was not compiled with memory efficient attention. (function operator())
 ```
-+ [LOW | EASY] Plotting utils to make it easy to debug computed quantities used in attractor checks e.g. power spectrum, polynomial fits, etc.
++ [LOW | EASY] Plotting utils to make it easy to debug computed quantities used in attractor checks e.g. power spectrum, polynomial fits, etc. And, enable multiprocessed attractor tests across ensemble

@@ -32,13 +32,3 @@ from .train_utils import (
     log_on_main,
     save_training_info,
 )
-from .typechecks import (
-    is_bool,
-    is_float,
-    is_float_or_sequence_of_floats,
-    is_int,
-    is_nonnegative_int,
-    is_positive_float,
-    is_positive_int,
-    is_power_of_two,
-)

@@ -1,35 +1,3 @@
-chronos:
-  # configuration for model and tokenizer
-  model_id: amazon/chronos-t5-small
-  # model_id: google/t5-efficient-large
-  model_type: seq2seq
-
-  # model params
-  random_init: false # NOTE: set to false for fine-tuning, very important!
-  tie_embeddings: true
-
-  context_length: 512
-  prediction_length: 64
-  num_samples: 20 # TODO: this is not actually being used. should we change it to match our number of samples?
-
-  # vocab (tokens)
-  n_tokens: 4096
-  n_special_tokens: 2
-  pad_token_id: 0
-  eos_token_id: 1
-  use_eos_token: true
-
-  # tokenizer
-  tokenizer_class: "MeanScaleUniformBins"
-  tokenizer_kwargs:
-    low_limit: -15.0
-    high_limit: 15.0
-
-  # more params for chronos config
-  temperature: 1.0
-  top_k: 50
-  top_p: 1.0
-
 # PatchTST parameters
 patchtst:
   num_input_channels: 1
@@ -75,4 +43,36 @@ patchtst:
   d_mixing: 128
   mixing_dropout: 0.5
   mix_channels: false
+
+chronos:
+  # configuration for model and tokenizer
+  model_id: amazon/chronos-t5-small
+  # model_id: google/t5-efficient-large
+  model_type: seq2seq
+
+  # model params
+  random_init: false # NOTE: set to false for fine-tuning, very important!
+  tie_embeddings: true
+
+  context_length: 512
+  prediction_length: 64
+  num_samples: 20 # TODO: this is not actually being used. should we change it to match our number of samples?
+
+  # vocab (tokens)
+  n_tokens: 4096
+  n_special_tokens: 2
+  pad_token_id: 0
+  eos_token_id: 1
+  use_eos_token: true
+
+  # tokenizer
+  tokenizer_class: "MeanScaleUniformBins"
+  tokenizer_kwargs:
+    low_limit: -15.0
+    high_limit: 15.0
+
+  # more params for chronos config
+  temperature: 1.0
+  top_k: 50
+  top_p: 1.0
 
