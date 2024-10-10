@@ -13,7 +13,6 @@ import numpy as np
 from gluonts.dataset.common import FileDataset
 
 from dystformer.utils import (
-    get_dyst_filepaths,
     plot_trajs_multivariate,
     plot_trajs_univariate,
     stack_and_extract_metadata,
@@ -21,6 +20,22 @@ from dystformer.utils import (
 
 WORK_DIR = os.getenv("WORK", "")
 DATA_DIR = os.path.join(WORK_DIR, "data")
+
+
+def get_dyst_filepaths(dyst_name: str, split: str = "train") -> List[Path]:
+    """
+    Get filepaths for all .arrow files in data/{split}/{dyst_name}
+    """
+    dyst_dir = os.path.join(WORK_DIR, f"data/{split}", dyst_name)
+    if not os.path.exists(dyst_dir):
+        raise FileNotFoundError(f"Directory {dyst_dir} does not exist in data/{split}.")
+
+    print(f"Found dyst directory: {dyst_dir}")
+    filepaths = sorted(
+        list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0])
+    )
+    print(f"Found {len(filepaths)} files in {dyst_dir}")
+    return filepaths
 
 
 def plot_saved_data(
@@ -44,7 +59,7 @@ def plot_saved_data(
                 samples_subset = samples_subset_dict[dyst_name]
                 print(f"Plotting samples subset {samples_subset} for {dyst_name}")
 
-        filepaths = get_dyst_filepaths(dyst_name, split=split)
+        filepaths = get_dyst_filepaths(dyst_name, split)
         print(f"{dyst_name} filepaths: ", filepaths)
 
         # NOTE: this is same as accumulate_dyst_samples in tests/test_augmentations.py

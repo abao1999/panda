@@ -17,6 +17,7 @@ from dystformer.utils import split_systems
 WORK_DIR = os.getenv("WORK", "")
 DATA_DIR = os.path.join(WORK_DIR, "data")
 
+
 if __name__ == "__main__":
     # For testing select systems
     parser = argparse.ArgumentParser()

@@ -310,16 +310,13 @@ class DystData:
             summary_dict = {"failed_integrations": self.failed_integrations}
 
         else:
-            callback_names = [
-                func.__name__ for func in self.attractor_validator.callbacks
-            ]
+            # get list of callback names
             valid_dyst_counts = self.attractor_validator.valid_dyst_counts
             failed_checks = self.attractor_validator.failed_checks
             # for consistent plotting, we want to plot subsets of samples that failed or succeeded the tests
             failed_samples = self.attractor_validator.failed_samples
             valid_samples = self.attractor_validator.valid_samples
             summary_dict = {
-                "attractor_checks": callback_names,
                 "valid_dyst_counts": valid_dyst_counts,
                 "failed_checks": failed_checks,
                 "failed_integrations": self.failed_integrations,
