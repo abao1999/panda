@@ -28,7 +28,7 @@ def main():
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=60 * 3)  # 2 min time limit
-    instability_event = InstabilityEvent(threshold=1e4)
+    instability_event = InstabilityEvent(threshold=1e3)
     events = [time_limit_event, instability_event]
 
     param_sampler = GaussianParamSampler(random_seed=rseed, scale=0.5, verbose=True)
@@ -56,7 +56,7 @@ def main():
     # make the train split
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=train,
-        split="train",
+        split="patchtst_train",
         samples_process_interval=1,
         save_dir=DATA_DIR,
     )
@@ -64,7 +64,7 @@ def main():
     # make the test split
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=test,
-        split="test",
+        split="patchtst_test",
         samples_process_interval=1,
         save_dir=DATA_DIR,
     )

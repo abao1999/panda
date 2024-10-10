@@ -6,7 +6,11 @@ TODO: This whole thing is kinda useless, figure out how to gracefully deprecate
 
 import torch.nn as nn
 
-from dystformer.patchtst.patchtst import PatchTSTConfig, PatchTSTForPretraining
+from dystformer.patchtst.patchtst import (
+    PatchTSTConfig,
+    PatchTSTForPrediction,
+    PatchTSTForPretraining,
+)
 
 
 class PatchTSTModel(nn.Module):
@@ -24,6 +28,8 @@ class PatchTSTModel(nn.Module):
 
         if mode == "pretrain":
             self.model = PatchTSTForPretraining(self.config)
+        elif mode == "predict":
+            self.model = PatchTSTForPrediction(self.config)
 
     @property
     def device(self):
@@ -46,8 +52,7 @@ class PatchTSTModel(nn.Module):
         """
         Exposed for flexibility in channel mixing strategies.
         """
-        # pretraining mode does require forecasts as it does MLM
-        # TODO: move this logic to the dataset to optimize forward pass cost
+        # pretraining mode does not require forecasts
         if self.mode == "pretrain":
             kwargs.pop("future_values", None)
 

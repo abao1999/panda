@@ -92,7 +92,6 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 + [MEDIUM | MEDIUM] implement patchtst for causal prediction pretraining
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
 + [MEDIUM | MEDIUM] implement a better parameter sampler for generating dyst data
-+ [MEDIUM | MEDIUM] test different loss functions 
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
 + [LOW | HARD] add flash attention support for AMD, see this warning: 
 ```

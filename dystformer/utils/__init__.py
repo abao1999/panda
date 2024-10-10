@@ -2,6 +2,7 @@ from .data_utils import (
     convert_to_arrow,
     filter_dict,
     get_system_filepaths,
+    process_trajs,
     sample_index_pairs,
     split_systems,
     stack_and_extract_metadata,
