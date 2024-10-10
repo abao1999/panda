@@ -87,17 +87,15 @@ def plot_distribution(num_batches: int, batch_size: int, dataset, cfg):
             for _, batch in zip(range(num_batches), dataloader)
         ]
     )
-    future_values, norms, loc, scale, loss_val, preds, *rest = outputs
+    future_values, loc, scale, loss_val, preds, *rest = outputs
 
     agg_preds = (
-        torch.concat([torch.norm(pred, dim=1) for pred in preds], dim=0).detach().cpu()
+        torch.concat([torch.mean(pred, dim=1) for pred in preds], dim=0).detach().cpu()
     )
-    agg_norms = torch.concat(norms, dim=0).detach().cpu()
     agg_future_values = torch.concat(future_values, dim=0).detach().cpu()
     agg_loc = torch.concat(loc, dim=0).detach().cpu().mean(dim=0)
     agg_scale = torch.concat(scale, dim=0).detach().cpu().mean(dim=0)
     agg_loss = [torch.log10(loss.detach().cpu()) for loss in loss_val]
-    print(agg_norms.shape)
     print(agg_loc.shape)
     print(agg_scale.shape)
     fig, axes = plt.subplots(1, 4, figsize=(20, 5))

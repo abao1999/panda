@@ -291,6 +291,7 @@ def main(cfg):
         learning_rate=cfg.train.learning_rate,
         lr_scheduler_type=cfg.train.lr_scheduler_type,
         warmup_ratio=cfg.train.warmup_ratio,
+        max_grad_norm=cfg.train.max_grad_norm,
         optim=cfg.train.optim,
         logging_dir=f"wandb/tbruns/{run.name}_{run.id}/logs"
         if cfg.wandb.log
@@ -308,8 +309,7 @@ def main(cfg):
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
         ddp_backend="nccl",
         remove_unused_columns=cfg.train.remove_unused_columns,
-        dispatch_batches=False,
-        split_batches=False,
+        seed=cfg.train.seed,
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.

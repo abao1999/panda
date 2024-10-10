@@ -88,6 +88,7 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
++ [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
 + [HIGH | HARD] limit cycle test for generating data
 + [MEDIUM | MEDIUM] implement patchtst for causal prediction pretraining
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
