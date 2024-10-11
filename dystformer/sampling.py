@@ -134,10 +134,10 @@ class OnAttractorInitCondSampler(BaseSampler):
             )
 
             # renormalize with respect to reference trajectory
+            # this should work since system is passed by reference
             if self.recompute_standardization:
-                mean = reference_traj.mean(axis=0)
-                std = reference_traj.std(axis=0)
-                reference_traj = (reference_traj - mean) / std
+                system.mean = reference_traj.mean(axis=0)
+                system.std = reference_traj.std(axis=0)
 
             # if integrate fails, resulting in an incomplete trajectory
             if reference_traj is None:
