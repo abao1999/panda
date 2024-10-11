@@ -81,6 +81,7 @@ def main():
         plot_trajs_multivariate(
             samples,
             save_dir="figures",
+            plot_name=f"{args.debug_dyst}_debug",
         )
 
     else:
