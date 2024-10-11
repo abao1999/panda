@@ -42,20 +42,25 @@ def main():
         default=False,
         help="Enable debug mode for saving failed trajectory ensembles",
     )
+    parser.add_argument(
+        "--rseed",
+        type=int,
+        default=999,
+        help="Random seed for split, IC, and param samplers",
+    )
     args = parser.parse_args()
 
-    # set random seed
-    rseed = 999  # we are using same seed for split and ic and param samplers
-
     # generate split of dynamical systems
-    test, train = split_systems(0.3, seed=rseed, sys_class="delay")
+    test, train = split_systems(0.3, seed=args.rseed, sys_class="delay")
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=60 * 3)  # 2 min time limit
     instability_event = InstabilityEvent(threshold=1e3)
     events = [time_limit_event, instability_event]
 
-    param_sampler = GaussianParamSampler(random_seed=rseed, scale=0.5, verbose=True)
+    param_sampler = GaussianParamSampler(
+        random_seed=args.rseed, scale=0.5, verbose=True
+    )
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=2048,
         reference_traj_transient=200,
@@ -64,7 +69,7 @@ def main():
     )
 
     dyst_data_generator = DystData(
-        rseed=rseed,
+        rseed=args.rseed,
         num_periods=10,
         num_points=2048,
         num_ics=2,
