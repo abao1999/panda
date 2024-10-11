@@ -84,7 +84,6 @@ class PatchTSTDataset(IterableDataset):
             delay_embeddings = np.stack(
                 [np.roll(selected_series, shift) for shift in range(num_dims)]
             )[:, num_dims - 1 :]  # cut off rolling artifacts
-            print(delay_embeddings.shape)
 
             # Replace the original target with delay embeddings
             entry["target"] = delay_embeddings

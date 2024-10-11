@@ -20,7 +20,6 @@ from transformers.models.patchtst.modeling_patchtst import (
     PatchTSTModelOutput,
     PatchTSTPatchify,
     PatchTSTPositionalEncoding,
-    PatchTSTPredictionHead,
     PatchTSTScaler,
     SamplePatchTSTOutput,
     StudentTOutput,
@@ -508,6 +507,73 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         )
 
 
+class PatchTSTPredictionHead(nn.Module):
+    def __init__(self, config: PatchTSTConfig, num_patches, distribution_output=None):
+        super().__init__()
+
+        self.share_projection = config.share_projection
+        self.num_input_channels = config.num_input_channels
+        self.use_cls_token = config.use_cls_token
+        self.pooling_type = config.pooling_type
+        if self.pooling_type or self.use_cls_token:
+            head_dim = config.d_model
+        else:
+            head_dim = config.d_model * num_patches
+
+        # all the channels share the same head
+        self.flatten = nn.Flatten(start_dim=2)
+        if distribution_output is None:
+            # use linear head with custom weight initialization
+            self.projection = nn.Linear(head_dim, config.prediction_length, bias=False)
+            nn.init.normal_(self.projection.weight, std=1)
+        else:
+            # use distribution head
+            self.projection = distribution_output.get_parameter_projection(head_dim)
+        self.dropout = (
+            nn.Dropout(config.head_dropout)
+            if config.head_dropout > 0
+            else nn.Identity()
+        )
+
+    def forward(self, embedding: torch.Tensor):
+        """
+        Parameters:
+            embedding (`torch.Tensor` of shape `(bs, num_channels, num_patches, d_model)` or
+                     `(bs, num_channels, num_patches+1, d_model)` if `cls_token` is set to True, *required*):
+                Embedding from the model
+        Returns:
+            `torch.Tensor` of shape `(bs, forecast_len, num_channels)`
+
+        """
+        if self.use_cls_token:
+            # pooled_embedding: [bs x num_channels x d_model]
+            pooled_embedding = embedding[:, :, 0, :]
+        else:
+            if self.pooling_type == "mean":
+                # pooled_embedding: [bs x num_channels x d_model]
+                pooled_embedding = embedding.mean(dim=2)
+            elif self.pooling_type == "max":
+                # pooled_embedding: [bs x num_channels x d_model]
+                pooled_embedding = embedding.max(dim=2).values
+            else:
+                # pooled_embedding: [bs x num_channels x num_patches x d_model]
+                pooled_embedding = embedding
+
+        # pooled_embedding: [bs x num_channels x (d_model * num_patches)] or [bs x num_channels x d_model)]
+        pooled_embedding = self.flatten(pooled_embedding)
+        pooled_embedding = self.dropout(pooled_embedding)
+        # output: [bs x num_channels x forecast_len] or
+        # tuple ([bs x num_channels x forecast_len], [bs x num_channels x forecast_len]) if using distribution head
+        output = self.projection(pooled_embedding)
+
+        if isinstance(output, tuple):
+            # output: ([bs x forecast_len x num_channels], [bs x forecast_len x num_channels])
+            output = tuple(z.transpose(2, 1) for z in output)
+        else:
+            output = output.transpose(2, 1)  # [bs x forecast_len x num_channels]
+        return output
+
+
 class PatchTSTForPrediction(PatchTSTPreTrainedModel):
     def __init__(self, config: PatchTSTConfig):
         super().__init__(config)
@@ -540,6 +606,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             distribution_output=self.distribution_output,
         )
 
+        self.mse_loss = nn.MSELoss(reduction="mean")
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -608,8 +675,20 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 # take average of the loss
                 loss_val = weighted_average(loss_val)
             else:
-                loss = nn.MSELoss(reduction="mean")
-                loss_val = loss(y_hat_out, future_values)
+                loss_val = self.mse_loss(y_hat_out, future_values)
+                # print(y_hat_out.shape, future_values.shape)
+                # print("loc", model_output.loc, "scale", model_output.scale)
+                # print(
+                #     "future_values loc",
+                #     future_values.mean(dim=1),
+                #     "future_values scale",
+                #     future_values.std(dim=1),
+                # )
+                # print(
+                #     y_hat_out.mean().item(),
+                #     future_values.mean().item(),
+                #     loss_val.item(),
+                # )
 
         loc = model_output.loc
         scale = model_output.scale
@@ -617,6 +696,11 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         if not return_dict:
             outputs = (y_hat_out,) + model_output[1:-1]
             outputs = (loss_val,) + outputs if loss_val is not None else outputs
+            outputs = (
+                torch.mean(future_values, dim=1),
+                loc.squeeze(),
+                scale.squeeze(),
+            ) + outputs
             return outputs
         return PatchTSTForPredictionOutput(
             loss=loss_val,  # type: ignore

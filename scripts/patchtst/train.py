@@ -189,13 +189,13 @@ def main(cfg):
 
     # Get the path for "$WORK/data/train/Lorenz"
     train_data_dir = os.path.expandvars("$WORK/data/train/")
-    # train_data_paths = [
-    #     os.path.join(train_data_dir, "Lorenz/0_T-1024.arrow"),
-    #     # os.path.join(train_data_dir, "ThomasLabyrinth/0_T-1024.arrow"),
-    # ]
-    train_data_paths = list(
-        filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
-    )
+    train_data_paths = [
+        os.path.join(train_data_dir, "Lorenz/0_T-2048.arrow"),
+        os.path.join(train_data_dir, "ThomasLabyrinth/0_T-2048.arrow"),
+    ]
+    # train_data_paths = list(
+    #     filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
+    # )
 
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
@@ -278,7 +278,7 @@ def main(cfg):
         fixed_dim=cfg.fixed_dim,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    model = PatchTSTModel(dict(cfg.patchtst), mode="pretrain")
+    model = PatchTSTModel(dict(cfg.patchtst), mode=cfg.patchtst.mode)
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_on_main(f"Total trainable parameters: {trainable_params:,}", logger)
@@ -291,6 +291,7 @@ def main(cfg):
         learning_rate=cfg.train.learning_rate,
         lr_scheduler_type=cfg.train.lr_scheduler_type,
         warmup_ratio=cfg.train.warmup_ratio,
+        max_grad_norm=cfg.train.max_grad_norm,
         optim=cfg.train.optim,
         logging_dir=f"wandb/tbruns/{run.name}_{run.id}/logs"
         if cfg.wandb.log
@@ -308,8 +309,7 @@ def main(cfg):
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
         ddp_backend="nccl",
         remove_unused_columns=cfg.train.remove_unused_columns,
-        dispatch_batches=False,
-        split_batches=False,
+        seed=cfg.train.seed,
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.

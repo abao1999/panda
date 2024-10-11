@@ -1,5 +1,8 @@
 # PatchTST parameters
 patchtst:
+  mode: "predict"
+
+  # native patchtst config params
   num_input_channels: 1
   context_length: 512
   prediction_length: 64
@@ -13,7 +16,7 @@ patchtst:
   share_embedding: true
   channel_attention: false # This mixes across channels in th encoder 
   ffn_dim: 512
-  norm_type: "batchnorm"
+  norm_type: "layernorm"
   norm_eps: 1e-05
   attention_dropout: 0.0
   positional_dropout: 0.0
@@ -25,7 +28,7 @@ patchtst:
   positional_encoding_type: "sincos"
   use_cls_token: false
   init_std: 0.02
-  share_projection: true
+  share_projection: true  
   scaling: "std"
   do_mask_input: null
   mask_type: "random"
@@ -40,7 +43,7 @@ patchtst:
   output_range: null
   num_parallel_samples: 100
 
-  # for channel mixing
+  # for the channel mixing head
   mix_channels: false
   mixing_d_model: 128
   mixing_num_attention_heads: 4

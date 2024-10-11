@@ -6,7 +6,6 @@ from typing import Dict, List
 
 import hydra
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
@@ -50,73 +49,7 @@ def fixed_dim_collator(
     return batch
 
 
-def dimensional_collator(
-    features: List[Dict[str, torch.Tensor]],
-    equalized_dim: int,
-) -> Dict[str, torch.Tensor]:
-    """
-    Collates trajectories into flat data by stacking along dimension
-
-    Args:
-        features: list of dictionaries with "past_values" and "future_values" tensors
-            with shapes [num_dimensions, context_length] and [num_dimensions, prediction_length].
-            The input list has length batch_size * num_visible_devices.
-
-    Returns:
-        Dict with "past_values" and "future_values" flattened and equalized in dimension 0,
-            with size equalized_dim*batch_size
-    """
-    dims = np.asarray([feature["past_values"].shape[-1] for feature in features])
-    batch_size = len(features)
-    min_dim = min(dims)
-
-    # ensure that the equalization dimension satisfies the constraint:
-    # k * min(dims) <= k * equalized_dim <= sum(dims) <= k * max(dims)
-    # NOTE: this will still cause non-uniform batch sizes,
-    #  but only in multiples of the number of devices
-    while not (batch_size * min_dim <= batch_size * equalized_dim <= sum(dims)):
-        if equalized_dim < min_dim:
-            equalized_dim = min_dim
-        else:  # decrement until the constraint is satisfied
-            equalized_dim -= 1
-
-    # randomly choose dimensions to remove in order to equalize across the batch
-    equalization_budget = sum(dims) - batch_size * equalized_dim
-
-    if equalization_budget > 0:
-        cuts = np.random.choice(equalization_budget, size=len(features) - 1)
-        num_remove = np.diff(
-            np.concatenate([[0], np.sort(cuts), [equalization_budget]])
-        )
-
-        # resample if the constraints are not satisfied
-        while np.any(num_remove > dims):
-            cuts = np.random.choice(equalization_budget, size=len(features) - 1)
-            num_remove = np.diff(
-                np.concatenate([[0], np.sort(cuts), [equalization_budget]])
-            )
-    else:
-        num_remove = np.zeros(len(features))
-
-    num_keep = (dims - num_remove).astype(int)
-    batch = {
-        k: torch.concat(
-            [
-                feat[k][
-                    :, np.random.choice(feat[k].shape[1], size=nkeep, replace=False)
-                ]
-                for nkeep, feat in zip(num_keep, features)
-            ],
-            dim=1,
-        )
-        for k in features[0].keys()
-    }
-    batch["dims"] = torch.from_numpy(num_keep).to(torch.int32)
-
-    return batch
-
-
-def check_dim_distribution(num_batches: int, batch_size: int, dataset, cfg):
+def plot_distribution(num_batches: int, batch_size: int, dataset, cfg):
     """
     Check the distribution of dimensions in the dataset across batches.
     """
@@ -140,7 +73,7 @@ def check_dim_distribution(num_batches: int, batch_size: int, dataset, cfg):
         remove_unused_columns=cfg.train.remove_unused_columns,
     )
 
-    model = PatchTSTModel(dict(cfg.patchtst), mode="pretrain")
+    model = PatchTSTModel(dict(cfg.patchtst), mode="predict")
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -148,26 +81,47 @@ def check_dim_distribution(num_batches: int, batch_size: int, dataset, cfg):
     )
     dataloader = trainer.get_train_dataloader()
 
-    # test model forward with custom batch
-    batch = next(iter(dataloader))
-    output = model(**batch)
-    print(output)
-
-    dims = np.concatenate(
-        [
-            batch["dims"].cpu().numpy()
+    outputs = zip(
+        *[
+            model(return_dict=False, **batch)
             for _, batch in zip(range(num_batches), dataloader)
         ]
     )
-    print(dims)
+    future_values, loc, scale, loss_val, preds, *rest = outputs
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-    labels, counts = np.unique(dims, return_counts=True)
-    ax.bar(labels, counts, align="center")
-    ax.set_title("Dimension Distribution")
-    ax.set_xlabel("Dimension")
-    ax.set_ylabel("Count")
-    plt.savefig("figures/naive_dim_distribution.png")
+    agg_preds = (
+        torch.concat([torch.mean(pred, dim=1) for pred in preds], dim=0).detach().cpu()
+    )
+    agg_future_values = torch.concat(future_values, dim=0).detach().cpu()
+    agg_loc = torch.concat(loc, dim=0).detach().cpu().mean(dim=0)
+    agg_scale = torch.concat(scale, dim=0).detach().cpu().mean(dim=0)
+    agg_loss = [torch.log10(loss.detach().cpu()) for loss in loss_val]
+    print(agg_loc.shape)
+    print(agg_scale.shape)
+    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+    for i in range(3):
+        ax = axes[i]
+        ax.hist(torch.log10(agg_preds[:, i]), bins=100, alpha=0.5, label="Predictions")
+        ax.hist(
+            torch.log10(agg_future_values[:, i]),
+            bins=100,
+            alpha=0.5,
+            label="Future Values",
+        )
+        # ax.axvline(agg_loc[i], color="red")
+        # ax.axvspan(
+        #     agg_loc[i].item() - agg_scale[i].item(),
+        #     agg_loc[i].item() + agg_scale[i].item(),
+        #     alpha=0.3,
+        #     color="red",
+        # )
+        ax.set_title(f"Norms for dim {i}")
+        ax.set_xlabel("Log10 Norm")
+        ax.set_ylabel("Count")
+        ax.legend()
+    axes[-1].hist(agg_loss, bins=100)
+    axes[-1].set_title("Log Loss")
+    plt.savefig("figures/norms_distribution.png")
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -208,7 +162,7 @@ def main(cfg):
         delay_embed_prob=cfg.delay_embed_prob,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    check_dim_distribution(
+    plot_distribution(
         num_batches=1000,
         batch_size=cfg.train.per_device_train_batch_size,
         dataset=dataset,
