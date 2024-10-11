@@ -17,7 +17,9 @@ from dystformer.attractor import (
     check_lyapunov_exponent,
     check_no_nans,
     check_not_fixed_point,
+    check_not_limit_cycle,
     check_not_spiral_decay,
+    check_not_variance_decay,
     check_power_spectrum,
 )
 from dystformer.sampling import (
@@ -107,33 +109,27 @@ class DystData:
         )
         ens_callback_handler.add_callback(check_no_nans)
         ens_callback_handler.add_callback(
-            partial(check_boundedness, abs_threshold=1e4, max_num_stds=1e2)
+            partial(check_boundedness, abs_threshold=1e4, max_num_stds=10)
         )
         ens_callback_handler.add_callback(
             partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1)
         )
-        # ens_callback_handler.add_callback(
-        #     partial(
-        #         check_not_variance_decay,
-        #         tail_prop=0.1,
-        #         min_variance_threshold=1e-3,
-        #     )
-        # )
-        # uses peak finding algorithm scipy.find_peaks, which is sensitive to prominence
         ens_callback_handler.add_callback(
-            partial(check_not_spiral_decay, rel_prominence_threshold=None)
+            partial(
+                check_not_variance_decay,
+                tail_prop=0.1,
+                min_variance_threshold=1e-3,
+            )
         )
-
-        # ens_callback_handler.add_callback(
-        #     partial(
-        #         check_near_recurrences,
-        #         split_prop=0.5,
-        #         tolerance=1e-3,
-        #         num_periods=None,  # assume unknown
-        #         recurrence_ratio_threshold=2,
-        #     )
-        # )
-        # uses peak finding algorithm scipy.find_peaks, which is sensitive to prominence
+        # More sophisticated checks
+        ens_callback_handler.add_callback(
+            partial(
+                check_not_limit_cycle,
+                min_recurrence_ratio=0.2,
+                tolerance=1e-3,
+            )
+        )
+        ens_callback_handler.add_callback(check_not_spiral_decay)
         ens_callback_handler.add_callback(
             partial(
                 check_power_spectrum,
