@@ -4,7 +4,6 @@ Callbacks to check if generated trajectories are valid attractors
 
 import functools
 import os
-import time
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass
@@ -16,26 +15,12 @@ import numpy as np
 from dysts.analysis import max_lyapunov_exponent_rosenstein
 from scipy.fft import fft, fftfreq
 from scipy.signal import find_peaks
+from scipy.spatial.distance import cdist
 from scipy.stats import t as student_t
 from sklearn.decomposition import PCA
 from statsmodels.tsa.stattools import adfuller, kpss
 
-from dystformer.utils import plot_trajs_multivariate, plot_trajs_univariate
-
 BURN_TIME = 200
-
-
-def timer(func):
-    @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
-        """Timer wrapper function"""
-        start = time.time()
-        result = func(self, *args, **kwargs)
-        end = time.time()
-        print("Exection Time: {} seconds".format(end - start))
-        return result
-
-    return wrapper
 
 
 @dataclass
@@ -63,38 +48,15 @@ class EnsembleCallbackHandler:
         assert callable(callback), "Callback must be a callable function"
         self.callbacks.append(callback)
 
-    def plot_phase_space(
-        self,
-        ensemble: Dict[str, np.ndarray],
-        save_dir="tests/figs",
-        plot_univariate: bool = False,
-    ) -> None:
-        """
-        Plot the phase space of the attractor for all systems in the ensemble.
-        """
-        for dyst_name, all_traj in ensemble.items():
-            plot_trajs_multivariate(
-                all_traj, save_dir=save_dir, plot_name=dyst_name, plot_2d_slice=False
-            )
-            if plot_univariate:
-                plot_trajs_univariate(
-                    all_traj,
-                    selected_dim=None,
-                    save_dir=os.path.join(save_dir, "univariate"),
-                    plot_name=dyst_name,
-                )
-
     def _get_callback_name(self, callback: Callable) -> str:
         """
         Get the name of the callback test function
         """
-        if isinstance(callback, functools.partial):
-            # case when the test is a functools.partial
-            callback_name = callback.func.__name__  # Access the wrapped function's name
-        else:
-            callback_name = callback.__name__  # Directly access the function's name
-        if self.verbose >= 1:
-            print(f"Executing callback: {callback_name}")
+        callback_name = (
+            callback.func.__name__
+            if isinstance(callback, functools.partial)
+            else callback.__name__
+        )
         return callback_name
 
     def _execute_callback(
@@ -115,9 +77,11 @@ class EnsembleCallbackHandler:
         Returns:
             bool: True if the callback passed, False otherwise
         """
-        if self.verbose >= 2:
-            callback = functools.partial(callback, verbose=True)
-        # Execute the callback test
+        callback = functools.partial(callback, verbose=self.verbose >= 2)
+        if self.verbose >= 1:
+            print(
+                f"Executing callback: {self._get_callback_name(callback)} for {dyst_name} at sample {sample_idx}"
+            )
         status = callback(traj_sample)  # TODO: add dyst_name optional argument
         # book keeping
         if not status:
@@ -184,7 +148,6 @@ class EnsembleCallbackHandler:
 
         return np.array(valid_attractor_trajs), np.array(failed_attractor_trajs)
 
-    @timer
     def filter_ensemble(
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
@@ -230,6 +193,7 @@ class EnsembleCallbackHandler:
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
         Multiprocessed version of self.filter_ensemble
+        TODO: class instance attributes are not shared in multiprocessing because each process has its own memory space. Need to use a multiprocessing.Manager.
         """
         with Pool() as pool:
             # List of Tuples of np.ndarrays
@@ -359,9 +323,8 @@ def check_not_variance_decay(
 
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
-        last_n (int): Number of points to consider for the variance decay check.
+        tail_prop (float): Proportion of the trajectory to consider for variance comparison.
         min_variance_threshold (float): Minimum variance threshold for detecting a fixed point.
-        variance_num_ooms_threshold (float): Number of order of magnitudes threshold for variance comparison between initial and final segments.
     Returns:
         bool: False if the system has monotonically decaying variance, True otherwise.
     """
@@ -377,26 +340,10 @@ def check_not_variance_decay(
     near_zero_variance = np.any(final_variance < min_variance_threshold)
     if near_zero_variance:
         if verbose:
-            print("The system trajectory appears to approach a fixed point.")
+            print(
+                "The system trajectory appears to have a coordinate with variance decayed to near zero."
+            )
         return False
-
-    # # split signal into K bins and compute variance in each bin and fit a line to the variances
-    # # if the slope of the line is negative, the variance is decreasing near monotonically
-    # # if the slope is positive, the variance is increasing near monotonically
-    # # if the slope is zero, the variance is constant near monotonically
-    # num_bins = 10
-    # bin_size = int(n / num_bins)
-    # variances = []
-    # for i in range(num_bins):
-    #     start = i * bin_size
-    #     end = (i + 1) * bin_size
-    #     bin = traj[:, start:end]
-    #     variances.append(np.var(bin, axis=1))
-    # slopes = np.polyfit(np.arange(num_bins), np.array(variances), 1)[0]
-    # if slopes < 0:
-    #     if verbose:
-    #         print("The system trajectory appears to approach a fixed point.")
-    #     return False
     return True
 
 
@@ -473,18 +420,21 @@ def check_not_spiral_decay(
 def check_not_limit_cycle(
     traj: np.ndarray,
     tolerance: float = 1e-3,
-    min_recurrences: int = 5,
+    min_recurrence_ratio: float = 0.2,
     verbose: bool = False,
 ) -> bool:
     """
     Checks if a multidimensional trajectory is collapsing to a limit cycle.
+
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
         tolerance (float): Tolerance for detecting revisits to the same region in phase space.
-        min_recurrences (int): Minimum number of recurrences to consider a limit cycle.
+        min_recurrence_ratio (float): Minimum proportion of the timepoints found to be near-recurrences to consider a limit cycle.
     Returns:
         bool: True if the trajectory is not collapsing to a limit cycle, False otherwise.
     """
+    verbose = True
+    print("LIMIT CYCLE CHECK")
     traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     num_dims, n = traj.shape
 
@@ -495,28 +445,45 @@ def check_not_limit_cycle(
     else:
         reduced_traj = traj
 
-    # Step 2: Recurrence Detection using Distance Matrix
-    dist_matrix = np.linalg.norm(
-        reduced_traj[:, np.newaxis] - reduced_traj[np.newaxis, :], axis=-1
-    )
+    # Step 2: Calculate the pairwise distance matrix, shape should be (N, N)
+    dist_matrix = cdist(reduced_traj.T, reduced_traj.T, metric="euclidean")
+    # get upper trangular part of matrix, zero out the lower triangular part
+    dist_matrix = np.triu(dist_matrix, k=1)
 
-    # Consider recurrences within a certain tolerance
-    recurrence_indices = np.where(dist_matrix < tolerance)
-    recurrence_times = np.diff(recurrence_indices[0])
+    # Step 3: Get recurrence times from thresholding distance matrix
+    recurrence_indices = np.asarray(
+        (dist_matrix < tolerance) & (dist_matrix > 0)
+    ).nonzero()
 
-    # Step 3: Identify if recurrences are periodic
-    periodic_recurrences = recurrence_times[
-        np.abs(recurrence_times - np.median(recurrence_times)) < tolerance
-    ]
+    n_recurrences = len(recurrence_indices[0])
+    if n_recurrences == 0:
+        if verbose:
+            print("No recurrences found. Passing limit cycle check.")
+        return True
+
+    # get recurrence times
+    recurrence_times = np.abs(recurrence_indices[0] - recurrence_indices[1])
     if verbose:
-        print("Number of periodic recurrences: ", len(periodic_recurrences))
-    # Check if recurrences meet the minimum count
-    if len(periodic_recurrences) >= min_recurrences:
+        print("Number of recurrences: ", n_recurrences)
+        print("Recurrence times: ", recurrence_times)
+
+        mean_recurrence_time = np.mean(recurrence_times)
+        std_recurrence_time = np.std(recurrence_times)
+        median_recurrence_time = np.median(recurrence_times)
+        if verbose:
+            print("Mean recurrence time: ", mean_recurrence_time)
+            print("Std recurrence time: ", std_recurrence_time)
+            print("Median recurrence time: ", median_recurrence_time)
+
+    min_recurrences = int(n * min_recurrence_ratio)
+    if n_recurrences >= min_recurrences:
         if verbose:
             print(
-                "The trajectory suggests a limit cycle with stable periodic behavior."
+                f"Found {n_recurrences} recurrences, meeting minimum of {min_recurrences}. Limit cycle found"
             )
         return False
+
+    # Step 4: Identify if recurrences are periodic by looking at concentration
     return True
 
 
@@ -713,126 +680,6 @@ def check_near_recurrences_backup(
     if len(revisit_indices) < revisit_count:
         return False
 
-    return True
-
-
-def check_near_recurrences_1d(
-    signal: np.ndarray,
-    split_prop: float = 0.5,
-    tolerance: float = 1e-3,
-    num_periods: Optional[int] = None,
-    recurrence_ratio_threshold: Optional[float] = None,
-    verbose: bool = False,
-) -> bool:
-    """
-    Check the number of times a 1D signal revisits near a baseline (mean or line fit).
-    Args:
-        signal (ndarray): 1D array of shape (n,), where n is the number of timepoints.
-        split_prop (float): Proportion of the signal to consider for revisits.
-        tolerance (float): Tolerance for detecting revisits to the same region in phase space.
-        num_periods (int): Number of periods to consider for revisits.
-        recurrence_ratio_threshold (float): Minimum ratio of recurrence mismatch to consider as recurring.
-    Returns:
-        bool: True if the signal has enough near-recurrences, False otherwise.
-    """
-    if split_prop < 0 or split_prop > 1:
-        raise ValueError("split_prop must be between 0 and 1")
-    if signal.ndim != 1:
-        raise ValueError("signal must be a 1D array")
-    n = len(signal)
-
-    # baseline = np.mean(signal)  # mean of signal
-    # make baseline a line fit to the signal
-    x = np.arange(n)
-    coef = np.polyfit(x, signal, 1)
-    baseline = coef[0] * x + coef[1]
-
-    # split signal into two segments based on split_prop
-    n_split = int(split_prop * n)
-    first_segment = signal[:n_split]  # First n_split points
-    second_segment = signal[n_split:]  # Second n_split points
-
-    # calculate the absolute deviation of segments from the baseline
-    abs_deviation_first = np.abs(first_segment - baseline[:n_split])
-    abs_deviation_second = np.abs(second_segment - baseline[n_split:])
-
-    recur_indices_first = np.asarray(abs_deviation_first < tolerance).nonzero()[0]
-    recur_indices_second = np.asarray(abs_deviation_second < tolerance).nonzero()[0]
-
-    num_recurs_first = len(recur_indices_first)
-    num_recurs_second = len(recur_indices_second)
-
-    if num_recurs_first == 0 or num_recurs_second == 0:
-        # reject if both segments have no recurrences
-        if verbose:
-            print("The signal does not have any recurrences in both segments.")
-        return False
-
-    # Check the number of recurrences for the two segments
-    if num_periods is not None:
-        if num_recurs_first < int(num_periods * split_prop):
-            return False
-        if num_recurs_second < int(num_periods * split_prop):
-            return False
-    elif recurrence_ratio_threshold is not None:
-        if recurrence_ratio_threshold < 1:
-            raise ValueError(
-                "recurrence_ratio_threshold must be greater than or equal to 1."
-            )
-        # reject based on ratio of recurrence mismatch
-        recurrence_ratio = num_recurs_first / num_recurs_second
-        if recurrence_ratio > recurrence_ratio_threshold:
-            if verbose:
-                print(
-                    f"The signal has more than {recurrence_ratio_threshold}x recurrences in the first segment ({num_recurs_first}) than in the second segment ({num_recurs_second})."
-                )
-            return False
-        elif recurrence_ratio < 1 / recurrence_ratio_threshold:
-            if verbose:
-                print(
-                    f"The signal has more than {recurrence_ratio_threshold}x more recurrences in the second segment ({num_recurs_second}) than in the first segment ({num_recurs_first})."
-                )
-            return False
-
-    return True
-
-
-def check_near_recurrences(
-    traj: np.ndarray,
-    split_prop: float = 0.5,
-    tolerance: float = 1e-3,
-    num_periods: Optional[int] = None,
-    recurrence_ratio_threshold: Optional[float] = None,
-    verbose: bool = False,
-) -> bool:
-    """
-    Check if every coordinate in a multi-dimensional trajectory revisits near a baseline (mean or line fit) multiple times.
-    Args:
-        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
-        split_prop (float): Proportion of the signal to consider for revisits.
-        tolerance (float): Tolerance for detecting revisits to the same region in phase space.
-        num_periods (int): Number of periods to consider for revisits.
-        recurrence_ratio_threshold (float): Minimum ratio of recurrence mismatch to consider as recurring.
-    Returns:
-        bool: True if the trajectory has enough near-recurrences, False otherwise.
-    """
-    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
-    num_dims = traj.shape[0]
-
-    for d in range(num_dims):
-        if verbose:
-            print(f"Checking stationarity for dimension {d} by counting recurrences")
-        coord = traj[d, :]
-        status = check_near_recurrences_1d(
-            coord,
-            split_prop=split_prop,
-            tolerance=tolerance,
-            num_periods=num_periods,
-            recurrence_ratio_threshold=recurrence_ratio_threshold,
-            verbose=verbose,
-        )
-        if not status:
-            return False
     return True
 
 

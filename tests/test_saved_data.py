@@ -44,6 +44,7 @@ def plot_saved_data(
     one_dim_target: bool = False,
     plot_univariate: bool = False,
     samples_subset_dict: Optional[Dict[str, List[int]]] = None,
+    plot_name_suffix: Optional[str] = None,
 ) -> None:
     """
     Plot saved Arrow data files.
@@ -87,10 +88,11 @@ def plot_saved_data(
         print(dyst_coords_samples.shape)
 
         # plot the trajectories
+        plot_name = f"{dyst_name}_{plot_name_suffix}" if plot_name_suffix else dyst_name
         plot_trajs_multivariate(
             dyst_coords_samples,
             save_dir="tests/figs",
-            plot_name=dyst_name,
+            plot_name=plot_name,
             samples_subset=samples_subset,
         )
 
@@ -99,7 +101,7 @@ def plot_saved_data(
                 dyst_coords_samples,
                 selected_dim=None,  # plot all dimensions
                 save_dir="tests/figs/univariate",
-                plot_name=dyst_name,
+                plot_name=plot_name,
                 samples_subset=samples_subset,
             )
 
@@ -158,4 +160,7 @@ if __name__ == "__main__":
         one_dim_target=args.one_dim_target,
         plot_univariate=args.plot_univariate,
         samples_subset_dict=samples_subset_dict,
+        plot_name_suffix="failures"
+        if args.samples_subset == "failed_samples"
+        else None,
     )
