@@ -7,8 +7,9 @@ import os
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass
-from multiprocessing import Pool
-from typing import Callable, Dict, Optional, Tuple
+from multiprocessing import Lock, Pool
+from multiprocessing.managers import BaseManager, DictProxy
+from typing import Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,6 +22,21 @@ from sklearn.decomposition import PCA
 from statsmodels.tsa.stattools import adfuller, kpss
 
 BURN_TIME = 200
+
+
+class CustomManager(BaseManager):
+    """Custom manager to allow multiprocessing to share defaultdicts"""
+
+    pass
+
+
+CustomManager.register("defaultdict", defaultdict, DictProxy)
+
+
+# multiprocessing pool initializer with mutex lock
+def init_pool(the_lock):
+    global lock
+    lock = the_lock
 
 
 @dataclass
@@ -82,7 +98,7 @@ class EnsembleCallbackHandler:
             print(
                 f"Executing callback: {self._get_callback_name(callback)} for {dyst_name} at sample {sample_idx}"
             )
-        status = callback(traj_sample)  # TODO: add dyst_name optional argument
+        status = callback(traj_sample)
         # book keeping
         if not status:
             callback_name = self._get_callback_name(callback)
@@ -188,22 +204,85 @@ class EnsembleCallbackHandler:
 
         return valid_attractor_ensemble, failed_attractor_ensemble
 
+    def _multiprocessed_filter_dyst(
+        self,
+        failed_checks: Dict[str, List[Tuple[int, str]]],
+        dyst_name: str,
+        all_traj: np.ndarray,
+        first_sample_idx: int = 0,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Multiprocessed version of self._filter_dyst without any verbose output
+        """
+        valid_attractor_trajs = []
+        failed_attractor_trajs = []
+        for i, traj_sample in enumerate(all_traj):
+            sample_idx = first_sample_idx + i
+            traj_sample = (
+                np.expand_dims(traj_sample, axis=0)
+                if traj_sample.ndim == 1
+                else traj_sample
+            )
+            # Execute all callbacks
+            for callback in self.callbacks:
+                status = callback(traj_sample)
+                if not status:
+                    callback_name = self._get_callback_name(callback)
+                    with lock:  # block accessing dyst_name key, for thread safety
+                        failed_checks[dyst_name].append((sample_idx, callback_name))
+                        break
+            # if traj sample failed a check, move on to next trajectory sample for this dyst
+            if not status:
+                failed_attractor_trajs.append(traj_sample)
+                continue
+            # if all checks pass, add to valid attractor ensemble
+            valid_attractor_trajs.append(traj_sample)
+        return np.array(valid_attractor_trajs), np.array(failed_attractor_trajs)
+
     def multiprocessed_filter_ensemble(
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
         Multiprocessed version of self.filter_ensemble
-        TODO: class instance attributes are not shared in multiprocessing because each process has its own memory space. Need to use a multiprocessing.Manager.
         """
-        with Pool() as pool:
-            # List of Tuples of np.ndarrays
-            results = pool.starmap(
-                self._filter_dyst,
-                [
-                    (self, dyst_name, all_traj, first_sample_idx)
-                    for dyst_name, all_traj in ensemble.items()
-                ],
-            )
+        # Create a custom manager to manage shared defaultdict
+        manager = CustomManager()
+        with manager:
+            failed_checks = manager.defaultdict(list)  # type: ignore
+            lock = Lock()  # set lock mutex
+            with Pool(initializer=init_pool, initargs=(lock,)) as pool:
+                results = pool.starmap(
+                    self._multiprocessed_filter_dyst,
+                    [
+                        (failed_checks, dyst_name, all_traj, first_sample_idx)
+                        for dyst_name, all_traj in ensemble.items()
+                    ],
+                )
+            failed_checks = dict(failed_checks)
+            for dyst_name, checks in failed_checks.items():
+                self.failed_checks[dyst_name].extend(checks)
+            print("FAILED CHECKS: ", self.failed_checks)
+
+        # book keeping
+        self.failed_samples = {
+            dyst_name: [index for index, _ in self.failed_checks[dyst_name]]
+            for dyst_name in self.failed_checks.keys()
+        }
+        self.valid_samples = {
+            dyst_name: [
+                index
+                for index in range(len(ensemble[dyst_name]))
+                if index not in self.failed_samples.get(dyst_name, [])
+            ]
+            for dyst_name in ensemble.keys()
+        }
+        # get rid of empty lists in valid_samples
+        self.valid_samples = {k: v for k, v in self.valid_samples.items() if v}
+
+        self.valid_dyst_counts = {
+            dyst_name: len(self.valid_samples.get(dyst_name, []))
+            for dyst_name in self.valid_samples.keys()
+        }
 
         # Process the multiprocessed output
         combined_ensemble = dict(zip(list(ensemble.keys()), results))
@@ -433,8 +512,6 @@ def check_not_limit_cycle(
     Returns:
         bool: True if the trajectory is not collapsing to a limit cycle, False otherwise.
     """
-    verbose = True
-    print("LIMIT CYCLE CHECK")
     traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     num_dims, n = traj.shape
 

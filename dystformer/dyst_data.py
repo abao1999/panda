@@ -18,8 +18,6 @@ from dystformer.attractor import (
     check_no_nans,
     check_not_fixed_point,
     check_not_limit_cycle,
-    check_not_spiral_decay,
-    check_not_variance_decay,
     check_power_spectrum,
 )
 from dystformer.sampling import (
@@ -114,13 +112,6 @@ class DystData:
         ens_callback_handler.add_callback(
             partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1)
         )
-        ens_callback_handler.add_callback(
-            partial(
-                check_not_variance_decay,
-                tail_prop=0.1,
-                min_variance_threshold=1e-3,
-            )
-        )
         # More sophisticated checks
         ens_callback_handler.add_callback(
             partial(
@@ -129,7 +120,7 @@ class DystData:
                 tolerance=1e-3,
             )
         )
-        ens_callback_handler.add_callback(check_not_spiral_decay)
+        # ens_callback_handler.add_callback(check_not_spiral_decay)
         ens_callback_handler.add_callback(
             partial(
                 check_power_spectrum,
@@ -208,6 +199,8 @@ class DystData:
 
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j
+
+                # reset events that have a reset method
                 self._reset_events()
 
                 print("Making ensemble for sample ", sample_idx)
@@ -235,7 +228,7 @@ class DystData:
     def _reset_events(self) -> None:
         if self.events is not None:
             for event in self.events:
-                if hasattr(event, "reset"):
+                if hasattr(event, "reset") and callable(event.reset):
                     print("Resetting event: ", event)
                     event.reset()
 
