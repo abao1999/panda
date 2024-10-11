@@ -118,6 +118,7 @@ class OnAttractorInitCondSampler(BaseSampler):
     trajectory_cache: Dict[str, Array] = field(default_factory=dict)
     verbose: bool = False  # for testing purposes
     events: Optional[List[Callable]] = None  # solve_ivp events
+    recompute_standardization: bool = False
 
     def __call__(self, ic: Array, system: BaseDyn) -> Array:
         if system.name is None:
@@ -129,7 +130,14 @@ class OnAttractorInitCondSampler(BaseSampler):
             reference_traj = system.make_trajectory(
                 self.reference_traj_length,
                 events=self.events,
+                standardize=False,
             )
+
+            # renormalize with respect to reference trajectory
+            if self.recompute_standardization:
+                mean = reference_traj.mean(axis=0)
+                std = reference_traj.std(axis=0)
+                reference_traj = (reference_traj - mean) / std
 
             # if integrate fails, resulting in an incomplete trajectory
             if reference_traj is None:
