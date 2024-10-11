@@ -18,7 +18,6 @@ from dystformer.attractor import (
     check_no_nans,
     check_not_fixed_point,
     check_not_limit_cycle,
-    check_not_spiral_decay,
     check_power_spectrum,
 )
 from dystformer.sampling import (
@@ -121,7 +120,7 @@ class DystData:
                 tolerance=1e-3,
             )
         )
-        ens_callback_handler.add_callback(check_not_spiral_decay)
+        # ens_callback_handler.add_callback(check_not_spiral_decay)
         ens_callback_handler.add_callback(
             partial(
                 check_power_spectrum,
@@ -202,11 +201,7 @@ class DystData:
                 sample_idx = i * self.num_ics + j
 
                 # reset events that have a reset method
-                if self.events is not None:
-                    for event in self.events:
-                        if hasattr(event, "reset") and callable(event.reset):
-                            print("Resetting event: ", event)
-                            event.reset()
+                self._reset_events()
 
                 print("Making ensemble for sample ", sample_idx)
                 ensemble = make_trajectory_ensemble(
@@ -233,7 +228,7 @@ class DystData:
     def _reset_events(self) -> None:
         if self.events is not None:
             for event in self.events:
-                if hasattr(event, "reset"):
+                if hasattr(event, "reset") and callable(event.reset):
                     print("Resetting event: ", event)
                     event.reset()
 
