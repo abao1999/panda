@@ -140,7 +140,6 @@ def plot_trajs_multivariate(
             ax.plot(*xy, alpha=0.5, linewidth=1, color=curr_color, label=label)
 
             ic_point = dyst_data[sample_idx, :3, 0]
-            print(ic_point)
             ax.scatter(*ic_point, marker="*", s=100, alpha=0.5, c=curr_color)
 
             final_point = dyst_data[sample_idx, :3, -1]
