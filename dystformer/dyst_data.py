@@ -19,7 +19,6 @@ from dystformer.attractor import (
     check_not_fixed_point,
     check_not_limit_cycle,
     check_not_spiral_decay,
-    check_not_variance_decay,
     check_power_spectrum,
 )
 from dystformer.sampling import (
@@ -113,13 +112,6 @@ class DystData:
         ens_callback_handler.add_callback(
             partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1)
         )
-        ens_callback_handler.add_callback(
-            partial(
-                check_not_variance_decay,
-                tail_prop=0.1,
-                min_variance_threshold=1e-3,
-            )
-        )
         # More sophisticated checks
         ens_callback_handler.add_callback(
             partial(
@@ -175,7 +167,6 @@ class DystData:
         num_total_samples = self.num_param_perturbations * self.num_ics
         ensemble_list = []
 
-        # TODO: for random parameter perturbations, need to check validity, as we currently get nans, which throws error at the dysts level
         # make a stream of rngs for each parameter perturbation
         pp_rng_stream = np.random.default_rng(self.rseed).spawn(
             self.num_param_perturbations,
@@ -190,7 +181,7 @@ class DystData:
                 # reset events that have a reset method
                 if self.events is not None:
                     for event in self.events:
-                        if hasattr(event, "reset"):
+                        if hasattr(event, "reset") and callable(event.reset):
                             print("Resetting event: ", event)
                             event.reset()
 
@@ -288,8 +279,8 @@ class DystData:
         if self.attractor_validator is not None:
             # Filter out invalid attractors and add valid attractors to ensemble list
             ensemble, failed_ensemble = (
-                # self.attractor_validator.multiprocessed_filter_ensemble(
-                self.attractor_validator.filter_ensemble(
+                # self.attractor_validator.filter_ensemble(
+                self.attractor_validator.multiprocessed_filter_ensemble(
                     ensemble, first_sample_idx=sample_idx
                 )
             )

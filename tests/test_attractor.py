@@ -53,7 +53,7 @@ if __name__ == "__main__":
         num_periods=20,
         num_points=1024 * 4,  # Note: 3x the default
         num_ics=1,
-        num_param_perturbations=4,
+        num_param_perturbations=6,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,
