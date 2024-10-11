@@ -12,6 +12,26 @@ from gluonts.dataset import Dataset
 from gluonts.dataset.arrow import ArrowWriter
 
 
+def filter_dict(
+    dictionary: Dict[str, np.ndarray],
+) -> Tuple[Dict[str, np.ndarray], List[str]]:
+    """
+    Filter a dictionary by removing key-value pairs where the value is None.
+
+    Args:
+        d (Dict[str, np.ndarray]): The input dictionary to filter.
+
+    Returns:
+        Tuple[Dict[str, np.ndarray], List[str]]: A tuple containing:
+            - The filtered dictionary with None values removed.
+            - A list of keys that were excluded (i.e., had None values).
+    """
+    excluded_keys = [key for key, value in dictionary.items() if value is None]
+    for key in excluded_keys:
+        dictionary.pop(key)
+    return dictionary, excluded_keys
+
+
 def split_systems(
     prop: float,
     seed: int,
@@ -122,26 +142,6 @@ def sample_index_pairs(
     )
     all_pairs = list(combinations(range(size), 2))
     return (all_pairs[i] for i in sampled_pairs)
-
-
-def filter_dict(d: Dict[str, np.ndarray]) -> Tuple[Dict[str, np.ndarray], List[str]]:
-    """
-    Filter a dictionary by removing key-value pairs where the value is None.
-
-    Args:
-        d (Dict[str, np.ndarray]): The input dictionary to filter.
-
-    Returns:
-        Tuple[Dict[str, np.ndarray], List[str]]: A tuple containing:
-            - The filtered dictionary with None values removed.
-            - A list of keys that were excluded (i.e., had None values).
-    """
-    excluded_keys = []
-    for key in list(d.keys()):
-        if d[key] is None:
-            excluded_keys.append(key)
-            del d[key]
-    return d, excluded_keys
 
 
 def get_system_filepaths(
