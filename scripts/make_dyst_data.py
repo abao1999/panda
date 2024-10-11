@@ -16,9 +16,6 @@ from dystformer.sampling import (
 )
 from dystformer.utils import plot_trajs_multivariate, split_systems
 
-WORK_DIR = os.getenv("WORK", "")
-DATA_DIR = os.path.join(WORK_DIR, "data")
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -28,10 +25,22 @@ def main():
         "--debug-dyst", type=str, help="generate data for a single dynamical system."
     )
     parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=os.path.join(os.getenv("WORK", ""), "data"),
+        help="Directory to save the generated data",
+    )
+    parser.add_argument(
         "--split-prefix",
         type=str,
         default=None,
         help="Optional prefix for the split names (e.g., 'patchtst' for 'patchtst_train')",
+    )
+    parser.add_argument(
+        "--debug-mode",
+        action="store_true",
+        default=False,
+        help="Enable debug mode for saving failed trajectory ensembles",
     )
     args = parser.parse_args()
 
@@ -67,6 +76,7 @@ def main():
         split_coords=False,  # False for multivariate models
         apply_attractor_tests=True,
         standardize=True,
+        debug_mode=args.debug_mode,
     )
 
     if args.debug_dyst:
@@ -91,16 +101,16 @@ def main():
             dysts_names=train,
             split=f"{split_prefix}train",
             samples_process_interval=1,
-            save_dir=DATA_DIR,
+            save_dir=args.data_dir,
         )
         dyst_data_generator.save_dyst_ensemble(
             dysts_names=test,
             split=f"{split_prefix}test",
             samples_process_interval=1,
-            save_dir=DATA_DIR,
+            save_dir=args.data_dir,
         )
         dyst_data_generator.save_summary(
-            os.path.join("output", "attractor_checks.json"),
+            os.path.join("outputs", "attractor_checks.json"),
         )
 
 
