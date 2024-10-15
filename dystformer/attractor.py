@@ -476,13 +476,11 @@ def check_not_limit_cycle(
 
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
-        tolerance (float): Tolerance for detecting revisits to the same region in phase space. Scale by norm of IC
+        tolerance (float): Tolerance for detecting revisits to the same region in phase space.
         min_recurrence_ratio (float): Minimum proportion of the timepoints found to be near-recurrences to consider a limit cycle.
     Returns:
         bool: True if the trajectory is not collapsing to a limit cycle, False otherwise.
     """
-    # scale tolerance by norm of IC
-    tolerance = tolerance * np.linalg.norm(traj[:, 0])
     traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     num_dims, n = traj.shape
 
