@@ -303,8 +303,10 @@ class DystData:
 
         print(f"Checking if attractor properties are valid for {len(ensemble)} systems")
         if self.attractor_validator is not None:
-            ensemble, failed_ensemble = self.attractor_validator.filter_ensemble(
-                ensemble, first_sample_idx=sample_idx
+            ensemble, failed_ensemble = (
+                self.attractor_validator.multiprocessed_filter_ensemble(
+                    ensemble, first_sample_idx=sample_idx
+                )
             )
         return ensemble, failed_ensemble
 
