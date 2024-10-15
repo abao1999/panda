@@ -40,12 +40,12 @@ if __name__ == "__main__":
     instability_event = InstabilityEvent(threshold=1e4)
     events = [time_limit_event, instability_event]
 
-    param_sampler = GaussianParamSampler(random_seed=rseed, scale=0.5, verbose=True)
+    param_sampler = GaussianParamSampler(random_seed=rseed, scale=0.5, verbose=False)
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=1024,
         reference_traj_transient=200,
         events=events,
-        verbose=True,
+        verbose=False,
     )
 
     dyst_data_generator = DystData(

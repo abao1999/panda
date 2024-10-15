@@ -106,7 +106,7 @@ class DystData:
         )
         ens_callback_handler.add_callback(check_no_nans)
         ens_callback_handler.add_callback(
-            partial(check_boundedness, abs_threshold=1e4, max_num_stds=10)
+            partial(check_boundedness, threshold=1e3, max_num_stds=12)
         )
         ens_callback_handler.add_callback(
             partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1)
@@ -305,8 +305,10 @@ class DystData:
 
         print(f"Checking if attractor properties are valid for {len(ensemble)} systems")
         if self.attractor_validator is not None:
-            ensemble, failed_ensemble = self.attractor_validator.filter_ensemble(
-                ensemble, first_sample_idx=sample_idx
+            ensemble, failed_ensemble = (
+                self.attractor_validator.multiprocessed_filter_ensemble(
+                    ensemble, first_sample_idx=sample_idx
+                )
             )
         return ensemble, failed_ensemble
 

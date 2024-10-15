@@ -7,9 +7,8 @@ import os
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass
-from multiprocessing import Lock, Pool
-from multiprocessing.managers import BaseManager, DictProxy
-from typing import Callable, Dict, List, Optional, Tuple
+from multiprocessing import Pool
+from typing import Callable, Dict, Optional, Tuple, List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,21 +21,6 @@ from sklearn.decomposition import PCA
 from statsmodels.tsa.stattools import adfuller, kpss
 
 BURN_TIME = 200
-
-
-class CustomManager(BaseManager):
-    """Custom manager to allow multiprocessing to share defaultdicts"""
-
-    pass
-
-
-CustomManager.register("defaultdict", defaultdict, DictProxy)
-
-
-# multiprocessing pool initializer with mutex lock
-def init_pool(the_lock):
-    global lock
-    lock = the_lock
 
 
 @dataclass
@@ -206,14 +190,18 @@ class EnsembleCallbackHandler:
 
     def _multiprocessed_filter_dyst(
         self,
-        failed_checks: Dict[str, List[Tuple[int, str]]],
         dyst_name: str,
         all_traj: np.ndarray,
         first_sample_idx: int = 0,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray, Tuple[int, str], List[int]]:
         """
         Multiprocessed version of self._filter_dyst without any verbose output
+        NOTE: dyst_name is not currently used but could be utilized for customized checks
         """
+        # book keeping
+        failed_checks_samples = []
+        valid_samples = []
+
         valid_attractor_trajs = []
         failed_attractor_trajs = []
         for i, traj_sample in enumerate(all_traj):
@@ -228,16 +216,22 @@ class EnsembleCallbackHandler:
                 status = callback(traj_sample)
                 if not status:
                     callback_name = self._get_callback_name(callback)
-                    with lock:  # block accessing dyst_name key, for thread safety
-                        failed_checks[dyst_name].append((sample_idx, callback_name))
-                        break
+                    failed_check = (sample_idx, callback_name)
+                    failed_checks_samples.append(failed_check)
+                    break
             # if traj sample failed a check, move on to next trajectory sample for this dyst
             if not status:
                 failed_attractor_trajs.append(traj_sample)
                 continue
             # if all checks pass, add to valid attractor ensemble
             valid_attractor_trajs.append(traj_sample)
-        return np.array(valid_attractor_trajs), np.array(failed_attractor_trajs)
+            valid_samples.append(sample_idx)
+        return (
+            np.array(valid_attractor_trajs),
+            np.array(failed_attractor_trajs),
+            failed_checks_samples,
+            valid_samples,
+        )
 
     def multiprocessed_filter_ensemble(
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
@@ -245,59 +239,34 @@ class EnsembleCallbackHandler:
         """
         Multiprocessed version of self.filter_ensemble
         """
-        # Create a custom manager to manage shared defaultdict
-        manager = CustomManager()
-        with manager:
-            failed_checks = manager.defaultdict(list)  # type: ignore
-            lock = Lock()  # set lock mutex
-            with Pool(initializer=init_pool, initargs=(lock,)) as pool:
-                results = pool.starmap(
-                    self._multiprocessed_filter_dyst,
-                    [
-                        (failed_checks, dyst_name, all_traj, first_sample_idx)
-                        for dyst_name, all_traj in ensemble.items()
-                    ],
-                )
-            failed_checks = dict(failed_checks)
-            for dyst_name, checks in failed_checks.items():
-                self.failed_checks[dyst_name].extend(checks)
-            print("FAILED CHECKS: ", self.failed_checks)
-
-        # book keeping
-        self.failed_samples = {
-            dyst_name: [index for index, _ in self.failed_checks[dyst_name]]
-            for dyst_name in self.failed_checks.keys()
+        with Pool() as pool:
+            results = pool.starmap(
+                self._multiprocessed_filter_dyst,
+                [
+                    (dyst_name, all_traj, first_sample_idx)
+                    for dyst_name, all_traj in ensemble.items()
+                ],
+            )
+        # unpack multiprocessed results
+        valid_trajs, failed_trajs, failed_checks, valid_samples = zip(*results)
+        # book keeping for failed checks
+        for dyst_name, failed_check_lst in zip(list(ensemble.keys()), failed_checks):
+            if len(failed_check_lst) > 0:
+                self.failed_checks[dyst_name].append(failed_check_lst)
+                self.failed_samples[dyst_name].extend([index for index, _ in failed_check_lst])
+        # book keeping for valid samples
+        for dyst_name, valid_samples_lst in zip(list(ensemble.keys()), valid_samples):
+            if len(valid_samples_lst) > 0:
+                self.valid_samples[dyst_name].extend(valid_samples_lst)
+                self.valid_dyst_counts[dyst_name] += len(valid_samples_lst)
+        # Form the valid and failed ensembles
+        valid_ensemble = {
+            k: v for k, v in zip(list(ensemble.keys()), valid_trajs) if v.shape[0] > 0
         }
-        self.valid_samples = {
-            dyst_name: [
-                index
-                for index in range(len(ensemble[dyst_name]))
-                if index not in self.failed_samples.get(dyst_name, [])
-            ]
-            for dyst_name in ensemble.keys()
+        failed_ensemble = {
+            k: v for k, v in zip(list(ensemble.keys()), failed_trajs) if v.shape[0] > 0
         }
-        # get rid of empty lists in valid_samples
-        self.valid_samples = {k: v for k, v in self.valid_samples.items() if v}
-
-        self.valid_dyst_counts = {
-            dyst_name: len(self.valid_samples.get(dyst_name, []))
-            for dyst_name in self.valid_samples.keys()
-        }
-
-        # Process the multiprocessed output
-        combined_ensemble = dict(zip(list(ensemble.keys()), results))
-        # Separate the valid and failed ensembles
-        valid_attractor_ensemble = {
-            dyst_name: valid_trajs
-            for dyst_name, (valid_trajs, _) in combined_ensemble.items()
-            if valid_trajs.shape[0] > 0
-        }
-        failed_attractor_ensemble = {
-            dyst_name: failed_trajs
-            for dyst_name, (_, failed_trajs) in combined_ensemble.items()
-            if failed_trajs.shape[0] > 0
-        }
-        return valid_attractor_ensemble, failed_attractor_ensemble
+        return valid_ensemble, failed_ensemble
 
 
 ### Start of attractor checks (callbacks) ###
@@ -316,7 +285,7 @@ def check_no_nans(traj: np.ndarray, verbose: bool = False) -> bool:
 
 def check_boundedness(
     traj: np.ndarray,
-    abs_threshold: float = 1e4,
+    threshold: float = 1e4,
     max_num_stds: float = 1e2,
     verbose: bool = False,
 ) -> bool:
@@ -325,14 +294,15 @@ def check_boundedness(
 
     Args:
         traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
-        abs_threshold: Maximum absolute value of the trajectory to consider as diverging.
+        threshold: Maximum absolute value of the trajectory to consider as diverging. Scaled by norm of IC.
         max_num_stds: Maximum number of standard deviations from the initial point to consider as diverging.
     Returns:
         bool: False if the system is bounded, True otherwise.
     """
-
+    # scale threshold by norm of IC
+    threshold = threshold * np.linalg.norm(traj[:, 0])
     # NOTE: this should have already been caught by integration instability event
-    if np.any(np.abs(traj) > abs_threshold):
+    if np.any(np.abs(traj) > threshold): # TODO: scale by norm of IC?
         if verbose:
             print("Trajectory appears to be diverging.")
         return False
@@ -439,7 +409,6 @@ def check_not_spiral_decay(
     Returns:
         bool: True if the trajectory does not spiral towards a fixed point, False otherwise.
     """
-    # Split trajectory into two halves and check variance is not too low in second half compared to first half
     traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     n = traj.shape[1]
     # find peaks for each coordinate in the trajectory
