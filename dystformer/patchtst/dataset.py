@@ -14,7 +14,7 @@ from gluonts.transform import (
     ExpectedNumInstanceSampler,
     InstanceSplitter,
     MissingValueImputation,
-    TestSplitSampler,
+    NumInstanceSampler,
     ValidationSplitSampler,
 )
 from torch.utils.data import IterableDataset, get_worker_info
@@ -55,6 +55,7 @@ class PatchTSTDataset(IterableDataset):
     np_dtype: np.dtype = np.dtype(np.float32)
     fixed_dim: Optional[int] = None
     delay_embed_prob: float = 0.0
+    num_test_instances: int = 1
 
     def __post_init__(self):
         assert len(self.probabilities) == len(self.datasets)
@@ -74,7 +75,11 @@ class PatchTSTDataset(IterableDataset):
             )
             entry["target"] = entry["target"][sampled_dims]
 
-        if mode == "train" and self.delay_embed_prob > np.random.rand():
+        if (
+            mode == "train"
+            and self.delay_embed_prob > np.random.rand()
+            and entry["target"].shape[0] > 1
+        ):
             # Randomly select a dimension
             num_dims = entry["target"].shape[0]
             selected_dim = np.random.randint(num_dims)
@@ -100,7 +105,11 @@ class PatchTSTDataset(IterableDataset):
                 min_past=self.context_length,  # never sample behind the timeseries
                 min_future=self.prediction_length,  # never sample too far ahead
             ),
-            "test": TestSplitSampler(),
+            "test": NumInstanceSampler(
+                N=self.num_test_instances,
+                min_future=self.prediction_length,
+                min_past=self.context_length,
+            ),
             "validation": ValidationSplitSampler(min_future=self.prediction_length),
         }[mode]
 

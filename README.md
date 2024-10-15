@@ -90,9 +90,11 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 
 + [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
 + [HIGH | HARD] limit cycle test for generating data
++ [HIGH | EASY] are random or regular predictions windows better?
 + [MEDIUM | MEDIUM] implement patchtst for causal prediction pretraining
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
 + [MEDIUM | MEDIUM] implement a better parameter sampler for generating dyst data
++ [LOW | MEDIUM] different positional encoding might allow for torch compile to work 
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
 + [LOW | HARD] add flash attention support for AMD, see this warning: 
 ```

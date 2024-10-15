@@ -14,7 +14,7 @@ patchtst:
   d_model: 128
   num_attention_heads: 4
   share_embedding: true
-  channel_attention: false # This mixes across channels in th encoder 
+  channel_attention: false # This mixes across channels in the encoder 
   ffn_dim: 512
   norm_type: "layernorm"
   norm_eps: 1e-05

@@ -108,7 +108,7 @@ def plot_saved_data(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("dyst_name", help="Name of the dynamical system", type=str)
+    parser.add_argument("--dyst-name", help="Name of the dynamical system", type=str)
     parser.add_argument("--split", help="Split of the data", type=str, default=None)
     parser.add_argument(
         "--one_dim_target", action=argparse.BooleanOptionalAction, default=False

@@ -1,7 +1,3 @@
-"""
-
-TODO: why is so much coderewritten without making use of the chronos dataset which has a test sampler?
-"""
 import logging
 import os
 from collections import defaultdict

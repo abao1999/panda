@@ -50,7 +50,6 @@ class DystData:
     rseed: int = 999
     num_periods: int = 5
     num_points: int = 1024
-    standardize: bool = False
 
     param_sampler: Optional[BaseSampler] = None
     ic_sampler: Optional[BaseSampler] = None
@@ -137,6 +136,7 @@ class DystData:
         split: str = "train",
         samples_process_interval: int = 1,
         save_dir: Optional[str] = None,
+        standardize: bool = False,
     ) -> None:
         print(
             f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}"
@@ -182,12 +182,14 @@ class DystData:
         _ = self._generate_ensembles(
             dysts_names,
             [handle_failed_integrations_callback, process_and_save_callback()],
+            standardize=standardize,
         )
 
     def _generate_ensembles(
         self,
         dysts_names: List[str],
         postprocessing_callbacks: List[Callable] = [],
+        **kwargs,
     ) -> List[Dict[str, np.ndarray]]:
         ensembles = []
         pp_rng_stream = np.random.default_rng(self.rseed).spawn(
@@ -213,9 +215,9 @@ class DystData:
                     param_transform=self.param_sampler if i > 0 else None,
                     ic_rng=param_rng,
                     use_tqdm=True,
-                    standardize=self.standardize,
                     pts_per_period=self.num_points // self.num_periods,
                     events=self.events,
+                    **kwargs,
                 )
                 ensemble, excluded_keys = filter_dict(ensemble)
                 ensembles.append(ensemble)

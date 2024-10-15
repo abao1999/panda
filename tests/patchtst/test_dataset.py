@@ -61,7 +61,7 @@ def plot_distribution(num_batches: int, batch_size: int, dataset, cfg):
         lr_scheduler_type=cfg.train.lr_scheduler_type,
         warmup_ratio=cfg.train.warmup_ratio,
         optim=cfg.train.optim,
-        output_dir="test",
+        output_dir="outputs",
         logging_strategy="steps",
         logging_steps=cfg.train.log_steps,
         save_strategy="steps",

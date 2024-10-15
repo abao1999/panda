@@ -187,15 +187,15 @@ def main(cfg):
     log_on_main(f"Using SEED: {cfg.train.seed}", logger)
     transformers.set_seed(seed=cfg.train.seed)
 
-    # Get the path for "$WORK/data/train/Lorenz"
-    train_data_dir = os.path.expandvars("$WORK/data/train/")
-    train_data_paths = [
-        os.path.join(train_data_dir, "Lorenz/0_T-2048.arrow"),
-        os.path.join(train_data_dir, "ThomasLabyrinth/0_T-2048.arrow"),
-    ]
-    # train_data_paths = list(
-    #     filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
-    # )
+    # get train data paths
+    train_data_dir = os.path.expandvars(cfg.train_data_dir)
+    # train_data_paths = [
+    #     os.path.join(train_data_dir, "Lorenz/0_T-2048.arrow"),
+    #     os.path.join(train_data_dir, "ThomasLabyrinth/0_T-2048.arrow"),
+    # ]
+    train_data_paths = list(
+        filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
+    )
 
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")

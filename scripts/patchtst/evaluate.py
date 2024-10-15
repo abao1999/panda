@@ -36,8 +36,8 @@ def main(cfg):
     log_on_main(f"Using SEED: {cfg.train.seed}", logger)
     transformers.set_seed(seed=cfg.train.seed)
 
-    # Get the path for "$WORK/data/train/Lorenz"
-    test_data_dir = os.path.expandvars("$WORK/data/test/")
+    # get test data paths
+    test_data_dir = os.path.expandvars("$WORK/data/nonstandardized_test/")
     test_data_paths = list(
         filter(lambda file: file.is_file(), Path(test_data_dir).rglob("*"))
     )
@@ -60,17 +60,29 @@ def main(cfg):
         probabilities=probability,
         context_length=cfg.patchtst.context_length,
         prediction_length=cfg.patchtst.prediction_length,
+        num_test_instances=cfg.eval.num_test_instances,
         mode="test",
     )
 
-    model = PatchTSTModel.from_pretrained(
-        pretrain_path=cfg.eval.checkpoint_path,
-        mode="pretrain",
-    )
+    # model = PatchTSTModel.from_pretrained(
+    #     pretrain_path=cfg.eval.checkpoint_path,
+    #     mode="predict",
+    # )
+    model = PatchTSTModel(cfg.patchtst)
     model.eval()
 
-    for batch in batcher(test_dataset, batch_size=4):
-        print(len(batch))
+    for batch in batcher(test_dataset, batch_size=2):
+        for b in batch:
+            for k, v in b.items():
+                print(k, v.shape)
+                if torch.isnan(v).any():
+                    print(f"Warning: NaNs found in {k}")
+                    # Replace NaNs with zeros
+                    v = torch.nan_to_num(v, nan=0.0)
+                    b[k] = v
+                print(f"{k} shape after NaN removal: {v.shape}")
+
+        break
 
 
 if __name__ == "__main__":

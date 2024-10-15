@@ -696,11 +696,6 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         if not return_dict:
             outputs = (y_hat_out,) + model_output[1:-1]
             outputs = (loss_val,) + outputs if loss_val is not None else outputs
-            outputs = (
-                torch.mean(future_values, dim=1),
-                loc.squeeze(),
-                scale.squeeze(),
-            ) + outputs
             return outputs
         return PatchTSTForPredictionOutput(
             loss=loss_val,  # type: ignore
