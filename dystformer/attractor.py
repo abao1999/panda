@@ -285,7 +285,7 @@ def check_no_nans(traj: np.ndarray, verbose: bool = False) -> bool:
 
 def check_boundedness(
     traj: np.ndarray,
-    abs_threshold: float = 1e4,
+    threshold: float = 1e4,
     max_num_stds: float = 1e2,
     verbose: bool = False,
 ) -> bool:
@@ -294,14 +294,15 @@ def check_boundedness(
 
     Args:
         traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
-        abs_threshold: Maximum absolute value of the trajectory to consider as diverging.
+        threshold: Maximum absolute value of the trajectory to consider as diverging. Scaled by norm of IC.
         max_num_stds: Maximum number of standard deviations from the initial point to consider as diverging.
     Returns:
         bool: False if the system is bounded, True otherwise.
     """
-
+    # scale threshold by norm of IC
+    threshold = threshold * np.linalg.norm(traj[:, 0])
     # NOTE: this should have already been caught by integration instability event
-    if np.any(np.abs(traj) > abs_threshold):
+    if np.any(np.abs(traj) > threshold): # TODO: scale by norm of IC?
         if verbose:
             print("Trajectory appears to be diverging.")
         return False
