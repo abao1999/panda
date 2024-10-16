@@ -53,6 +53,17 @@ class InstabilityEvent:
 
 
 @dataclass
+class PositiveParamSampler(BaseSampler):
+    """Sample positive perturbations for system parameters
+
+    TODO: do this shit
+    """
+
+    scale: float = 1e-2
+    verbose: bool = False  # for testing purposes
+
+
+@dataclass
 class GaussianParamSampler(BaseSampler):
     """Sample gaussian perturbations for system parameters
 
@@ -114,11 +125,17 @@ class OnAttractorInitCondSampler(BaseSampler):
     """
 
     reference_traj_length: int = 4096
-    reference_traj_transient: int = 500
+    reference_traj_transient: float = 0.2
     trajectory_cache: Dict[str, Array] = field(default_factory=dict)
-    verbose: bool = False  # for testing purposes
-    events: Optional[List[Callable]] = None  # solve_ivp events
+    verbose: bool = False
+    events: Optional[List[Callable]] = None  # solve_ivp callbacks
     recompute_standardization: bool = False
+
+    def __post_init__(self):
+        assert (
+            0 < self.reference_traj_transient < 1
+        ), "Transient must be a fraction of the trajectory length"
+        self.transient = int(self.reference_traj_length * self.reference_traj_transient)
 
     def __call__(self, ic: Array, system: BaseDyn) -> Array:
         if system.name is None:
@@ -145,7 +162,7 @@ class OnAttractorInitCondSampler(BaseSampler):
                     f"Failed to integrate the system {system.name} with ic {system.ic} and params {system.params}"
                 )
                 return ic
-            reference_traj = reference_traj[self.reference_traj_transient :]
+            reference_traj = reference_traj[self.transient :]
             self.trajectory_cache[system.name] = reference_traj
 
         trajectory = self.trajectory_cache[system.name]
