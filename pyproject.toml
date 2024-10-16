@@ -28,6 +28,7 @@ dependencies = [
     "wandb", 
     "matplotlib",
     "statsmodels",
+    "orjson",
     "tensorboardX",
 ]
 

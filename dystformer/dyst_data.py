@@ -2,7 +2,7 @@ import json
 import os
 import warnings
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -12,7 +12,7 @@ from dysts.systems import make_trajectory_ensemble
 from tqdm import trange
 
 from dystformer.attractor import (
-    EnsembleCallbackHandler,
+    AttractorValidator,
     check_boundedness,
     check_lyapunov_exponent,
     check_no_nans,
@@ -43,6 +43,7 @@ class DystData:
         split_coords: whether to split the coordinates into two dimensions
         events: events to pass to solve_ivp
         apply_attractor_tests: whether to apply attractor tests
+        attractor_validator_kwargs: kwargs for the attractor validator
         verbose: whether to print verbose output
         debug_mode: flag to save failed trajectory ensembles for debugging
     """
@@ -59,9 +60,9 @@ class DystData:
     split_coords: bool = True  # by default save trajectories compatible with Chronos
     events: Optional[List] = None
     apply_attractor_tests: bool = False
+    attractor_validator_kwargs: Dict[str, Any] = field(default_factory=dict)
     verbose: bool = True
     debug_mode: bool = False
-    attractor_validator_kwargs: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
         if self.events is None:
@@ -80,7 +81,7 @@ class DystData:
         if self.ic_sampler is None:
             self.num_ics = 1
 
-        # Callbacks to check attractor properties
+        # attractor tests
         if self.apply_attractor_tests:
             self.attractor_validator = self._build_attractor_validator()
         else:
@@ -93,42 +94,33 @@ class DystData:
         # track the failed numerical integrations
         self.failed_integrations = defaultdict(list)
 
-    def _build_attractor_validator(self) -> EnsembleCallbackHandler:
+    def _build_attractor_validator(self) -> AttractorValidator:
         """
         Builds a list of attractor tests to check for each trajectory ensemble.
         """
-        if self.attractor_validator_kwargs is None:
-            self.attractor_validator_kwargs = {}
         print("Setting up callbacks to test attractor properties")
-        # callbacks to check attractor validity when creating traj ensemble of dysts
-        ens_callback_handler = EnsembleCallbackHandler(
-            **self.attractor_validator_kwargs
-        )
-        ens_callback_handler.add_callback(check_no_nans)
-        ens_callback_handler.add_callback(
+        validator = AttractorValidator(**self.attractor_validator_kwargs)
+        validator.add_test_fn(check_no_nans)
+        validator.add_test_fn(
             partial(check_boundedness, threshold=1e3, max_num_stds=12)
         )
-        ens_callback_handler.add_callback(
-            partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1)
-        )
-        # More sophisticated checks
-        ens_callback_handler.add_callback(
+        validator.add_test_fn(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
+        validator.add_test_fn(
             partial(
                 check_not_limit_cycle,
                 min_recurrence_ratio=0.2,
                 tolerance=1e-3,
             )
         )
-        # ens_callback_handler.add_callback(check_not_spiral_decay)
-        ens_callback_handler.add_callback(
+        validator.add_test_fn(
             partial(
                 check_power_spectrum,
                 rel_peak_height_threshold=1e-5,
                 rel_prominence_threshold=None,
             )
         )
-        ens_callback_handler.add_callback(check_lyapunov_exponent)
-        return ens_callback_handler
+        validator.add_test_fn(check_lyapunov_exponent)
+        return validator
 
     def save_dyst_ensemble(
         self,
@@ -152,7 +144,6 @@ class DystData:
             ensemble_list = []
 
             def _callback(ensemble, excluded_keys, sample_idx):
-                print("ENSEMBLE LIST: ", ensemble_list)
                 if len(ensemble.keys()) == 0:
                     print(
                         "No successful trajectories for this sample. Skipping, will not save to arrow files."

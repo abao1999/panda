@@ -17,6 +17,7 @@ data/
 *.out
 nohup.out
 tests/*.json
+tests/*.png
 
 # output and logging files
 output/
@@ -32,6 +33,7 @@ logs/
 **/.ipynb_checkpoints/*
 **/figures/*
 **/figs*
+**/plots/*
 **/logs/*
 **/outputs/*
 **/metrics/*

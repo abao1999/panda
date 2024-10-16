@@ -62,7 +62,8 @@ if __name__ == "__main__":
         apply_attractor_tests=True,
         attractor_validator_kwargs={
             "verbose": 1,
-            "plot_save_dir": None,
+            "transient_time": 200,
+            "plot_save_dir": "tests/plots",
         },
         debug_mode=True,  # save the failed attractors
     )
@@ -71,6 +72,7 @@ if __name__ == "__main__":
         dysts_names=dysts_names,
         split="debug",
         samples_process_interval=1,
+        standardize=True,
         save_dir=DATA_DIR,
     )
 

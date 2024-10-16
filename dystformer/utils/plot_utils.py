@@ -136,8 +136,8 @@ def plot_trajs_multivariate(
             label = f"Sample {label_sample_idx}"
             curr_color = COLORS[label_sample_idx]
 
-            xy = dyst_data[sample_idx, :3, :]
-            ax.plot(*xy, alpha=0.5, linewidth=1, color=curr_color, label=label)
+            xyz = dyst_data[sample_idx, :3, :]
+            ax.plot(*xyz, alpha=0.5, linewidth=1, color=curr_color, label=label)
 
             ic_point = dyst_data[sample_idx, :3, 0]
             ax.scatter(*ic_point, marker="*", s=100, alpha=0.5, c=curr_color)

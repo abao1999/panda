@@ -167,6 +167,11 @@ def main():
         verbose=True,
         split_coords=args.split_coords,
         apply_attractor_tests=args.no_attractor_tests,
+        attractor_validator_kwargs={
+            "verbose": 1,
+            "transient_time": 200,
+            "plot_save_dir": "tests/plots",
+        },
         debug_mode=args.debug_mode,
     )
 
