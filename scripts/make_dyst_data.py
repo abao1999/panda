@@ -205,7 +205,7 @@ def main():
             split=f"{split_prefix}test",
             samples_process_interval=1,
             save_dir=args.data_dir,
-            standardize=False,
+            standardize=False,  # dont standardize the test data
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", "attractor_checks.json"),
