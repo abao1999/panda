@@ -27,7 +27,7 @@ class AttractorValidator:
     """
 
     verbose: int = 1
-    transient_time: int = 200
+    transient_time_frac: float = 0.2
     plot_save_dir: Optional[str] = None
 
     def __post_init__(self):
@@ -80,7 +80,8 @@ class AttractorValidator:
                 plot_name=f"{dyst_name}_sample_{sample_idx}",
             )
         # call test_fn on trajectory excluding transient time (burn-in time)
-        status = test_fn(traj_sample[:, self.transient_time :])
+        transient_time = int(traj_sample.shape[1] * self.transient_time_frac)
+        status = test_fn(traj_sample[:, transient_time:])
         if self.verbose >= 1:
             print(
                 f"{func_name}: {'PASSED' if status else 'FAILED'} for {dyst_name} sample {sample_idx}"
@@ -447,7 +448,7 @@ def check_not_spiral_decay(
 def check_not_limit_cycle(
     traj: np.ndarray,
     tolerance: float = 1e-3,
-    min_recurrence_ratio: float = 0.2,
+    min_num_recurrences: int = 100,
     verbose: bool = False,
     plot_save_dir: Optional[str] = None,
     plot_name: Optional[str] = None,
@@ -458,7 +459,7 @@ def check_not_limit_cycle(
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
         tolerance (float): Tolerance for detecting revisits to the same region in phase space.
-        min_recurrence_ratio (float): Minimum proportion of the timepoints found to be near-recurrences to consider a limit cycle.
+        min_num_recurrences (int): Minimum number of recurrences to consider a recurrence time
     Returns:
         bool: True if the trajectory is not collapsing to a limit cycle, False otherwise.
     """
@@ -490,7 +491,9 @@ def check_not_limit_cycle(
     # get recurrence times
     recurrence_times = np.abs(recurrence_indices[0] - recurrence_indices[1])
     rtimes_counts = Counter(recurrence_times)
-    n_repeated_rtimes = sum(1 for count in rtimes_counts.values() if count >= 10)
+    n_repeated_rtimes = sum(
+        1 for count in rtimes_counts.values() if count >= min_num_recurrences
+    )
     if n_repeated_rtimes >= 1:
         # Plot the recurrence times as histogram and 3D trajectory
         if plot_save_dir is not None and plot_name is not None:
@@ -684,7 +687,7 @@ def check_power_spectrum(
             plot_name=plot_name,
             verbose=verbose,
         )
-        # NOTE: some systems have a periodic driver in one dimension, which will make this test fail
+        # NOTE: some systems have a periodic driver in the last dimension, which will make this test fail
         # in that case, we can use the Lyapunov exponent test to check for chaos
         if not status:
             if verbose:

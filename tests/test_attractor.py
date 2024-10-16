@@ -42,8 +42,8 @@ if __name__ == "__main__":
 
     param_sampler = GaussianParamSampler(random_seed=rseed, scale=0.5, verbose=False)
     ic_sampler = OnAttractorInitCondSampler(
-        reference_traj_length=1024,
-        reference_traj_transient=200,
+        reference_traj_length=1024 * 2,
+        reference_traj_transient=0.2,
         events=events,
         verbose=False,
     )
@@ -62,7 +62,7 @@ if __name__ == "__main__":
         apply_attractor_tests=True,
         attractor_validator_kwargs={
             "verbose": 1,
-            "transient_time": 200,
+            "transient_time_frac": 0.05,  # don't need long transient time because ic should be on attractor
             "plot_save_dir": "tests/plots",
         },
         debug_mode=True,  # save the failed attractors

@@ -108,7 +108,7 @@ class DystData:
         validator.add_test_fn(
             partial(
                 check_not_limit_cycle,
-                min_recurrence_ratio=0.2,
+                min_num_recurrences=100,
                 tolerance=1e-3,
             )
         )
