@@ -32,7 +32,9 @@ def evaluate_model(
     metrics: Dict[str, Callable],
     batch_interval: int = 64,
     aggregate_across_dims: bool = True,
-) -> Union[Dict[str, float], Tuple[Dict[str, float], Dict[str, float]]]:
+) -> Union[
+    Dict[str, Dict[str, float]], Tuple[Dict[str, float], Dict[str, Dict[str, float]]]
+]:
     """
     Evaluate the model on the test dataset and save metrics
     """
@@ -79,15 +81,15 @@ def evaluate_model(
 
     if aggregate_across_dims:
         aggregated_metrics_dict = {
-            metric_name: np.mean([v for v in metric_values.values()])
+            metric_name: float(np.mean([v for v in metric_values.values()]))
             for metric_name, metric_values in metrics_dict_by_dim.items()
         }
         for metric_name, metric_value in aggregated_metrics_dict.items():
             print(f"{metric_name}: {metric_value}")
 
-        return aggregated_metrics_dict, metrics_dict_by_dim
+        return aggregated_metrics_dict, dict(metrics_dict_by_dim)
 
-    return metrics_dict_by_dim
+    return dict(metrics_dict_by_dim)
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)

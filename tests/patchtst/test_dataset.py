@@ -6,10 +6,11 @@ from typing import Dict, List
 
 import hydra
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments, set_seed
 
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTSTModel
@@ -81,13 +82,101 @@ def plot_distribution(num_batches: int, batch_size: int, dataset, cfg):
     )
     dataloader = trainer.get_train_dataloader()
 
+    loss_val, past_values, patch_input, future_values, preds, loc, scale, *rest = model(
+        return_dict=False, **next(iter(dataloader))
+    )
+    print(past_values.shape)
+    print(patch_input.shape)
+    print(future_values.shape)
+    print(preds.shape)
+    print(loc.shape)
+    print(scale.shape)
+    print(loss_val.shape)
+
+    # Plot trajectories from patch_input
+    fig = plt.figure(figsize=(20, 12))
+
+    # 3D plot
+    ax_3d = fig.add_subplot(221, projection="3d")
+    cmap = plt.get_cmap("Set1")
+    colors = [cmap(i % cmap.N) for i in range(batch_size)]
+
+    # Add a single representative line for each linestyle
+    ax_3d.plot([], [], color="black", linestyle="-", label="Predictions")
+    ax_3d.plot([], [], color="black", linestyle="-.", label="True")
+    ax_3d.plot([], [], color="black", linestyle=":", label="Past")
+
+    # Time series subplots
+    ax_x = fig.add_subplot(222)
+    ax_y = fig.add_subplot(223)
+    ax_z = fig.add_subplot(224)
+
+    for b in range(batch_size):
+        loc_b = loc[b].detach().cpu().numpy().T
+        scale_b = scale[b].detach().cpu().numpy().T
+        past_values_b = past_values[b].detach().cpu().numpy().T
+        trajectory = loc_b + scale_b * preds[b].detach().cpu().numpy().T
+        true_trajectory = future_values[b].detach().cpu().numpy().T
+
+        # 3D plot
+        ax_3d.scatter(
+            *loc_b,
+            color=colors[b],
+            marker="o",
+            facecolors="none",
+            s=40,
+            label="mean" if b == 0 else "",
+        )
+        ax_3d.plot(*trajectory, color=colors[b], linewidth=0.5, linestyle="-")
+        ax_3d.plot(*past_values_b, color=colors[b], linewidth=0.5, linestyle=":")
+        ax_3d.plot(*true_trajectory, color=colors[b], linestyle="-.")
+
+        # Time series plots
+        time = np.arange(len(past_values_b[0]) + len(trajectory[0]))
+        for ax, coord in zip([ax_x, ax_y, ax_z], range(3)):
+            ax.plot(
+                time[: len(past_values_b[0])],
+                past_values_b[coord],
+                color=colors[b],
+                linestyle=":",
+                linewidth=0.5,
+            )
+            ax.plot(
+                time[len(past_values_b[0]) :],
+                trajectory[coord],
+                color=colors[b],
+                linestyle="-",
+                linewidth=0.5,
+            )
+            ax.plot(
+                time[len(past_values_b[0]) :],
+                true_trajectory[coord],
+                color=colors[b],
+                linestyle="-.",
+                linewidth=0.5,
+            )
+            ax.set_title(f"Coordinate {coord+1}")
+            ax.set_xlabel("Time")
+            ax.set_ylabel("Value")
+
+    ax_3d.legend()
+    plt.tight_layout()
+    plt.savefig("figures/patch_input_trajectories.png")
+    plt.close()
+    fsdfs
     outputs = zip(
         *[
             model(return_dict=False, **batch)
             for _, batch in zip(range(num_batches), dataloader)
         ]
     )
-    future_values, loc, scale, loss_val, preds, *rest = outputs
+    future_values, preds, loc, scale, loss_val, *rest = outputs
+    print(future_values)
+    print(future_values.shape)
+    print(preds.shape)
+    print(loc.shape)
+    print(scale.shape)
+    print(loss_val.shape)
 
     agg_preds = (
         torch.concat([torch.mean(pred, dim=1) for pred in preds], dim=0).detach().cpu()
@@ -126,7 +215,10 @@ def plot_distribution(num_batches: int, batch_size: int, dataset, cfg):
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
-    train_data_dir = os.path.expandvars("$WORK/data/train/")
+    # set random seed
+    set_seed(seed=cfg.train.seed)
+
+    train_data_dir = os.path.expandvars("$WORK/data/nonstandardized_train/")
     train_data_paths = list(
         filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
     )

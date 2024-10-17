@@ -31,7 +31,6 @@ from transformers.models.patchtst.modeling_patchtst import (
 class PatchTSTEmbedding(nn.Module):
     def __init__(self, config: PatchTSTConfig):
         super().__init__()
-        # Input encoding: projection of feature vectors onto a d-dim vector space
         self.input_embedding = nn.Linear(config.patch_length, config.d_model)
 
     def forward(self, patch_input: torch.Tensor):
@@ -42,10 +41,38 @@ class PatchTSTEmbedding(nn.Module):
         return:
             `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
         """
-        # Input encoding
-        embeddings = self.input_embedding(
-            patch_input
-        )  # x: [bs x num_channels  x num_patches x d_model]
+        embeddings = self.input_embedding(patch_input)
+        return embeddings
+
+
+class PatchTSTMixtureEmbedding(nn.Module):
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+        self.num_experts = config.num_experts
+        self.experts = nn.ModuleList(
+            [
+                nn.Linear(config.patch_length, config.d_model)
+                for _ in range(self.num_experts)
+            ]
+        )
+        self.gate = nn.Linear(config.patch_length, self.num_experts)
+
+    def forward(self, patch_input: torch.Tensor):
+        """
+        Parameters:
+            patch_input (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
+                Patch input for embedding
+        return:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
+        """
+        gate_scores = self.gate(patch_input)
+        gate_weights = torch.softmax(gate_scores, dim=-1)
+
+        expert_outputs = torch.stack(
+            [expert(patch_input) for expert in self.experts], dim=-1
+        )
+
+        embeddings = torch.einsum("...de,...e->...d", expert_outputs, gate_weights)
         return embeddings
 
 
@@ -185,7 +212,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         self.gradient_checkpointing = False
 
         # Input embedding: projection of feature vectors onto a d-dim vector space
-        self.embedder = PatchTSTEmbedding(config)
+        self.embedder = PatchTSTMixtureEmbedding(config)
         # Positional encoding
         self.positional_encoder = PatchTSTPositionalEncoding(config, num_patches)
         # Encoder
@@ -511,7 +538,6 @@ class PatchTSTPredictionHead(nn.Module):
     def __init__(self, config: PatchTSTConfig, num_patches, distribution_output=None):
         super().__init__()
 
-        self.share_projection = config.share_projection
         self.num_input_channels = config.num_input_channels
         self.use_cls_token = config.use_cls_token
         self.pooling_type = config.pooling_type
@@ -525,7 +551,6 @@ class PatchTSTPredictionHead(nn.Module):
         if distribution_output is None:
             # use linear head with custom weight initialization
             self.projection = nn.Linear(head_dim, config.prediction_length, bias=False)
-            nn.init.normal_(self.projection.weight, std=1)
         else:
             # use distribution head
             self.projection = distribution_output.get_parameter_projection(head_dim)
@@ -694,7 +719,14 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         scale = model_output.scale
 
         if not return_dict:
-            outputs = (y_hat_out,) + model_output[1:-1]
+            outputs = (
+                past_values,
+                model_output.patch_input,
+                future_values,
+                y_hat,
+                loc,
+                scale,
+            ) + model_output[1:-1]
             outputs = (loss_val,) + outputs if loss_val is not None else outputs
             return outputs
         return PatchTSTForPredictionOutput(

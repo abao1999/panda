@@ -56,7 +56,7 @@ def parse_arguments():
     parser.add_argument(
         "--instability-threshold",
         type=float,
-        default=1e3,
+        default=5e2,
         help="Threshold for the InstabilityEvent",
     )
     parser.add_argument(
@@ -73,8 +73,8 @@ def parse_arguments():
     )
     parser.add_argument(
         "--reference-traj-transient",
-        type=int,
-        default=200,
+        type=float,
+        default=0.2,
         help="Reference trajectory transient for OnAttractorInitCondSampler",
     )
     parser.add_argument(
@@ -112,9 +112,14 @@ def parse_arguments():
         help="Do not apply attractor tests",
     )
     parser.add_argument(
-        "--standardize",
+        "--standardize-train",
         action="store_true",
-        help="Standardize the data",
+        help="Standardize the train data",
+    )
+    parser.add_argument(
+        "--standardize-test",
+        action="store_true",
+        help="Standardize the test data",
     )
     parser.add_argument(
         "--test-split",
@@ -198,14 +203,14 @@ def main():
             split=f"{split_prefix}train",
             samples_process_interval=1,
             save_dir=args.data_dir,
-            standardize=True,
+            standardize=args.standardize_train,
         )
         dyst_data_generator.save_dyst_ensemble(
             dysts_names=test,
             split=f"{split_prefix}test",
             samples_process_interval=1,
             save_dir=args.data_dir,
-            standardize=False,  # dont standardize the test data
+            standardize=args.standardize_test,
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", "attractor_checks.json"),
