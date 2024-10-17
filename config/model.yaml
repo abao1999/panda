@@ -43,6 +43,8 @@ patchtst:
   output_range: null
   num_parallel_samples: 100
 
+  num_experts: 8
+
   # for the channel mixing head
   mix_channels: false
   mixing_d_model: 128

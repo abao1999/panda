@@ -76,18 +76,11 @@ If you run into a weird miopen error, see: https://github.com/pytorch/pytorch/is
 ## Evaluation
 To evalute the performance of a fine-tuned model, run `python scripts/evaluate.py` after setting the appropriate configuration in `configs/evaluation.yaml`. In particular, set `model_id` to point to the directory of your saved fine-tuned model checkpoint. The list of dynamical systems used for evaluation is also set in the configuration, but will default to using the test/train split.
 
-## Notes
-+ does it make more sense to reestimate period - a surrogate for the timescale, or the lyapunov exponent - a well defined quantity? What about using first UPO?
-+ Must decide whether we want to use MLM or causal prediction for pretraining
-        - MLM is what patchtst does
-        - causal prediction is what chronos does
-+ look into different loss functions for the pretraining
-+ one possible route to the jagged dim problem: for each batch of traj data, store ordered list of each trajs phase space dimension, flatten the batch dimensions along with the phase space dimension i.e. -> [batch_size * num_dimensions, context_length + prediction_length], then in forward decode using the stored dimensions
-
 ## Development Goals
 
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
++ [HIGH | EASY] wait...is forecast pretraining using causal masking??
 + [HIGH | HARD] get forecast pretraining working
 + [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
 + [HIGH | HARD] limit cycle test for generating data
