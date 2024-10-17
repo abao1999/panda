@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from multiprocessing import Pool
 from typing import Callable, Dict, List, Optional, Tuple
 
+import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
 from dysts.analysis import max_lyapunov_exponent_rosenstein
@@ -283,7 +284,7 @@ def check_boundedness(
         threshold: Maximum absolute value of the trajectory to consider as diverging.
         max_num_stds: Maximum number of standard deviations from the initial point to consider as diverging.
     Returns:
-        bool: False if the system is bounded, True otherwise.
+        bool: False if the system is diverging, True otherwise.
     """
     if np.any(np.abs(traj) > threshold):
         if verbose:
@@ -306,6 +307,15 @@ def check_boundedness(
             print("Trajectory appears to be diverging.")
         else:
             print("Trajectory does not appear to be diverging.")
+
+    # Check if any dimension of the trajectory is a straight line
+    for dim in range(traj.shape[0]):
+        if np.allclose(np.diff(traj[dim, :]), 0, atol=1e-5):
+            if verbose:
+                print(
+                    f"Dimension {dim} of the trajectory appears to be a straight line."
+                )
+            return False
 
     return not is_diverging
 
@@ -448,7 +458,11 @@ def check_not_spiral_decay(
 def check_not_limit_cycle(
     traj: np.ndarray,
     tolerance: float = 1e-3,
-    min_num_recurrences: int = 100,
+    min_prop_recurrences: float = 0.0,
+    min_counts_per_rtime: int = 100,
+    min_block_length: int = 0,
+    min_recurrence_time: int = 1,
+    enforce_endpoint_recurrence: bool = False,
     verbose: bool = False,
     plot_save_dir: Optional[str] = None,
     plot_name: Optional[str] = None,
@@ -473,7 +487,10 @@ def check_not_limit_cycle(
         reduced_traj = traj
 
     # Step 2: Calculate the pairwise distance matrix, shape should be (N, N)
-    dist_matrix = cdist(reduced_traj.T, reduced_traj.T, metric="euclidean")
+    dist_matrix = cdist(reduced_traj.T, reduced_traj.T, metric="euclidean").astype(
+        np.float16
+    )
+
     # get upper trangular part of matrix, zero out the lower triangular part
     dist_matrix = np.triu(dist_matrix, k=1)
 
@@ -488,19 +505,80 @@ def check_not_limit_cycle(
             print("No recurrences found. Passing limit cycle test.")
         return True
 
+    if enforce_endpoint_recurrence:
+        # check if an eps neighborhood around either n-1 or 0 is in either of the recurrence indices
+        eps = 3
+        if not any(
+            (n - 1) - max(indices) < eps or min(indices) - 0 < eps
+            for indices in recurrence_indices
+        ):
+            if verbose:
+                print("Last time point seems to not be a recurrence.")
+            return True
+
     # get recurrence times
     recurrence_times = np.abs(recurrence_indices[0] - recurrence_indices[1])
+    recurrence_times = recurrence_times[recurrence_times >= min_recurrence_time]
+
+    # Heuristic 1: Check if there are enough recurrences to consider a limit cycle
+    n_recurrences = len(recurrence_times)
+    if n_recurrences < int(min_prop_recurrences * n):
+        if verbose:
+            print("Not enough recurrences to consider a limit cycle.")
+        return True
+
+    # Heuristic 2: Check if there are enough valid recurrence times
     rtimes_counts = Counter(recurrence_times)
-    n_repeated_rtimes = sum(
-        1 for count in rtimes_counts.values() if count >= min_num_recurrences
+    n_valid_rtimes = sum(
+        1 for count in rtimes_counts.values() if count >= min_counts_per_rtime
     )
-    if n_repeated_rtimes >= 1:
+    if n_valid_rtimes < 1:
+        if verbose:
+            print("Not enough valid recurrence times to consider a limit cycle.")
+        return True
+
+    # Heuristic 3: Check if the valid recurrence times are formed of blocks of consecutive timepoints
+    if min_block_length > 0:
+        rtimes_dict = defaultdict(list)
+        block_length = 1
+        prev_rtime = None
+        prev_t1 = None
+        prev_t2 = None
+        rtimes_is_valid = False
+        num_blocks = 0
+        # assuming recurrence_indices[0] is sorted
+        for t1, t2 in zip(*recurrence_indices):
+            rtime = abs(t2 - t1)
+            if rtime < min_recurrence_time:
+                continue
+            if (
+                rtime == prev_rtime
+                and abs(t1 - prev_t1) == 1
+                and abs(t2 - prev_t2) == 1
+            ):
+                block_length += 1
+            else:
+                if block_length > min_block_length:
+                    rtimes_dict[prev_rtime].append(block_length)
+                    num_blocks += 1
+                block_length = 1
+            prev_t1, prev_t2, prev_rtime = t1, t2, rtime
+            if block_length > min_block_length * 2:
+                # enough is enough
+                rtimes_is_valid = True
+                break
+            if num_blocks >= 2:  # if valid, save computation and break
+                rtimes_is_valid = True
+                break
+
+    if rtimes_is_valid:
         # Plot the recurrence times as histogram and 3D trajectory
         if plot_save_dir is not None and plot_name is not None:
             dyst_name = plot_name.split("_")[0]
             plot_name = f"{plot_name}_recurrence_times_FAILED"
 
-            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
+            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 18))
+
             ax1.hist(recurrence_times, bins=100, edgecolor="black")
             ax1.set_xlabel("Recurrence Time")
             ax1.set_ylabel("Frequency")
@@ -508,19 +586,48 @@ def check_not_limit_cycle(
             ax1.grid(True)
 
             xyz = traj[:3, :]
+            xyz1 = xyz[:, : int(n / 2)]
+            xyz2 = xyz[:, int(n / 2) :]
             ic_point = traj[:3, 0]
             final_point = traj[:3, -1]
-            ax2 = fig.add_subplot(122, projection="3d")
-            ax2.plot(*xyz, alpha=0.5, linewidth=1, color="tab:blue")
+            ax2 = fig.add_subplot(312, projection="3d")
+            ax2.plot(*xyz1, alpha=0.5, linewidth=1, color="tab:blue")
+            ax2.plot(*xyz2, alpha=0.5, linewidth=1, color="tab:orange")
             ax2.scatter(*ic_point, marker="*", s=100, alpha=0.5, color="tab:blue")
-            ax2.scatter(*final_point, marker="x", s=100, alpha=0.5, color="tab:blue")
+            ax2.scatter(*final_point, marker="x", s=100, alpha=0.5, color="tab:orange")
             ax2.set_xlabel("X")
             ax2.set_ylabel("Y")
             ax2.set_zlabel("Z")  # type: ignore
             ax2.set_title(dyst_name)
 
+            ax3 = fig.add_subplot(313)
+            X, Y = np.meshgrid(
+                np.arange(dist_matrix.shape[0]), np.arange(dist_matrix.shape[1])
+            )
+            pcolormesh = ax3.pcolormesh(
+                X,
+                Y,
+                dist_matrix,
+                cmap="viridis_r",
+                shading="auto",
+                norm=colors.LogNorm(),
+            )
+            plt.colorbar(pcolormesh, ax=ax3)
+            ax3.scatter(
+                recurrence_indices[0],
+                recurrence_indices[1],
+                color="black",
+                s=20,
+                alpha=0.5,
+            )
+            ax3.set_title("Recurrence Distance Matrix")
+            ax3.set_xlabel("Time")
+            ax3.set_ylabel("Time")
+            ax3.set_aspect("equal")
+
             plot_save_path = os.path.join(plot_save_dir, f"{plot_name}.png")
             plt.savefig(plot_save_path, dpi=300)
+            plt.tight_layout()
             plt.close()
 
         return False
@@ -632,7 +739,7 @@ def check_power_spectrum_1d(
         return True
 
     # Only plot if the test failed
-    if plot_save_dir is not None and plot_name is not None:
+    if verbose and plot_save_dir is not None and plot_name is not None:
         plot_name = f"{plot_name}_power_spectrum"
         if not status:
             plot_name = f"{plot_name}_FAILED"
