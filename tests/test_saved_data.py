@@ -108,7 +108,9 @@ def plot_saved_data(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dyst-name", help="Name of the dynamical system", type=str)
+    parser.add_argument(
+        "dysts_names", help="Names of the dynamical systems", nargs="+", type=str
+    )
     parser.add_argument("--split", help="Split of the data", type=str, default=None)
     parser.add_argument(
         "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
@@ -131,7 +133,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.dyst_name == "all":
+    if args.dysts_names == ["all"]:
         # get all folder names in DATA_DIR/{split}
         if args.split is None:
             raise ValueError("Split must be provided for 'all' argument")
@@ -140,7 +142,7 @@ if __name__ == "__main__":
             folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
         ]
     else:
-        dyst_names_lst = [args.dyst_name]
+        dyst_names_lst = args.dysts_names
 
     print(f"dyst names: {dyst_names_lst}")
 

@@ -1,14 +1,14 @@
 """
-Callbacks to check if generated trajectories are valid attractors
+Suite of tests to determine if generated trajectories are valid attractors
 """
 
 import functools
+import inspect
 import os
-import warnings
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from multiprocessing import Pool
-from typing import Callable, Dict, Optional, Tuple, List
+from typing import Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,24 +16,22 @@ from dysts.analysis import max_lyapunov_exponent_rosenstein
 from scipy.fft import fft, fftfreq
 from scipy.signal import find_peaks
 from scipy.spatial.distance import cdist
-from scipy.stats import t as student_t
 from sklearn.decomposition import PCA
 from statsmodels.tsa.stattools import adfuller, kpss
 
-BURN_TIME = 200
-
 
 @dataclass
-class EnsembleCallbackHandler:
+class AttractorValidator:
     """
-    Class to handle callbacks for checking if generated trajectories are valid attractors.
+    Class to handle test suite to determine if generated trajectories are valid attractors.
     """
 
     verbose: int = 1
+    transient_time_frac: float = 0.2
     plot_save_dir: Optional[str] = None
 
     def __post_init__(self):
-        self.callbacks = []  # List[Callable]
+        self.tests = []  # List[Callable]
         self.failed_checks = defaultdict(list)  # Dict[str, List[Tuple[int, str]]]
         self.valid_dyst_counts = defaultdict(int)  # Dict[str, int]
         self.failed_samples = defaultdict(list)  # Dict[str, List[int]]
@@ -41,57 +39,54 @@ class EnsembleCallbackHandler:
         if self.plot_save_dir is not None:
             os.makedirs(self.plot_save_dir, exist_ok=True)
 
-    def add_callback(self, callback):
+    def add_test_fn(self, test_fn):
         """
-        Add a callback to the list of callbacks.
+        Add a test_fn to the list of attractorchecks.
         """
-        assert callable(callback), "Callback must be a callable function"
-        self.callbacks.append(callback)
+        assert callable(test_fn), "Check must be a callable function"
+        self.tests.append(test_fn)
 
-    def _get_callback_name(self, callback: Callable) -> str:
-        """
-        Get the name of the callback test function
-        """
-        callback_name = (
-            callback.func.__name__
-            if isinstance(callback, functools.partial)
-            else callback.__name__
-        )
-        return callback_name
-
-    def _execute_callback(
+    def _execute_test_fn(
         self,
-        callback: Callable,
+        test_fn: Callable,
         dyst_name: str,
         traj_sample: np.ndarray,
         sample_idx: int,
-    ) -> bool:
+    ) -> Tuple[bool, str]:
         """
-        Execute a single callback for a given trajectory sample of a system.
+        Execute a single test for a given trajectory sample of a system.
         Args:
-            callback: the callback (attractor check) function to execute
+            test_fn: the attractor test function to execute
             dyst_name: name of the dyst
-            traj_sample: the trajectory sample to check
+            traj_sample: the trajectory sample to test
             sample_idx: index of the sample
 
         Returns:
-            bool: True if the callback passed, False otherwise
+            bool: True if the test passed, False otherwise
         """
-        callback = functools.partial(callback, verbose=self.verbose >= 2)
+        test_fn = functools.partial(test_fn, verbose=self.verbose >= 2)
+        original_func = (
+            test_fn.func if isinstance(test_fn, functools.partial) else test_fn
+        )
+        func_name = original_func.__name__
+        func_params = list(inspect.signature(original_func).parameters.keys())
+        if (
+            all(param in func_params for param in ["plot_save_dir", "plot_name"])
+            and self.plot_save_dir is not None
+        ):
+            test_fn = functools.partial(
+                test_fn,
+                plot_save_dir=self.plot_save_dir,
+                plot_name=f"{dyst_name}_sample_{sample_idx}",
+            )
+        # call test_fn on trajectory excluding transient time (burn-in time)
+        transient_time = int(traj_sample.shape[1] * self.transient_time_frac)
+        status = test_fn(traj_sample[:, transient_time:])
         if self.verbose >= 1:
             print(
-                f"Executing callback: {self._get_callback_name(callback)} for {dyst_name} at sample {sample_idx}"
+                f"{func_name}: {'PASSED' if status else 'FAILED'} for {dyst_name} sample {sample_idx}"
             )
-        status = callback(traj_sample)
-        # book keeping
-        if not status:
-            callback_name = self._get_callback_name(callback)
-            if self.verbose >= 1:
-                print(f"FAILED {callback_name} for {dyst_name} at sample {sample_idx}")
-            # add to failed checks
-            self.failed_checks[dyst_name].append((sample_idx, callback_name))
-            self.failed_samples[dyst_name].append(sample_idx)
-        return status
+        return status, func_name
 
     def _filter_dyst(
         self, dyst_name: str, all_traj: np.ndarray, first_sample_idx: int = 0
@@ -112,36 +107,32 @@ class EnsembleCallbackHandler:
         failed_attractor_trajs = []
         for i, traj_sample in enumerate(all_traj):
             sample_idx = first_sample_idx + i
-
-            # Make sure traj_sample is a 2D array
-            if (
-                traj_sample.ndim == 1
-            ):  # handles case where just a single trajectory sample was stored in dict
-                traj_sample = np.expand_dims(traj_sample, axis=0)
             if self.verbose >= 1:
                 print(
-                    f"Checking trajectory sample {sample_idx} for {dyst_name}, with shape {traj_sample.shape}"
+                    f"Checking {dyst_name} sample {sample_idx}, shape {traj_sample.shape}"
                 )
-
-            # Execute all callbacks
-            for callback in self.callbacks:
-                status = self._execute_callback(
-                    callback,
+            # Execute all tests
+            for test_fn in self.tests:
+                status, test_name = self._execute_test_fn(
+                    test_fn,
                     dyst_name,
                     traj_sample,
                     sample_idx=sample_idx,
                 )
-                # break upon first failure
                 if not status:
+                    # add to failed tests
+                    self.failed_checks[dyst_name].append((sample_idx, test_name))
+                    self.failed_samples[dyst_name].append(sample_idx)
+                    # break upon first failure
                     break
 
-            # if traj sample failed a check, move on to next trajectory sample for this dyst
+            # if traj sample failed a test, move on to next trajectory sample for this dyst
             if not status:
                 # add failed trajectory sample to failed attractor ensemble
                 failed_attractor_trajs.append(traj_sample)
                 continue
 
-            # if all checks pass, add to valid attractor ensemble
+            # if all tests pass, add to valid attractor ensemble
             valid_attractor_trajs.append(traj_sample)
             self.valid_dyst_counts[dyst_name] += 1
             self.valid_samples[dyst_name].append(sample_idx)
@@ -152,7 +143,7 @@ class EnsembleCallbackHandler:
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
-        Execute all callbacks for all trajectory samples in the ensemble, and split the ensemble into valid and failed ensembles.
+        Execute all tests for all trajectory samples in the ensemble, and split the ensemble into valid and failed ensembles.
         Args:
             ensemble: The trajectory ensemble to filter
             first_sample_idx: The index of the first sample for the generated trajectories of the ensemble
@@ -162,16 +153,12 @@ class EnsembleCallbackHandler:
             failed_attractor_ensemble: A new ensemble with only the failed trajectories
         """
         valid_attractor_ensemble = {}  # Dict[str, np.ndarray]
-        # keep track of the failure too, for debugging purposes
         failed_attractor_ensemble = {}  # Dict[str, np.ndarray]
-        # assert first_sample_idx >= 0, "First sample index must be a non-negative integer."
         for dyst_name, all_traj in ensemble.items():
             valid_attractor_trajs, failed_attractor_trajs = self._filter_dyst(
                 dyst_name, all_traj, first_sample_idx
             )
-
             if len(failed_attractor_trajs) > 0:
-                # Add the failed attractor trajectories for this dyst_name system to the failed ensemble
                 failed_attractor_ensemble[dyst_name] = failed_attractor_trajs
 
             # if no valid attractors found, skip this system
@@ -183,7 +170,6 @@ class EnsembleCallbackHandler:
                 print(
                     f"Found {len(valid_attractor_trajs)} valid attractor trajectories for {dyst_name}"
                 )
-            # Add the valid attractor trajectories for this dyst_name system to the valid ensemble
             valid_attractor_ensemble[dyst_name] = valid_attractor_trajs
 
         return valid_attractor_ensemble, failed_attractor_ensemble
@@ -193,10 +179,9 @@ class EnsembleCallbackHandler:
         dyst_name: str,
         all_traj: np.ndarray,
         first_sample_idx: int = 0,
-    ) -> Tuple[np.ndarray, np.ndarray, Tuple[int, str], List[int]]:
+    ) -> Tuple[np.ndarray, np.ndarray, List[Tuple[int, str]], List[int]]:
         """
         Multiprocessed version of self._filter_dyst without any verbose output
-        NOTE: dyst_name is not currently used but could be utilized for customized checks
         """
         # book keeping
         failed_checks_samples = []
@@ -206,24 +191,23 @@ class EnsembleCallbackHandler:
         failed_attractor_trajs = []
         for i, traj_sample in enumerate(all_traj):
             sample_idx = first_sample_idx + i
-            traj_sample = (
-                np.expand_dims(traj_sample, axis=0)
-                if traj_sample.ndim == 1
-                else traj_sample
-            )
-            # Execute all callbacks
-            for callback in self.callbacks:
-                status = callback(traj_sample)
+            # Execute all tests
+            for test_fn in self.tests:
+                status, test_name = self._execute_test_fn(
+                    test_fn,
+                    dyst_name,
+                    traj_sample,
+                    sample_idx=sample_idx,
+                )
                 if not status:
-                    callback_name = self._get_callback_name(callback)
-                    failed_check = (sample_idx, callback_name)
+                    failed_check = (sample_idx, test_name)
                     failed_checks_samples.append(failed_check)
                     break
-            # if traj sample failed a check, move on to next trajectory sample for this dyst
+            # if traj sample failed a test, move on to next trajectory sample for this dyst
             if not status:
                 failed_attractor_trajs.append(traj_sample)
                 continue
-            # if all checks pass, add to valid attractor ensemble
+            # if all tests pass, add to valid attractor ensemble
             valid_attractor_trajs.append(traj_sample)
             valid_samples.append(sample_idx)
         return (
@@ -249,11 +233,13 @@ class EnsembleCallbackHandler:
             )
         # unpack multiprocessed results
         valid_trajs, failed_trajs, failed_checks, valid_samples = zip(*results)
-        # book keeping for failed checks
+        # book keeping for failed tests
         for dyst_name, failed_check_lst in zip(list(ensemble.keys()), failed_checks):
             if len(failed_check_lst) > 0:
                 self.failed_checks[dyst_name].append(failed_check_lst)
-                self.failed_samples[dyst_name].extend([index for index, _ in failed_check_lst])
+                self.failed_samples[dyst_name].extend(
+                    [index for index, _ in failed_check_lst]
+                )
         # book keeping for valid samples
         for dyst_name, valid_samples_lst in zip(list(ensemble.keys()), valid_samples):
             if len(valid_samples_lst) > 0:
@@ -269,7 +255,7 @@ class EnsembleCallbackHandler:
         return valid_ensemble, failed_ensemble
 
 
-### Start of attractor checks (callbacks) ###
+### Start of attractor tests (tests) ###
 def check_no_nans(traj: np.ndarray, verbose: bool = False) -> bool:
     """
     Check if a multi-dimensional trajectory contains NaN values.
@@ -294,20 +280,16 @@ def check_boundedness(
 
     Args:
         traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
-        threshold: Maximum absolute value of the trajectory to consider as diverging. Scaled by norm of IC.
+        threshold: Maximum absolute value of the trajectory to consider as diverging.
         max_num_stds: Maximum number of standard deviations from the initial point to consider as diverging.
     Returns:
         bool: False if the system is bounded, True otherwise.
     """
-    # scale threshold by norm of IC
-    threshold = threshold * np.linalg.norm(traj[:, 0])
-    # NOTE: this should have already been caught by integration instability event
-    if np.any(np.abs(traj) > threshold): # TODO: scale by norm of IC?
+    if np.any(np.abs(traj) > threshold):
         if verbose:
             print("Trajectory appears to be diverging.")
         return False
 
-    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     # Initial point (reference point)
     initial_point = traj[:, 0, None]
 
@@ -328,7 +310,7 @@ def check_boundedness(
     return not is_diverging
 
 
-# Function to check if the system goes to a fixed point
+# Function to test if the system goes to a fixed point
 def check_not_fixed_point(
     traj: np.ndarray,
     tail_prop: float = 0.05,
@@ -337,7 +319,7 @@ def check_not_fixed_point(
 ) -> bool:
     """
     Check if the system trajectory converges to a fixed point.
-    Actually, this checks the variance decay in the trajectory to detect a fixed point.
+    Actually, this tests the variance decay in the trajectory to detect a fixed point.
 
     Args:
         variables (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
@@ -368,7 +350,7 @@ def check_not_variance_decay(
 ) -> bool:
     """
     Check if a multi-dimensional trajectory is approaching a fixed point.
-    Actually, this checks the variance decay in the trajectory to detect a fixed point.
+    Actually, this tests the variance decay in the trajectory to detect a fixed point.
 
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
@@ -379,7 +361,6 @@ def check_not_variance_decay(
     """
     if tail_prop < 0 or tail_prop > 1:
         raise ValueError("tail_prop must be between 0 and 1.")
-    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     n = traj.shape[1]
     last_n = int(tail_prop * n)
 
@@ -403,13 +384,12 @@ def check_not_spiral_decay(
 ) -> bool:
     """
     Check if a multi-dimensional trajectory is spiraling towards a fixed point.
-    Actually, this may also check the variance decay in the trajectory to detect a fixed point.
+    Actually, this may also test the variance decay in the trajectory to detect a fixed point.
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
     Returns:
         bool: True if the trajectory does not spiral towards a fixed point, False otherwise.
     """
-    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     n = traj.shape[1]
     # find peaks for each coordinate in the trajectory
     max_peak_indices = [
@@ -451,14 +431,14 @@ def check_not_spiral_decay(
         line_params[0][:, np.newaxis] * np.arange(n) + line_params[1][:, np.newaxis]
     )
 
-    # check if the fitted lines are within the envelope
+    # test if the fitted lines are within the envelope
     within_envelope = (line_fit < upper_envelope) & (line_fit > lower_envelope)
     all_within_envelope = np.all(within_envelope)
 
     if not all_within_envelope:
         return True
 
-    # check monotonicity of the fitted lines
+    # test monotonicity of the fitted lines
     diffs = np.diff(line_fit, axis=1)  # D x (n-1)
     monotonic_decrease = np.all(diffs <= 0)
 
@@ -468,8 +448,10 @@ def check_not_spiral_decay(
 def check_not_limit_cycle(
     traj: np.ndarray,
     tolerance: float = 1e-3,
-    min_recurrence_ratio: float = 0.2,
+    min_num_recurrences: int = 100,
     verbose: bool = False,
+    plot_save_dir: Optional[str] = None,
+    plot_name: Optional[str] = None,
 ) -> bool:
     """
     Checks if a multidimensional trajectory is collapsing to a limit cycle.
@@ -477,11 +459,10 @@ def check_not_limit_cycle(
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
         tolerance (float): Tolerance for detecting revisits to the same region in phase space.
-        min_recurrence_ratio (float): Minimum proportion of the timepoints found to be near-recurrences to consider a limit cycle.
+        min_num_recurrences (int): Minimum number of recurrences to consider a recurrence time
     Returns:
         bool: True if the trajectory is not collapsing to a limit cycle, False otherwise.
     """
-    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     num_dims, n = traj.shape
 
     # Step 1: Dimensionality Reduction using PCA (if more than 3 dimensions)
@@ -504,29 +485,44 @@ def check_not_limit_cycle(
     n_recurrences = len(recurrence_indices[0])
     if n_recurrences == 0:
         if verbose:
-            print("No recurrences found. Passing limit cycle check.")
+            print("No recurrences found. Passing limit cycle test.")
         return True
 
     # get recurrence times
     recurrence_times = np.abs(recurrence_indices[0] - recurrence_indices[1])
-    if verbose:
-        print("Number of recurrences: ", n_recurrences)
-        print("Recurrence times: ", recurrence_times)
+    rtimes_counts = Counter(recurrence_times)
+    n_repeated_rtimes = sum(
+        1 for count in rtimes_counts.values() if count >= min_num_recurrences
+    )
+    if n_repeated_rtimes >= 1:
+        # Plot the recurrence times as histogram and 3D trajectory
+        if plot_save_dir is not None and plot_name is not None:
+            dyst_name = plot_name.split("_")[0]
+            plot_name = f"{plot_name}_recurrence_times_FAILED"
 
-        mean_recurrence_time = np.mean(recurrence_times)
-        std_recurrence_time = np.std(recurrence_times)
-        median_recurrence_time = np.median(recurrence_times)
-        if verbose:
-            print("Mean recurrence time: ", mean_recurrence_time)
-            print("Std recurrence time: ", std_recurrence_time)
-            print("Median recurrence time: ", median_recurrence_time)
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
+            ax1.hist(recurrence_times, bins=100, edgecolor="black")
+            ax1.set_xlabel("Recurrence Time")
+            ax1.set_ylabel("Frequency")
+            ax1.set_title("Recurrence Times")
+            ax1.grid(True)
 
-    min_recurrences = int(n * min_recurrence_ratio)
-    if n_recurrences >= min_recurrences:
-        if verbose:
-            print(
-                f"Found {n_recurrences} recurrences, meeting minimum of {min_recurrences}. Limit cycle found"
-            )
+            xyz = traj[:3, :]
+            ic_point = traj[:3, 0]
+            final_point = traj[:3, -1]
+            ax2 = fig.add_subplot(122, projection="3d")
+            ax2.plot(*xyz, alpha=0.5, linewidth=1, color="tab:blue")
+            ax2.scatter(*ic_point, marker="*", s=100, alpha=0.5, color="tab:blue")
+            ax2.scatter(*final_point, marker="x", s=100, alpha=0.5, color="tab:blue")
+            ax2.set_xlabel("X")
+            ax2.set_ylabel("Y")
+            ax2.set_zlabel("Z")  # type: ignore
+            ax2.set_title(dyst_name)
+
+            plot_save_path = os.path.join(plot_save_dir, f"{plot_name}.png")
+            plt.savefig(plot_save_path, dpi=300)
+            plt.close()
+
         return False
 
     # Step 4: Identify if recurrences are periodic by looking at concentration
@@ -570,7 +566,6 @@ def check_power_spectrum_1d(
         prominence_threshold (float): Minimum prominence of a peak to be considered significant.
         plot_save_dir (str): Directory to save the plot.
         plot_name (str): Name of the plot.
-        verbose (bool): Whether to print verbose output.
     """
     if signal.ndim != 1:
         raise ValueError("signal must be a 1D array")
@@ -612,27 +607,35 @@ def check_power_spectrum_1d(
         print(f"Significant Peaks Frequencies: {peak_frequencies}")
         print(f"Significant Peaks Powers: {peak_powers}")
 
+    status = True
     # Heuristic Interpretation of the Power Spectrum
     if n_significant_peaks < 3:
         if verbose:
             print(
                 "The power spectrum suggests a fixed point or a simple periodic attractor (few peaks)."
             )
-        return False
+        status = False
     elif n_significant_peaks > 10:
         if verbose:
             print(
                 "The power spectrum suggests a chaotic attractor (many peaks with broad distribution)."
             )
-        # return True
+        status = True
     else:
         if verbose:
             print(
                 "The system appears to have a quasi-periodic or more complex attractor (intermediate peaks)."
             )
+        status = True  # this test is intentionally loose
 
-    if plot_save_dir is not None:
-        plot_name = plot_name or "power_spectrum"
+    if status:
+        return True
+
+    # Only plot if the test failed
+    if plot_save_dir is not None and plot_name is not None:
+        plot_name = f"{plot_name}_power_spectrum"
+        if not status:
+            plot_name = f"{plot_name}_FAILED"
         # Plot the power spectrum on a logarithmic scale
         plt.figure(figsize=(10, 6))
         plt.plot(pos_freqs, pos_power, label="Power Spectrum")
@@ -650,8 +653,10 @@ def check_power_spectrum_1d(
         plt.grid(True, which="both", ls="--", lw=0.5)
         plt.legend()
         plt.savefig(os.path.join(plot_save_dir, f"{plot_name}.png"), dpi=300)
+        plt.close()
+        print(f"Saved plot to {os.path.join(plot_save_dir, f'{plot_name}.png')}")
 
-    return True  # make this check loose
+    return status
 
 
 def check_power_spectrum(
@@ -659,6 +664,7 @@ def check_power_spectrum(
     rel_peak_height_threshold: float = 1e-5,
     rel_prominence_threshold: Optional[float] = None,
     plot_save_dir: Optional[str] = None,
+    plot_name: Optional[str] = None,
     verbose: bool = False,
 ) -> bool:
     """
@@ -670,7 +676,6 @@ def check_power_spectrum(
     Returns:
         bool: True if the power spectrum is significant, False otherwise.
     """
-    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     num_dims = traj.shape[0]
     for d in range(num_dims):
         x = traj[d, :]
@@ -678,102 +683,48 @@ def check_power_spectrum(
             x,
             rel_peak_height_threshold=rel_peak_height_threshold,
             rel_prominence_threshold=rel_prominence_threshold,
-            plot_name=f"power_spectrum_dim{d}",
             plot_save_dir=plot_save_dir,
+            plot_name=plot_name,
             verbose=verbose,
         )
+        # NOTE: some systems have a periodic driver in the last dimension, which will make this test fail
+        # in that case, we can use the Lyapunov exponent test to check for chaos
         if not status:
             if verbose:
-                print(f"Power spectrum check failed for dimension {d}")
+                print(f"Power spectrum test failed for dimension {d}")
             return check_lyapunov_exponent(traj, verbose=verbose)
-    return True
-
-
-def check_near_recurrences_backup(
-    signal: np.ndarray,
-    rel_revisit_threshold: float = 0.1,
-    revisit_count: int = 3,
-    window_prop: float = 0.5,
-    verbose: bool = False,
-) -> bool:
-    """
-    Check if a 1D signal revisits near the starting point multiple times.
-    Set a revisit threshold as a multiple (rel_revisit_threshold) of the standard deviation of the signal.
-    Look at an intermediate window of the signal[int(window_prop * length(signal)):] to check for revisits.
-    Set a target value as the mean of the signal.
-    If values in the intermediate window are within the revisit threshold of the target value, count them as revisits.
-    If the number of revisits is less than revisit_count, the check fails (not enough revisits)
-
-    Parameters:
-    - signal (array-like): The input 1D signal.
-    - rel_revisit_threshold (float): Threshold relative distance to consider as revisiting near the starting point.
-    - revisit_count (int): Minimum number of times the signal should revisit near the starting point.
-    - window_prop (float): Proportion of the signal to consider for revisits.
-    """
-    signal = np.asarray(signal[BURN_TIME:])  # Exclude the burn-in period
-    n = len(signal)
-
-    # target = signal[BURN_TIME:] # starting point after burn time
-    target = np.mean(signal)  # mean of signal
-    revisit_threshold = rel_revisit_threshold * np.std(signal)
-    cutoff = int(window_prop * n)
-    intermediate_window = signal[cutoff:]
-    revisit_indices = np.where(
-        np.abs(intermediate_window - target) < revisit_threshold
-    )[0]
-    if verbose:
-        print("Number of revisits: ", len(revisit_indices))
-    if len(revisit_indices) < revisit_count:
-        return False
-
     return True
 
 
 def check_stationarity(
     traj: np.ndarray,
     verbose: bool = False,
-    method: str = "statsmodels",
 ) -> bool:
     """
-    ADF checks for presence of a unit root, with null hypothesis that time_series is non-stationary.
-    KPSS checks for stationarity around a constant (or deterministic trend), with null hypothesis that time_series is stationary.
+    ADF tests for presence of a unit root, with null hypothesis that time_series is non-stationary.
+    KPSS tests for stationarity around a constant (or deterministic trend), with null hypothesis that time_series is stationary.
     NOTE: may only be sensible for long enough time horizon.
 
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
-        method (str): 'statsmodels' to use statsmodels ADF and KPSS tests,
-                    'custom' to use custom tests.
-                    None to use custom check
     Returns:
         bool: True if the trajectory is stationary, False otherwise.
     """
-    traj = traj[:, BURN_TIME:]  # Exclude the burn-in period
     # assuming first dimension is the state dimension, shape is (dim, T)
     num_dims = traj.shape[0]
 
-    # If not using recurrence test, check for stationarity using stationarity tests
+    # If not using recurrence test, test for stationarity using stationarity tests
     for d in range(num_dims):
         if verbose:
             print(f"Checking stationarity for dimension {d}")
         coord = traj[d, :]
 
-        if method == "custom":
-            # Use custom ADF and KPSS tests
-            status_adf = adf_test(coord)
-            status_kpss = kpss_test(coord, regression="c")
-
-        elif method == "statsmodels":
-            # Use statsmodels ADF and KPSS tests
-            result_adf = adfuller(coord, autolag="AIC")
-            result_kpss = kpss(coord, regression="c")
-            # Interpret p-values for ADF
-            status_adf = 1 if result_adf[1] < 0.05 else 0
-            status_kpss = 0 if result_kpss[1] < 0.05 else 1
-
-        else:
-            raise ValueError(
-                "Invalid method. Choose from 'statsmodels' or 'custom' or 'recurrence'."
-            )
+        # Use statsmodels ADF and KPSS tests
+        result_adf = adfuller(coord, autolag="AIC")
+        result_kpss = kpss(coord, regression="c")
+        # Interpret p-values for ADF
+        status_adf = 1 if result_adf[1] < 0.05 else 0
+        status_kpss = 0 if result_kpss[1] < 0.05 else 1
 
         # Aggregate conclusion
         if status_adf and status_kpss:
@@ -789,130 +740,3 @@ def check_stationarity(
                 print("ADF: ", status_adf)
                 print("KPSS: ", status_kpss)
     return True
-
-
-## Stationarity Checks (TODO: need to fix, does not behave as expected)
-def kpss_test(timeseries, regression="c", lags=None):
-    """
-    TODO: need to fix, does not behave as expected
-    Perform KPSS test for stationarity.
-
-    Parameters:
-    - timeseries: Array-like, the time series data to test.
-    - regression: 'c' for constant (level stationarity) or 'ct' for constant and trend (trend stationarity).
-    - lags: Number of lags to include in the test (optional). If None, it defaults to int(12*(n/100)**(1/4)).
-
-    Returns:
-    - Test statistic, p-value approximation (not calculated), number of lags, and critical values.
-    """
-
-    # Remove the trend (mean or linear trend based on regression parameter)
-    n = len(timeseries)
-
-    if regression == "c":
-        # Center the series by removing the mean
-        detrended = timeseries - np.mean(timeseries)
-        critical_values = [0.347, 0.463, 0.574, 0.739]
-    elif regression == "ct":
-        # Remove a linear trend
-        x = np.arange(1, n + 1)
-        coef = np.polyfit(x, timeseries, 1)
-        trend = coef[0] * x + coef[1]
-        detrended = timeseries - trend
-        critical_values = [0.119, 0.146, 0.176, 0.216]
-    else:
-        raise ValueError("regression must be 'c' or 'ct'")
-
-    # Calculate the cumulative sum of residuals
-    s = np.cumsum(detrended)
-
-    # Calculate the KPSS test statistic
-    eta = np.sum(s**2) / (n**2)
-
-    # Calculate the variance of the residuals
-    if lags is None:
-        lags = int(12 * (n / 100) ** (1 / 4))  # Default lag selection
-    s0 = np.var(detrended, ddof=1)
-
-    # Calculate long-run variance using the Bartlett window
-    s_hat = s0
-    for i in range(1, lags + 1):
-        weight = 1 - i / (lags + 1)
-        gamma_i = np.sum(detrended[i:] * detrended[:-i]) / n
-        s_hat += 2 * weight * gamma_i
-
-    kpss_statistic = eta / s_hat
-    pvals = [0.10, 0.05, 0.025, 0.01]
-
-    p_value = np.interp(kpss_statistic, critical_values, pvals)
-
-    warn_msg = """\
-    The test statistic is outside of the range of p-values available in the
-    look-up table. The actual p-value is {direction} than the p-value returned.
-    """
-    if p_value == pvals[-1]:
-        warnings.warn(
-            warn_msg.format(direction="smaller"),
-            Warning,
-            stacklevel=2,
-        )
-    elif p_value == pvals[0]:
-        warnings.warn(
-            warn_msg.format(direction="greater"),
-            Warning,
-            stacklevel=2,
-        )
-
-    is_stationary = p_value >= 0.05
-    return is_stationary
-
-
-def adf_test(y, max_lag=None):
-    """
-    TODO: need to fix, does not behave as expected
-    Perform Augmented Dickey-Fuller test from scratch.
-
-    Parameters:
-    - y: The time series data as a 1D numpy array.
-    - max_lag: The maximum number of lags to include in the regression.
-
-    Returns:
-    - t_stat: The test statistic value.
-    - critical_values: Critical values at 1%, 5%, and 10% significance levels.
-    - p_value: The p-value of the test statistic.
-    """
-
-    # Step 1: Compute the differences and lagged values
-    y_diff = np.diff(y)
-    y_lag = y[:-1]
-
-    if max_lag is None:
-        max_lag = int(12 * (len(y_diff) / 100) ** (1 / 4))
-
-    # Step 2: Create lagged difference matrix for lagged terms
-    X = np.column_stack([y_lag[max_lag - i : -i] for i in range(1, max_lag + 1)])
-
-    # Prepare the regression matrix with a constant term
-    X = np.column_stack([np.ones(len(X)), y_lag[max_lag:], X])
-    y_diff = y_diff[max_lag:]
-
-    # Step 3: Estimate coefficients using Ordinary Least Squares (OLS)
-    beta = np.linalg.inv(X.T @ X) @ X.T @ y_diff
-    residuals = y_diff - X @ beta
-
-    # Step 4: Compute the test statistic (t-statistic)
-    gamma = beta[1]  # Coefficient for y_{t-1}
-    se_gamma = np.sqrt(
-        np.sum(residuals**2) / (len(y_diff) - X.shape[1]) / np.sum(X[:, 1] ** 2)
-    )
-    t_stat = gamma / se_gamma
-
-    # Step 5: Critical values and p-value
-    p_value = 2 * (1 - student_t.cdf(abs(t_stat), df=len(y_diff) - X.shape[1]))
-    # critical_values = {'1%': -3.43, '5%': -2.86, '10%': -2.57}
-
-    # Determine if the series is stationary based on the 5% significance level
-    # is_stationary = t_stat < critical_values['5%']
-    is_stationary = p_value < 0.05
-
-    return is_stationary  # strong evidence for stationarity
