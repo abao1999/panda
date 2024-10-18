@@ -34,8 +34,13 @@ def left_pad_and_stack_multivariate(tensors: List[torch.Tensor]) -> torch.Tensor
     return torch.stack(padded)
 
 
-class PatchTSTModel(nn.Module):
-    def __init__(self, config: dict, mode: str = "predict"):
+class PatchTST(nn.Module):
+    def __init__(
+        self,
+        config: dict,
+        mode: str = "predict",
+        pretrained_path: Optional[str] = None,
+    ):
         super().__init__()
 
         self.mode = mode
@@ -52,12 +57,33 @@ class PatchTSTModel(nn.Module):
         elif mode == "predict":
             self.model = PatchTSTForPrediction(self.config)
 
+        if pretrained_path is not None:
+            self.load_pretrained_encoder(pretrained_path)
+
     @property
     def device(self):
         return self.model.device
 
     def save_pretrained(self, save_path: str):
         self.model.save_pretrained(save_path)
+
+    def load_pretrained_encoder(self, pretrain_path: str):
+        """
+        Load a pretrained encoder from a PatchTSTForPretraining model and replace the current encoder.
+
+        Parameters:
+            pretrain_path (str): Path to the directory containing the pretrained PatchTSTForPretraining model.
+        """
+        # Ensure the method is only called in "predict" mode
+        if self.mode != "predict":
+            raise RuntimeError(
+                "load_pretrained_encoder can only be called in 'predict' mode."
+            )
+
+        pretrained_model = PatchTSTForPretraining.from_pretrained(pretrain_path)
+
+        # Replace the current encoder with the pretrained encoder
+        self.model.model.encoder = pretrained_model.model.encoder
 
     @classmethod
     def from_pretrained(cls, pretrain_path: str, **kwargs):

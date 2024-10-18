@@ -212,7 +212,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         self.gradient_checkpointing = False
 
         # Input embedding: projection of feature vectors onto a d-dim vector space
-        self.embedder = PatchTSTMixtureEmbedding(config)
+        self.embedder = PatchTSTEmbedding(config)
         # Positional encoding
         self.positional_encoder = PatchTSTPositionalEncoding(config, num_patches)
         # Encoder
@@ -587,6 +587,7 @@ class PatchTSTPredictionHead(nn.Module):
         # pooled_embedding: [bs x num_channels x (d_model * num_patches)] or [bs x num_channels x d_model)]
         pooled_embedding = self.flatten(pooled_embedding)
         pooled_embedding = self.dropout(pooled_embedding)
+
         # output: [bs x num_channels x forecast_len] or
         # tuple ([bs x num_channels x forecast_len], [bs x num_channels x forecast_len]) if using distribution head
         output = self.projection(pooled_embedding)

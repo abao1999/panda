@@ -26,7 +26,7 @@ from dystformer.utils import log_on_main
 logger = logging.getLogger(__name__)
 
 
-def evaluate_model(
+def evaluate_forecasting_model(
     model: PatchTSTModel,
     dataset: PatchTSTDataset,
     metrics: Dict[str, Callable],
@@ -156,7 +156,9 @@ def main(cfg):
         "mape": mape,
         "abs_error": abs_error,
     }
-    metrics_dict = evaluate_model(model, test_dataset, metrics, batch_interval=128)
+    metrics_dict = evaluate_forecasting_model(
+        model, test_dataset, metrics, batch_interval=128
+    )
 
 
 if __name__ == "__main__":

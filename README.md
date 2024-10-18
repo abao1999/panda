@@ -80,8 +80,6 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
-+ [HIGH | EASY] wait...is forecast pretraining using causal masking??
-+ [HIGH | HARD] get forecast pretraining working
 + [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
 + [HIGH | HARD] limit cycle test for generating data
 + [HIGH | EASY] [QUESTION] are random or regular predictions windows better?

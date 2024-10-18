@@ -73,7 +73,7 @@ class PatchTSTDataset(IterableDataset):
             sampled_dims = np.random.choice(
                 total_dims, size=self.fixed_dim, replace=False
             )
-            entry["target"] = entry["target"][sampled_dims]
+            entry["target"] = entry["target"][sampled_dims, :]
 
         if (
             mode == "train"
