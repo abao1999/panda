@@ -20,14 +20,14 @@ from gluonts.evaluation.metrics import (
 from tqdm.auto import tqdm
 
 from dystformer.patchtst.dataset import PatchTSTDataset
-from dystformer.patchtst.model import PatchTSTModel
+from dystformer.patchtst.model import PatchTST
 from dystformer.utils import log_on_main
 
 logger = logging.getLogger(__name__)
 
 
 def evaluate_forecasting_model(
-    model: PatchTSTModel,
+    model: PatchTST,
     dataset: PatchTSTDataset,
     metrics: Dict[str, Callable],
     batch_interval: int = 64,
@@ -141,11 +141,10 @@ def main(cfg):
         mode="test",
     )
 
-    # model = PatchTSTModel.from_pretrained(
-    #     pretrain_path=cfg.eval.checkpoint_path,
-    #     mode="predict",
-    # )
-    model = PatchTSTModel(cfg.patchtst)
+    model = PatchTST.from_pretrained(
+        pretrain_path=cfg.eval.checkpoint_path,
+        mode="predict",
+    )
     model.eval()
 
     metrics = {

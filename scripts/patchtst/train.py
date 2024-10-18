@@ -19,7 +19,7 @@ from transformers import (
 
 import wandb
 from dystformer.patchtst.dataset import PatchTSTDataset
-from dystformer.patchtst.model import PatchTSTModel
+from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
     ensure_contiguous,
     get_next_path,
@@ -278,7 +278,7 @@ def main(cfg):
         fixed_dim=cfg.fixed_dim,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    model = PatchTSTModel(dict(cfg.patchtst), mode=cfg.patchtst.mode)
+    model = PatchTST(dict(cfg.patchtst), mode=cfg.patchtst.mode)
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_on_main(f"Total trainable parameters: {trainable_params:,}", logger)

@@ -39,7 +39,7 @@ class PatchTST(nn.Module):
         self,
         config: dict,
         mode: str = "predict",
-        pretrained_path: Optional[str] = None,
+        pretrained_encoder_path: Optional[str] = None,
     ):
         super().__init__()
 
@@ -57,8 +57,8 @@ class PatchTST(nn.Module):
         elif mode == "predict":
             self.model = PatchTSTForPrediction(self.config)
 
-        if pretrained_path is not None:
-            self.load_pretrained_encoder(pretrained_path)
+        if pretrained_encoder_path is not None:
+            self.load_pretrained_encoder(pretrained_encoder_path)
 
     @property
     def device(self):
