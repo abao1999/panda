@@ -4,33 +4,27 @@ Search for valid skew-product dynamical sytems and generate trajectory datasets
 
 from collections import defaultdict
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import dysts.flows as dfl
 import numpy as np
 from dysts.base import BaseDyn
-from gluonts.dataset.common import FileDataset
 from scipy.integrate import solve_ivp
 
 from dystformer.utils import (
-    get_system_filepaths,
     sample_index_pairs,
-    stack_and_extract_metadata,
 )
 
 
 @dataclass
 class SkewEnsemble:
     """
-    A collection of skew-product dynamical systems, which are pairs of dynamical systems coupled together.
+    Generate an ensemble of skew-product dynamical systems, which are pairs of dynamical systems coupled together.
     """
 
     system_names: List[str]
     n_combos: int = 1000
     compute_coupling_strength: bool = False
-    source_data_dir: Optional[str] = None  # directory to source data for skew pairs
-    source_split: str = "train"  # split of data to use for source data
 
     def __post_init__(self):
         # get unique system names
@@ -48,8 +42,6 @@ class SkewEnsemble:
                 driver=getattr(dfl, driver_name)(),
                 response=getattr(dfl, response_name)(),
                 compute_coupling_strength=self.compute_coupling_strength,
-                source_data_dir=self.source_data_dir,
-                source_split=self.source_split,
             )
             for driver_name, response_name in self.skew_pairs
         ]
@@ -81,9 +73,6 @@ class SkewSystem:
     The driver and response are coupled together by a custom user-defined map.
 
     The class takes in two BaseDyn objects, which are dynamical systems.
-    It optionally takes in a source data directory to load trajectory data from,
-    otherwise it will generate trajectories on the fly to compute the coupling strength.
-
     If no coupling map is provided, a basic affine map is constructed by default.
     """
 
@@ -91,8 +80,6 @@ class SkewSystem:
     response: BaseDyn
     coupling_map: Optional[np.ndarray] = None
     compute_coupling_strength: bool = False
-    source_data_dir: Optional[str] = None  # directory to source data for skew pairs
-    source_split: str = "train"  # split of data to use for source data
 
     def __post_init__(self):
         self.n_driver, self.n_response = len(self.driver.ic), len(self.response.ic)
@@ -114,58 +101,15 @@ class SkewSystem:
             )
         print("Coupling map: ", self.coupling_map)
 
-    def _load_dyst_traj(
-        self,
-        dyst_name: str,
-        sample_idx: Optional[int] = None,
-        one_dim_target: bool = False,
-    ) -> Optional[np.ndarray]:
-        """
-        Try to load dyst trajectory from self.source_data_dir. If that fails, return None.
-        """
-        if self.source_data_dir is None:
-            return None
-
-        filepaths = []
-        try:
-            filepaths = get_system_filepaths(
-                dyst_name, self.source_data_dir, self.source_split
-            )
-        except Exception as e:
-            print(f"Failed to load {dyst_name} from {self.source_data_dir}: {e}")
-            return None
-
-        if len(filepaths) == 0:
-            return None
-
-        sample_idx = sample_idx or np.random.randint(len(filepaths))
-        filepath = filepaths[sample_idx]
-        gts_dataset = FileDataset(
-            path=Path(filepath),
-            freq="h",
-            one_dim_target=one_dim_target,  # False for PatchTST
-        )
-        # extract the coordinates
-        dyst_coords, _ = stack_and_extract_metadata(gts_dataset)
-
-        return dyst_coords
-
     def _compute_coupling(self, ref_traj_len: int = 1000) -> np.ndarray:
         """
         Compute the coupling constants per dimension between the driver and response systems
-        TODO: after making dyst_data, we have a folder of trajectories, we can use this to compute coupling strength by reading from arrow file instead of generating trajectories
         """
         print(
             f"Computing coupling strength between {self.driver.name} and {self.response.name}"
         )
-        sol_driver = self._load_dyst_traj(self.driver.name)
-        sol_response = self._load_dyst_traj(self.response.name)
-
-        # if we can't load the data, generate it
-        if sol_driver is None:
-            sol_driver = self.driver.make_trajectory(ref_traj_len)
-        if sol_response is None:
-            sol_response = self.response.make_trajectory(ref_traj_len)
+        sol_driver = self.driver.make_trajectory(ref_traj_len)
+        sol_response = self.response.make_trajectory(ref_traj_len)
 
         amp_driver = np.mean(np.abs(sol_driver), axis=0)
         amp_response = np.mean(np.abs(sol_response), axis=0)
