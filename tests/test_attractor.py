@@ -45,6 +45,7 @@ if __name__ == "__main__":
         reference_traj_length=1024 * 2,
         reference_traj_transient=0.2,
         events=events,
+        recompute_standardization=True,  # Important!
         verbose=False,
     )
 
@@ -61,7 +62,7 @@ if __name__ == "__main__":
         split_coords=False,  # false for patchtst
         apply_attractor_tests=True,
         attractor_validator_kwargs={
-            "verbose": 1,
+            "verbose": 0,
             "transient_time_frac": 0.05,  # don't need long transient time because ic should be on attractor
             "plot_save_dir": "tests/plots",
         },

@@ -102,14 +102,15 @@ class DystData:
         validator = AttractorValidator(**self.attractor_validator_kwargs)
         validator.add_test_fn(check_no_nans)
         validator.add_test_fn(
-            partial(check_boundedness, threshold=1e3, max_num_stds=12)
+            partial(check_boundedness, threshold=1e3, max_num_stds=10)
         )
         validator.add_test_fn(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
         validator.add_test_fn(
             partial(
                 check_not_limit_cycle,
-                min_num_recurrences=100,
                 tolerance=1e-3,
+                min_counts_per_rtime=100,
+                min_block_length=20,
             )
         )
         validator.add_test_fn(

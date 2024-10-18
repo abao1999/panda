@@ -2,21 +2,84 @@
 Search for valid skew-product dynamical sytems and generate trajectory datasets
 """
 
-import time
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import dysts.flows as dfl
 import numpy as np
 from dysts.base import BaseDyn
 from scipy.integrate import solve_ivp
 
+from dystformer.utils import (
+    sample_index_pairs,
+)
+
+
+@dataclass
+class SkewEnsemble:
+    """
+    Generate an ensemble of skew-product dynamical systems, which are pairs of dynamical systems coupled together.
+    """
+
+    system_names: List[str]
+    n_combos: int = 1000
+    compute_coupling_strength: bool = False
+
+    def __post_init__(self):
+        # get unique system names
+        self.system_names = list(set(self.system_names))
+        self.n_systems = len(self.system_names)
+
+        random_pairs = sample_index_pairs(self.n_systems, self.n_combos)
+        self.skew_pairs = [
+            (self.system_names[i], self.system_names[j]) for i, j in random_pairs
+        ]
+
+        # NOTE: coupling map matrix is recomputed for each skew system
+        self.skew_systems = [
+            SkewSystem(
+                driver=getattr(dfl, driver_name)(),
+                response=getattr(dfl, response_name)(),
+                compute_coupling_strength=self.compute_coupling_strength,
+            )
+            for driver_name, response_name in self.skew_pairs
+        ]
+        # TODO: incorporate parameter and IC samplers
+        # TODO: maintain a cache of computed amplitudes from trajectory data,
+        # so we don't recompute them every time we make a new skew system
+
+    def generate_ensemble(
+        self, couple_phase_space: bool = True, couple_flows: bool = False
+    ) -> Dict[Tuple[str, str], List[np.ndarray]]:
+        ensemble = defaultdict(list)
+        for skew_sys in self.skew_systems:
+            _, sol_response = skew_sys.run(
+                couple_phase_space=couple_phase_space, couple_flows=couple_flows
+            )
+            skew_pair = (skew_sys.driver.name, skew_sys.response.name)
+            ensemble[skew_pair].append(sol_response)
+
+        return ensemble
+
+    def save_ensemble(self, save_dir: str):
+        pass
+
 
 @dataclass
 class SkewSystem:
+    """
+    A skew-product dynamical system, which is a pair of dynamical systems: a driver and a response.
+    The driver and response are coupled together by a custom user-defined map.
+
+    The class takes in two BaseDyn objects, which are dynamical systems.
+    If no coupling map is provided, a basic affine map is constructed by default.
+    """
+
     driver: BaseDyn
     response: BaseDyn
     coupling_map: Optional[np.ndarray] = None
-    adapt_coupling_strength: bool = False
+    compute_coupling_strength: bool = False
 
     def __post_init__(self):
         self.n_driver, self.n_response = len(self.driver.ic), len(self.response.ic)
@@ -28,7 +91,7 @@ class SkewSystem:
 
         # set coupling strength kappa
         self.kappa = np.ones(self.n_response)  # dummy
-        if self.adapt_coupling_strength:
+        if self.compute_coupling_strength:
             self.kappa = self._compute_coupling()
 
         # set coupling map (default to basic affine map)
@@ -38,40 +101,29 @@ class SkewSystem:
             )
         print("Coupling map: ", self.coupling_map)
 
-    def _compute_coupling(self) -> np.ndarray:
+    def _compute_coupling(self, ref_traj_len: int = 1000) -> np.ndarray:
         """
         Compute the coupling constants per dimension between the driver and response systems
-        TODO: after making dyst_data, we have a folder of trajectories, we can use this to compute coupling strength by reading from arrow file instead of generating trajectories
         """
         print(
             f"Computing coupling strength between {self.driver.name} and {self.response.name}"
         )
-        k = min(self.n_driver, self.n_response)
-
-        start_time = time.time()
-        sol_driver = self.driver.make_trajectory(1000)
-        sol_response = self.response.make_trajectory(1000)
-        end_time = time.time()
-
-        print(f"Trajectory generation time: {end_time - start_time} seconds")
+        sol_driver = self.driver.make_trajectory(ref_traj_len)
+        sol_response = self.response.make_trajectory(ref_traj_len)
 
         amp_driver = np.mean(np.abs(sol_driver), axis=0)
         amp_response = np.mean(np.abs(sol_response), axis=0)
 
-        print("Amplitude of driver system: ", amp_driver)
-        print("Amplitude of response system: ", amp_response)
-
+        k = min(self.n_driver, self.n_response)
         kappa = amp_response[:k] / amp_driver[:k]
-
-        print("Coupling strength: ", kappa)
         return kappa
 
     def _apply_coupling_map(self, x: np.ndarray, y: np.ndarray) -> List[np.ndarray]:
         """
         Apply a coupling map (e.g. affine map) to an augmented stacked vector of (x, y, 1)
+            Case of basic affine map: (x, y, 1) -> (x, y, x + y)
         """
         n, m = len(x), len(y)
-        # case of basic affine map: (x, y, 1) -> (x, y, x + y)
         transformed_vector = self.coupling_map @ np.hstack([x, y, 1])
         x = transformed_vector[:n]
         y = transformed_vector[n : n + m]
@@ -81,7 +133,7 @@ class SkewSystem:
         self,
         couple_phase_space: bool = True,
         couple_flows: bool = False,
-    ):
+    ) -> Callable:
         """
         Wrapper for skew-product system rhs, taking in a pre-computed affine map
         """
@@ -96,7 +148,7 @@ class SkewSystem:
                 combined_ics[self.n_driver : self.n_driver + self.n_response],
             )
 
-            # Method 1
+            # Method 1: couple phase space
             if couple_phase_space:
                 _, _, x_response = self._apply_coupling_map(x_driver, x_response)
 
@@ -104,27 +156,20 @@ class SkewSystem:
             flow_driver = np.array(self.driver.rhs(x_driver, t))
             flow_response = np.array(self.response.rhs(x_response, t))
 
-            # Method 2 - this seems like a weird thing to do
+            # Method 2: couple flow vectors
             if couple_flows:
                 flow_driver, _, flow_response = self._apply_coupling_map(
                     flow_driver, flow_response
                 )
-
-            # # Method 3 - normalize flow rhs on the fly, both to unit norm
-            # # kappa = np.linalg.norm(flow_response) / np.linalg.norm(flow_driver)
-            # kappa_driver = 1 / np.linalg.norm(flow_driver)
-            # kappa_response = 1 / np.linalg.norm(flow_response)
-            # # affine_map = construct_basic_affine_map(n_driver, n_response, kappa)
-            # flow_response = (kappa_driver * flow_driver) + (
-            #     kappa_response * flow_response
-            # )
 
             skew_flow = np.concatenate([flow_driver, flow_response])
             return skew_flow
 
         return _skew_rhs
 
-    def run(self, couple_phase_space: bool = True, couple_flows: bool = False):
+    def run(
+        self, couple_phase_space: bool = True, couple_flows: bool = False
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Run the skew-product system and return the trajectory of the driver and response systems
         """
@@ -139,7 +184,6 @@ class SkewSystem:
             couple_flows=couple_flows,  # couple flow_driver, flow_response
         )
 
-        start_time = time.time()
         sol = solve_ivp(
             skew_rhs,
             [0, self.tlim],
@@ -150,34 +194,26 @@ class SkewSystem:
             rtol=1e-6,
             atol=1e-6,
         )
-        end_time = time.time()
-        print(f"Integration time: {end_time - start_time} seconds")
 
         sol_driver = sol.y[: self.n_driver]
         sol_response = sol.y[self.n_driver : self.n_driver + self.n_response]
-        return [sol_driver, sol_response]
+        return (sol_driver, sol_response)
 
 
 ### Functions to make basic affine maps ###
 def pad_array(arr: np.ndarray, n2: int, m2: int) -> np.ndarray:
     """
-    General util to pad a 2D array to a target shape that is bigger than original shape
+    Pad an array to a target shape that is bigger than original shape
     """
-    # Get the original shape (n1 x m1)
     n1, m1 = arr.shape
-    # Calculate the padding amounts
-    pad_rows = n2 - n1
-    pad_cols = m2 - m1
-    # Check if padding is needed
+    pad_rows, pad_cols = n2 - n1, m2 - m1
     if pad_rows < 0 or pad_cols < 0:
         raise ValueError(
             "Target dimensions must be greater than or equal to original dimensions."
         )
-    # Apply padding: ((before_rows, after_rows), (before_cols, after_cols))
-    padded_arr = np.pad(
+    return np.pad(
         arr, ((0, pad_rows), (0, pad_cols)), mode="constant", constant_values=0
     )
-    return padded_arr
 
 
 def construct_basic_affine_map(
@@ -188,18 +224,19 @@ def construct_basic_affine_map(
     """
     Construct an affine map that sends (x, y, 1) -> (x, y, x + y)
     where x and y have lengths n and m respectively, and n <= m
-
-    Parameters:
-    n: driver system dimension
-    m: response system dimension
-
+    Args:
+        n: driver system dimension
+        m: response system dimension
+        kappa: coupling strength, either a float or a list of floats
     Returns:
-    A: the affine map matrix (2D array), block matrix (n + 2m) x (n + m + 1)
+        A: the affine map matrix (2D array), block matrix (n + 2m) x (n + m + 1)
     """
     I_n = np.eye(n)  # n x n identity matrix
     I_m = np.eye(m)  # m x m identity matrix
 
-    assert type(kappa) in [float, np.ndarray], "coupling strength kappa must be a float or a list of floats"  # type: ignore
+    assert isinstance(
+        kappa, (float, np.ndarray)
+    ), "coupling strength kappa must be a float or a list of floats"
 
     if isinstance(kappa, float):
         bottom_block = np.hstack(
@@ -217,17 +254,3 @@ def construct_basic_affine_map(
 
     A = np.vstack([top_block, middle_block, bottom_block])
     return A
-
-
-# def test_map():
-#     """
-#     Simple test for affine map construction and application
-#     """
-#     x = np.array([1, 2, 3])
-#     y = np.array([4, 5, 6, 7])
-#     kappa = [1, 2, 3]
-#     A = construct_basic_affine_map(len(x), len(y), kappa=kappa)
-#     print(A)
-#     res = apply_affine_map(A, x, y)
-#     print(res)
-#     print(np.concatenate(res))

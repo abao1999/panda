@@ -150,18 +150,19 @@ class OnAttractorInitCondSampler(BaseSampler):
                 standardize=False,
             )
 
-            # renormalize with respect to reference trajectory
-            # this should work since system is passed by reference
-            if self.recompute_standardization:
-                system.mean = reference_traj.mean(axis=0)
-                system.std = reference_traj.std(axis=0)
-
             # if integrate fails, resulting in an incomplete trajectory
             if reference_traj is None:
                 warnings.warn(
                     f"Failed to integrate the system {system.name} with ic {system.ic} and params {system.params}"
                 )
                 return ic
+
+            # renormalize with respect to reference trajectory
+            # this should work since system is passed by reference
+            if self.recompute_standardization:
+                system.mean = reference_traj.mean(axis=0)
+                system.std = reference_traj.std(axis=0)
+
             reference_traj = reference_traj[self.transient :]
             self.trajectory_cache[system.name] = reference_traj
 
