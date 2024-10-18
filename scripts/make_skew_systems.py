@@ -20,8 +20,8 @@ if __name__ == "__main__":
         "dysts_names", help="Names of the dynamical systems", nargs="+", type=str
     )
     parser.add_argument(
-        "--adapt_coupling_strength",
-        help="Whether to adapt coupling strength",
+        "--compute_coupling_strength",
+        help="Whether to compute coupling strength",
         type=bool,
         default=True,
     )
@@ -49,7 +49,9 @@ if __name__ == "__main__":
     response_sys = getattr(dfl, response_name)()
 
     skew_system = SkewSystem(
-        driver_sys, response_sys, adapt_coupling_strength=args.adapt_coupling_strength
+        driver_sys,
+        response_sys,
+        compute_coupling_strength=args.compute_coupling_strength,
     )
     skew_sol = skew_system.run(
         couple_phase_space=args.couple_phase_space, couple_flows=args.couple_flows
