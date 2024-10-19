@@ -13,13 +13,13 @@ from gluonts.dataset.arrow import ArrowWriter
 
 
 def filter_dict(
-    dictionary: Dict[Any, np.ndarray],
+    dictionary: Dict[Any, Optional[np.ndarray]],
 ) -> Tuple[Dict[Any, np.ndarray], List[str]]:
     """
     Filter a dictionary by removing key-value pairs where the value is None.
 
     Args:
-        dictionary (Dict[Any, np.ndarray]): The input dictionary to filter.
+        dictionary (Dict[Any, Optional[np.ndarray]]): The input dictionary to filter.
 
     Returns:
         Tuple[Dict[Any, np.ndarray], List[Any]]: A tuple containing:

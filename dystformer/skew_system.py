@@ -36,6 +36,8 @@ class SkewSystem:
     response: BaseDyn
     coupling_map: Optional[np.ndarray] = None
     compute_coupling_strength: bool = False
+    couple_phase_space: bool = True
+    couple_flows: bool = False
     events: Optional[List] = None
 
     def __post_init__(self):
@@ -51,11 +53,10 @@ class SkewSystem:
             self.events = [time_limit_event, instability_event]
 
         self.n_driver, self.n_response = len(self.driver.ic), len(self.response.ic)
-        self.dt = min(self.driver.dt, self.response.dt)
 
         # set integration time
-        self.tlim = 20 * max(self.driver.period, self.response.period)
-        self.tpts = np.linspace(0, self.tlim, 10_000)
+        self.dt = min(self.driver.dt, self.response.dt)
+        self.period = max(self.driver.period, self.response.period)
 
         # set coupling strength kappa
         self.kappa = np.ones(self.n_response)  # dummy
@@ -99,8 +100,6 @@ class SkewSystem:
 
     def _get_skew_rhs(
         self,
-        couple_phase_space: bool = True,
-        couple_flows: bool = False,
     ) -> Callable:
         """
         Wrapper for skew-product system rhs, taking in a pre-computed affine map
@@ -117,7 +116,7 @@ class SkewSystem:
             )
 
             # Method 1: couple phase space
-            if couple_phase_space:
+            if self.couple_phase_space:
                 _, _, x_response = self._apply_coupling_map(x_driver, x_response)
 
             # Compute the flow of the driver and response systems
@@ -125,7 +124,7 @@ class SkewSystem:
             flow_response = np.array(self.response.rhs(x_response, t))
 
             # Method 2: couple flow vectors
-            if couple_flows:
+            if self.couple_flows:
                 flow_driver, _, flow_response = self._apply_coupling_map(
                     flow_driver, flow_response
                 )
@@ -136,10 +135,17 @@ class SkewSystem:
         return _skew_rhs
 
     def run(
-        self, couple_phase_space: bool = True, couple_flows: bool = False
+        self,
+        num_periods: int = 20,
+        num_points: int = 10_000,
+        method: str = "Radau",
+        rtol: float = 1e-6,
+        atol: float = 1e-6,
+        **kwargs,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Run the skew-product system and return the trajectory of the driver and response systems
+        TODO: resample, timescale, postprocess, make integration times user-defined
         """
         # combine initial conditions of driver and response system
         combined_ics = np.concatenate(
@@ -147,21 +153,25 @@ class SkewSystem:
         )
 
         # set up skew system rhs and solve
-        skew_rhs = self._get_skew_rhs(
-            couple_phase_space=couple_phase_space,  # couple x_driver, x_response
-            couple_flows=couple_flows,  # couple flow_driver, flow_response
-        )
+        skew_rhs = self._get_skew_rhs()
+
+        tlim = num_periods * self.period
+        tpts = np.linspace(0, tlim, num_points)
 
         sol = solve_ivp(
             skew_rhs,
-            [0, self.tlim],
+            [0, tlim],
             combined_ics,
-            t_eval=self.tpts,
+            t_eval=tpts,
             first_step=self.dt,
-            method="Radau",
-            rtol=1e-6,
-            atol=1e-6,
+            method=method,
+            rtol=rtol,
+            atol=atol,
+            events=self.events,
+            **kwargs,
         )
+
+        # TODO: standardize solution?
 
         sol_driver = sol.y[: self.n_driver]
         sol_response = sol.y[self.n_driver : self.n_driver + self.n_response]
@@ -172,49 +182,59 @@ class SkewSystem:
 class SkewEnsemble:
     """
     Generate an ensemble of skew-product dynamical systems, which are pairs of dynamical systems coupled together.
+    Args:
+        skew_pair_names: List of names of skew dynamical systems. The names are joined together by "_" to form the keys of the ensemble dictionary as strings.
+            e.g. ["Lorenz_Rossler", "Rossler_Lorenz"] means two skew systems: Lorenz driving Rossler and Rossler driven by Lorenz.
+        compute_coupling_strength: Whether to compute the coupling strength between the driver and response systems
+        events: List of events for numerical integration
     """
 
-    system_names: List[str]
-    n_combos: int = 10
+    skew_pair_names: List[str]
     compute_coupling_strength: bool = False
+    couple_phase_space: bool = True
+    couple_flows: bool = False
     events: Optional[List] = None
-
-    def __post_init__(self):
-        # get unique system names
-        self.system_names = list(set(self.system_names))
-        self.n_systems = len(self.system_names)
-
-        random_pairs = sample_index_pairs(self.n_systems, self.n_combos)
-        self.skew_pairs = [
-            (self.system_names[i], self.system_names[j]) for i, j in random_pairs
-        ]
 
     def _compute_skew_sol(
         self,
-        driver_name: str,
-        response_name: str,
-        couple_phase_space: bool = True,
-        couple_flows: bool = False,
-    ) -> np.ndarray:
+        skew_name: str,
+        num_periods: int = 20,
+        num_points: int = 10_000,
+        kwargs: Dict = {},
+    ) -> Optional[np.ndarray]:
         """
         Compute the solution of a skew-product dynamical system (response system)
+        Following the dysts make_trajectory convention, return None if the system cannot be made
+            i.e. if the driver or response system is not found, return None
         """
         # NOTE: coupling map matrix is recomputed for each skew system
-        skew_sys = SkewSystem(
-            driver=getattr(dfl, driver_name)(),
-            response=getattr(dfl, response_name)(),
-            compute_coupling_strength=self.compute_coupling_strength,
-            events=self.events,
-        )
+        driver_name, response_name = skew_name.split("_")
+        try:
+            skew_sys = SkewSystem(
+                driver=getattr(dfl, driver_name)(),
+                response=getattr(dfl, response_name)(),
+                compute_coupling_strength=self.compute_coupling_strength,
+                couple_phase_space=self.couple_phase_space,
+                couple_flows=self.couple_flows,
+                events=self.events,
+            )
+        except AttributeError as e:
+            print(f"System {skew_name} could not be made. {e} Skipping...")
+            return None
+
         _, sol_response = skew_sys.run(
-            couple_phase_space=couple_phase_space,
-            couple_flows=couple_flows,
+            num_periods=num_periods,
+            num_points=num_points,
+            **kwargs,
         )
         return sol_response
 
     def multiprocess_generate_ensemble(
-        self, couple_phase_space: bool = True, couple_flows: bool = False
-    ) -> Dict[Tuple[str, str], np.ndarray]:
+        self,
+        num_periods: int = 20,
+        num_points: int = 10_000,
+        **kwargs,
+    ) -> Dict[str, Optional[np.ndarray]]:
         """
         Generate an ensemble of skew-product dynamical systems, multiprocessed
         """
@@ -222,15 +242,18 @@ class SkewEnsemble:
             results = pool.starmap(
                 self._compute_skew_sol,
                 [
-                    (driver_name, response_name, couple_phase_space, couple_flows)
-                    for driver_name, response_name in self.skew_pairs
+                    (
+                        skew_name,
+                        num_periods,
+                        num_points,
+                        kwargs,
+                    )
+                    for skew_name in self.skew_pair_names
                 ],
             )
         ensemble = {
-            (driver_name, response_name): sol_response
-            for (driver_name, response_name), sol_response in zip(
-                self.skew_pairs, results
-            )
+            skew_name: sol_response
+            for skew_name, sol_response in zip(self.skew_pair_names, results)
         }
         return ensemble
 
@@ -241,24 +264,42 @@ class SkewData(DystData):
     A dataset of skew-product dynamical systems
     """
 
-    system_names: List[str]
-    n_combos: int = 10
     compute_coupling_strength: bool = False
     couple_phase_space: bool = True
     couple_flows: bool = False
 
     def __post_init__(self):
         super().__post_init__()
-        # get unique system names
-        self.system_names = list(set(self.system_names))
-        self.n_systems = len(self.system_names)
+
+    def sample_skew_pairs(
+        self,
+        system_names: List[str],
+        n_combos: int = 10,
+    ) -> List[str]:
+        """
+        Sample a list of unique skew-product dynamical system pairs
+        """
+        rng = np.random.default_rng(self.rseed)
+        system_names = list(set(system_names))
+        n_systems = len(system_names)
+        random_pairs = sample_index_pairs(n_systems, n_combos, rng=rng)
+        skew_pairs = [(system_names[i], system_names[j]) for i, j in random_pairs]
+        skew_pair_names = [f"{driver}_{response}" for driver, response in skew_pairs]
+        return skew_pair_names
 
     def _generate_ensembles(
         self,
-        system_names: List[str],
+        dysts_names: List[str],
         postprocessing_callbacks: List[Callable] = [],
         **kwargs,
     ) -> List[Dict[str, np.ndarray]]:
+        """
+        Generate ensembles of skew-product dynamical systems
+        Args:
+            dysts_names: List of names of skew dynamical systems. The names are joined together by "_" to form the keys of the ensemble dictionary as strings.
+                e.g. ["Lorenz_Rossler", "Rossler_Lorenz"] means two skew systems: Lorenz driving Rossler and Rossler driven by Lorenz.
+            postprocessing_callbacks: List of functions that perform postprocessing on the ensemble
+        """
         ensembles = []
         pp_rng_stream = np.random.default_rng(self.rseed).spawn(
             self.num_param_perturbations
@@ -274,15 +315,17 @@ class SkewData(DystData):
                 self._reset_events()
 
                 skew_ensemble_generator = SkewEnsemble(
-                    system_names=self.system_names,
-                    n_combos=self.n_combos,
+                    skew_pair_names=dysts_names,
                     compute_coupling_strength=self.compute_coupling_strength,
+                    couple_phase_space=self.couple_phase_space,
+                    couple_flows=self.couple_flows,
                     events=self.events,
                 )
 
                 ensemble = skew_ensemble_generator.multiprocess_generate_ensemble(
-                    couple_phase_space=self.couple_phase_space,
-                    couple_flows=self.couple_flows,
+                    num_periods=self.num_periods,
+                    num_points=self.num_points,
+                    **kwargs,
                 )
                 ensemble, excluded_keys = filter_dict(ensemble)
                 ensembles.append(ensemble)
