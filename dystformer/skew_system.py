@@ -2,68 +2,24 @@
 Search for valid skew-product dynamical sytems and generate trajectory datasets
 """
 
-from collections import defaultdict
+import warnings
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from multiprocessing import Pool
+from typing import Callable, Dict, List, Optional, Tuple
 
 import dysts.flows as dfl
 import numpy as np
 from dysts.base import BaseDyn
 from scipy.integrate import solve_ivp
+from tqdm import trange
 
+from dystformer.dyst_data import DystData
+from dystformer.sampling import InstabilityEvent, TimeLimitEvent
 from dystformer.utils import (
+    construct_basic_affine_map,
+    filter_dict,
     sample_index_pairs,
 )
-
-
-@dataclass
-class SkewEnsemble:
-    """
-    Generate an ensemble of skew-product dynamical systems, which are pairs of dynamical systems coupled together.
-    """
-
-    system_names: List[str]
-    n_combos: int = 1000
-    compute_coupling_strength: bool = False
-
-    def __post_init__(self):
-        # get unique system names
-        self.system_names = list(set(self.system_names))
-        self.n_systems = len(self.system_names)
-
-        random_pairs = sample_index_pairs(self.n_systems, self.n_combos)
-        self.skew_pairs = [
-            (self.system_names[i], self.system_names[j]) for i, j in random_pairs
-        ]
-
-        # NOTE: coupling map matrix is recomputed for each skew system
-        self.skew_systems = [
-            SkewSystem(
-                driver=getattr(dfl, driver_name)(),
-                response=getattr(dfl, response_name)(),
-                compute_coupling_strength=self.compute_coupling_strength,
-            )
-            for driver_name, response_name in self.skew_pairs
-        ]
-        # TODO: incorporate parameter and IC samplers
-        # TODO: maintain a cache of computed amplitudes from trajectory data,
-        # so we don't recompute them every time we make a new skew system
-
-    def generate_ensemble(
-        self, couple_phase_space: bool = True, couple_flows: bool = False
-    ) -> Dict[Tuple[str, str], List[np.ndarray]]:
-        ensemble = defaultdict(list)
-        for skew_sys in self.skew_systems:
-            _, sol_response = skew_sys.run(
-                couple_phase_space=couple_phase_space, couple_flows=couple_flows
-            )
-            skew_pair = (skew_sys.driver.name, skew_sys.response.name)
-            ensemble[skew_pair].append(sol_response)
-
-        return ensemble
-
-    def save_ensemble(self, save_dir: str):
-        pass
 
 
 @dataclass
@@ -80,8 +36,20 @@ class SkewSystem:
     response: BaseDyn
     coupling_map: Optional[np.ndarray] = None
     compute_coupling_strength: bool = False
+    events: Optional[List] = None
 
     def __post_init__(self):
+        # Set default integration events if none are provided
+        if self.events is None:
+            warnings.warn(
+                "No events provided for numerical integration. Defaulting to TimeLimitEvent with max_duration of 5 minutes \
+                and InstabilityEvent with threshold of 1e4."
+            )
+            # events for solve_ivp
+            time_limit_event = TimeLimitEvent(max_duration=60 * 5)  # 5 min time limit
+            instability_event = InstabilityEvent(threshold=1e4)
+            self.events = [time_limit_event, instability_event]
+
         self.n_driver, self.n_response = len(self.driver.ic), len(self.response.ic)
         self.dt = min(self.driver.dt, self.response.dt)
 
@@ -200,57 +168,126 @@ class SkewSystem:
         return (sol_driver, sol_response)
 
 
-### Functions to make basic affine maps ###
-def pad_array(arr: np.ndarray, n2: int, m2: int) -> np.ndarray:
+@dataclass
+class SkewEnsemble:
     """
-    Pad an array to a target shape that is bigger than original shape
+    Generate an ensemble of skew-product dynamical systems, which are pairs of dynamical systems coupled together.
     """
-    n1, m1 = arr.shape
-    pad_rows, pad_cols = n2 - n1, m2 - m1
-    if pad_rows < 0 or pad_cols < 0:
-        raise ValueError(
-            "Target dimensions must be greater than or equal to original dimensions."
+
+    system_names: List[str]
+    n_combos: int = 10
+    compute_coupling_strength: bool = False
+    events: Optional[List] = None
+
+    def __post_init__(self):
+        # get unique system names
+        self.system_names = list(set(self.system_names))
+        self.n_systems = len(self.system_names)
+
+        random_pairs = sample_index_pairs(self.n_systems, self.n_combos)
+        self.skew_pairs = [
+            (self.system_names[i], self.system_names[j]) for i, j in random_pairs
+        ]
+
+    def _compute_skew_sol(
+        self,
+        driver_name: str,
+        response_name: str,
+        couple_phase_space: bool = True,
+        couple_flows: bool = False,
+    ) -> np.ndarray:
+        """
+        Compute the solution of a skew-product dynamical system (response system)
+        """
+        # NOTE: coupling map matrix is recomputed for each skew system
+        skew_sys = SkewSystem(
+            driver=getattr(dfl, driver_name)(),
+            response=getattr(dfl, response_name)(),
+            compute_coupling_strength=self.compute_coupling_strength,
+            events=self.events,
         )
-    return np.pad(
-        arr, ((0, pad_rows), (0, pad_cols)), mode="constant", constant_values=0
-    )
-
-
-def construct_basic_affine_map(
-    n: int,
-    m: int,
-    kappa: Union[float, np.ndarray] = 1.0,
-) -> np.ndarray:
-    """
-    Construct an affine map that sends (x, y, 1) -> (x, y, x + y)
-    where x and y have lengths n and m respectively, and n <= m
-    Args:
-        n: driver system dimension
-        m: response system dimension
-        kappa: coupling strength, either a float or a list of floats
-    Returns:
-        A: the affine map matrix (2D array), block matrix (n + 2m) x (n + m + 1)
-    """
-    I_n = np.eye(n)  # n x n identity matrix
-    I_m = np.eye(m)  # m x m identity matrix
-
-    assert isinstance(
-        kappa, (float, np.ndarray)
-    ), "coupling strength kappa must be a float or a list of floats"
-
-    if isinstance(kappa, float):
-        bottom_block = np.hstack(
-            [kappa * pad_array(I_n if n < m else I_m, m, n), I_m, np.zeros((m, 1))]
+        _, sol_response = skew_sys.run(
+            couple_phase_space=couple_phase_space,
+            couple_flows=couple_flows,
         )
-    else:  # kappa is a list of floats
-        k = min(n, m)
-        assert len(kappa) == k, "coupling strength kappa must be of length min(n, m)"  # type: ignore
-        bottom_block = np.hstack(
-            [pad_array(np.diag(kappa), m, n), I_m, np.zeros((m, 1))]
+        return sol_response
+
+    def multiprocess_generate_ensemble(
+        self, couple_phase_space: bool = True, couple_flows: bool = False
+    ) -> Dict[Tuple[str, str], np.ndarray]:
+        """
+        Generate an ensemble of skew-product dynamical systems, multiprocessed
+        """
+        with Pool() as pool:
+            results = pool.starmap(
+                self._compute_skew_sol,
+                [
+                    (driver_name, response_name, couple_phase_space, couple_flows)
+                    for driver_name, response_name in self.skew_pairs
+                ],
+            )
+        ensemble = {
+            (driver_name, response_name): sol_response
+            for (driver_name, response_name), sol_response in zip(
+                self.skew_pairs, results
+            )
+        }
+        return ensemble
+
+
+@dataclass
+class SkewData(DystData):
+    """
+    A dataset of skew-product dynamical systems
+    """
+
+    system_names: List[str]
+    n_combos: int = 10
+    compute_coupling_strength: bool = False
+    couple_phase_space: bool = True
+    couple_flows: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        # get unique system names
+        self.system_names = list(set(self.system_names))
+        self.n_systems = len(self.system_names)
+
+    def _generate_ensembles(
+        self,
+        system_names: List[str],
+        postprocessing_callbacks: List[Callable] = [],
+        **kwargs,
+    ) -> List[Dict[str, np.ndarray]]:
+        ensembles = []
+        pp_rng_stream = np.random.default_rng(self.rseed).spawn(
+            self.num_param_perturbations
         )
+        for i, param_rng in zip(range(self.num_param_perturbations), pp_rng_stream):
+            if self.param_sampler is not None:
+                self.param_sampler.set_rng(param_rng)
 
-    top_block = np.hstack([I_n, np.zeros((n, m)), np.zeros((n, 1))])
-    middle_block = np.hstack([np.zeros((m, n)), I_m, np.zeros((m, 1))])
+            for j in trange(self.num_ics):
+                sample_idx = i * self.num_ics + j
 
-    A = np.vstack([top_block, middle_block, bottom_block])
-    return A
+                # reset events that have a reset method
+                self._reset_events()
+
+                skew_ensemble_generator = SkewEnsemble(
+                    system_names=self.system_names,
+                    n_combos=self.n_combos,
+                    compute_coupling_strength=self.compute_coupling_strength,
+                    events=self.events,
+                )
+
+                ensemble = skew_ensemble_generator.multiprocess_generate_ensemble(
+                    couple_phase_space=self.couple_phase_space,
+                    couple_flows=self.couple_flows,
+                )
+                ensemble, excluded_keys = filter_dict(ensemble)
+                ensembles.append(ensemble)
+
+                for callback in postprocessing_callbacks:
+                    callback(ensemble, excluded_keys, sample_idx)
+
+        return ensembles

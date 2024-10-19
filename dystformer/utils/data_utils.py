@@ -13,16 +13,16 @@ from gluonts.dataset.arrow import ArrowWriter
 
 
 def filter_dict(
-    dictionary: Dict[str, np.ndarray],
-) -> Tuple[Dict[str, np.ndarray], List[str]]:
+    dictionary: Dict[Any, np.ndarray],
+) -> Tuple[Dict[Any, np.ndarray], List[str]]:
     """
     Filter a dictionary by removing key-value pairs where the value is None.
 
     Args:
-        d (Dict[str, np.ndarray]): The input dictionary to filter.
+        dictionary (Dict[Any, np.ndarray]): The input dictionary to filter.
 
     Returns:
-        Tuple[Dict[str, np.ndarray], List[str]]: A tuple containing:
+        Tuple[Dict[Any, np.ndarray], List[Any]]: A tuple containing:
             - The filtered dictionary with None values removed.
             - A list of keys that were excluded (i.e., had None values).
     """
@@ -132,8 +132,8 @@ def stack_and_extract_metadata(dataset: Dataset) -> Tuple[np.ndarray, Tuple[Any]
 def sample_index_pairs(
     size: int, num_pairs: int, rng: Optional[np.random.Generator] = None
 ) -> Iterator:
-    """Sample pairs from an arbitrary sequence
-    TODO: add option to filter by dyst_name for sampled pairs?
+    """
+    Sample pairs from an arbitrary sequence. Returns iterator over Tuple[int, int]
     """
     num_total_pairs = size * (size - 1) // 2
     assert num_pairs <= num_total_pairs, "Cannot sample more pairs than unique pairs."
@@ -176,3 +176,59 @@ def get_system_filepaths(
         list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0])
     )
     return filepaths
+
+
+### Functions to make basic affine maps ###
+def pad_array(arr: np.ndarray, n2: int, m2: int) -> np.ndarray:
+    """
+    Pad an array to a target shape that is bigger than original shape
+    """
+    n1, m1 = arr.shape
+    pad_rows, pad_cols = n2 - n1, m2 - m1
+    if pad_rows < 0 or pad_cols < 0:
+        raise ValueError(
+            "Target dimensions must be greater than or equal to original dimensions."
+        )
+    return np.pad(
+        arr, ((0, pad_rows), (0, pad_cols)), mode="constant", constant_values=0
+    )
+
+
+def construct_basic_affine_map(
+    n: int,
+    m: int,
+    kappa: Union[float, np.ndarray] = 1.0,
+) -> np.ndarray:
+    """
+    Construct an affine map that sends (x, y, 1) -> (x, y, x + y)
+    where x and y have lengths n and m respectively, and n <= m
+    Args:
+        n: driver system dimension
+        m: response system dimension
+        kappa: coupling strength, either a float or a list of floats
+    Returns:
+        A: the affine map matrix (2D array), block matrix (n + 2m) x (n + m + 1)
+    """
+    I_n = np.eye(n)  # n x n identity matrix
+    I_m = np.eye(m)  # m x m identity matrix
+
+    assert isinstance(
+        kappa, (float, np.ndarray)
+    ), "coupling strength kappa must be a float or a list of floats"
+
+    if isinstance(kappa, float):
+        bottom_block = np.hstack(
+            [kappa * pad_array(I_n if n < m else I_m, m, n), I_m, np.zeros((m, 1))]
+        )
+    else:  # kappa is a list of floats
+        k = min(n, m)
+        assert len(kappa) == k, "coupling strength kappa must be of length min(n, m)"  # type: ignore
+        bottom_block = np.hstack(
+            [pad_array(np.diag(kappa), m, n), I_m, np.zeros((m, 1))]
+        )
+
+    top_block = np.hstack([I_n, np.zeros((n, m)), np.zeros((n, 1))])
+    middle_block = np.hstack([np.zeros((m, n)), I_m, np.zeros((m, 1))])
+
+    A = np.vstack([top_block, middle_block, bottom_block])
+    return A
