@@ -12,12 +12,33 @@ import torch
 from gluonts.itertools import Cyclic, Map
 from gluonts.transform import (
     ExpectedNumInstanceSampler,
+    InstanceSampler,
     InstanceSplitter,
     MissingValueImputation,
     NumInstanceSampler,
     ValidationSplitSampler,
 )
 from torch.utils.data import IterableDataset, get_worker_info
+
+
+class RegularWindowedSampler(InstanceSampler):
+    """
+    Sample regular context windows from each series.
+
+    Parameters
+    ----------
+    stride: int
+        stride of the sampled context windows
+    """
+
+    stride: int
+
+    def __call__(self, ts: np.ndarray) -> np.ndarray:
+        a, b = self._get_bounds(ts)
+        if a > b:
+            return np.array([], dtype=int)
+
+        return np.arange(a, b + 1, self.stride)
 
 
 class PseudoShuffledIterableDataset(IterableDataset):
@@ -56,6 +77,8 @@ class PatchTSTDataset(IterableDataset):
     fixed_dim: Optional[int] = None
     delay_embed_prob: float = 0.0
     num_test_instances: int = 1
+    window_style: str = "sampled"
+    window_stride: int = 1
 
     def __post_init__(self):
         assert len(self.probabilities) == len(self.datasets)
@@ -73,7 +96,7 @@ class PatchTSTDataset(IterableDataset):
             sampled_dims = np.random.choice(
                 total_dims, size=self.fixed_dim, replace=False
             )
-            entry["target"] = entry["target"][sampled_dims]
+            entry["target"] = entry["target"][sampled_dims, :]
 
         if (
             mode == "train"
@@ -97,6 +120,15 @@ class PatchTSTDataset(IterableDataset):
 
     def _create_instance_splitter(self, mode: str):
         assert mode in ["train", "test", "validation"]
+        assert self.window_style in [
+            "sampled",
+            "rolling",
+        ], "evaluation windows can only either be rolling or randomly sampled"
+
+        test_sampler = {
+            "sampled": partial(NumInstanceSampler, N=self.num_test_instances),
+            "rolling": partial(RegularWindowedSampler, stride=self.window_stride),
+        }[self.window_style]
 
         instance_sampler = {
             "train": ExpectedNumInstanceSampler(
@@ -105,10 +137,9 @@ class PatchTSTDataset(IterableDataset):
                 min_past=self.context_length,  # never sample behind the timeseries
                 min_future=self.prediction_length,  # never sample too far ahead
             ),
-            "test": NumInstanceSampler(
-                N=self.num_test_instances,
-                min_future=self.prediction_length,
+            "test": test_sampler(
                 min_past=self.context_length,
+                min_future=self.prediction_length,
             ),
             "validation": ValidationSplitSampler(min_future=self.prediction_length),
         }[mode]

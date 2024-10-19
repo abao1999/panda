@@ -11,7 +11,7 @@
 #         train.save_steps=10_000 \
 #         train.log_steps=100 \
 
-# On multiple GPUs (example with 6 GPUs)
+# On multiple GPUs (example with 4 GPUs)
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/patchtst/train.py \

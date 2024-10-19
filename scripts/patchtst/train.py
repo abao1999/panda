@@ -1,12 +1,9 @@
 import logging
 import os
-import random
 from functools import partial
 from pathlib import Path
-from typing import Dict, List
 
 import hydra
-import numpy as np
 import torch
 import transformers
 from gluonts.dataset.common import FileDataset
@@ -19,7 +16,7 @@ from transformers import (
 
 import wandb
 from dystformer.patchtst.dataset import PatchTSTDataset
-from dystformer.patchtst.model import PatchTSTModel
+from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
     ensure_contiguous,
     get_next_path,
@@ -30,128 +27,6 @@ from dystformer.utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def fixed_dim_collator(
-    features: List[Dict[str, torch.Tensor]],
-    fixed_dim: int,
-) -> Dict[str, torch.Tensor]:
-    """
-    Collates trajectories by randomly sampling a fixed number of dimensions and filtering out any
-    trajectories that do not match the sampled dimension.
-
-    NOTE:
-    - this doesnt perform any out-of-bounds checks and assumes that you can just sample the dims
-    in other words, this collator is brittle, but will work for the continuous systems
-    - this does the exact same thing as setting cfg.fixed_dim = 3
-
-    NOTE: will be deprecated
-    """
-    sampled_dims = [
-        torch.randperm(f["past_values"].shape[1])[:fixed_dim] for f in features
-    ]
-    batch = {
-        key: torch.stack([f[key][:, sampled_dims[i]] for i, f in enumerate(features)])
-        for key in features[0].keys()
-    }
-    return batch
-
-
-def random_dim_collator(
-    features: List[Dict[str, torch.Tensor]],
-) -> Dict[str, torch.Tensor]:
-    """
-    Collates trajectories by sampling a dimension and filtering out any
-    trajectories that do not match the sampled dimension.
-
-    Args:
-        features: list of dictionaries with "past_values" and "future_values" tensors
-            with shapes [num_dimensions, context_length] and [num_dimensions, prediction_length].
-            The input list has length batch_size * num_visible_devices.
-
-    Returns:
-        Dict with "past_values" and "future_values" flattened and equalized in dimension 0,
-            with size equalized_dim*batch_size
-    """
-    grouped_features = {}
-    for feature in features:
-        key = feature["past_values"].shape[-1]
-        if key not in grouped_features:
-            grouped_features[key] = []
-        grouped_features[key].append(feature)
-
-    sampled_dim = random.choice(list(grouped_features.keys()))
-    batch = {
-        key: torch.stack([f[key] for f in grouped_features[sampled_dim]])
-        for key in grouped_features[sampled_dim][0].keys()
-    }
-    return batch
-
-
-def dimensional_collator(
-    features: List[Dict[str, torch.Tensor]],
-    equalized_dim: int,
-) -> Dict[str, torch.Tensor]:
-    """
-    Collates trajectories into flat data by stacking along dimension
-
-    Args:
-        features: list of dictionaries with "past_values" and "future_values" tensors
-            with shapes [num_dimensions, context_length] and [num_dimensions, prediction_length].
-            The input list has length batch_size * num_visible_devices.
-
-    Returns:
-        Dict with "past_values" and "future_values" flattened and equalized in dimension 0,
-            with size equalized_dim*batch_size
-    """
-    dims = np.asarray([feature["past_values"].shape[-1] for feature in features])
-    batch_size = len(features)
-    min_dim = min(dims)
-
-    # ensure that the equalization dimension satisfies the constraint:
-    # k * min(dims) <= k * equalized_dim <= sum(dims) <= k * max(dims)
-    # NOTE: this will still cause non-uniform batch sizes,
-    #  but only in multiples of the number of devices
-    while not (batch_size * min_dim <= batch_size * equalized_dim <= sum(dims)):
-        if equalized_dim < min_dim:
-            equalized_dim = min_dim
-        else:  # decrement until the constraint is satisfied
-            equalized_dim -= 1
-
-    # randomly choose dimensions to remove in order to equalize across the batch
-    equalization_budget = sum(dims) - batch_size * equalized_dim
-
-    if equalization_budget > 0:
-        cuts = np.random.choice(equalization_budget, size=len(features) - 1)
-        num_remove = np.diff(
-            np.concatenate([[0], np.sort(cuts), [equalization_budget]])
-        )
-
-        # resample if the constraints are not satisfied
-        while np.any(num_remove > dims):
-            cuts = np.random.choice(equalization_budget, size=len(features) - 1)
-            num_remove = np.diff(
-                np.concatenate([[0], np.sort(cuts), [equalization_budget]])
-            )
-    else:
-        num_remove = np.zeros(len(features))
-
-    num_keep = (dims - num_remove).astype(int)
-    batch = {
-        k: torch.concat(
-            [
-                feat[k][
-                    :, np.random.choice(feat[k].shape[1], size=nkeep, replace=False)
-                ]
-                for nkeep, feat in zip(num_keep, features)
-            ],
-            dim=1,
-        )
-        for k in features[0].keys()
-    }
-    batch["dims"] = torch.from_numpy(num_keep).to(torch.int32)
-
-    return batch
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -278,7 +153,7 @@ def main(cfg):
         fixed_dim=cfg.fixed_dim,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    model = PatchTSTModel(dict(cfg.patchtst), mode=cfg.patchtst.mode)
+    model = PatchTST(dict(cfg.patchtst), mode=cfg.patchtst.mode)
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_on_main(f"Total trainable parameters: {trainable_params:,}", logger)
@@ -316,17 +191,10 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    collation_method = {
-        "random_dim": random_dim_collator,
-        "fixed_dim": partial(fixed_dim_collator, fixed_dim=3),
-        "" "dimensional": partial(dimensional_collator, equalized_dim=6),
-    }.get(cfg.collate_method)
-
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
-        data_collator=collation_method,
     )
 
     log_on_main("Training", logger)
