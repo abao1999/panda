@@ -1,9 +1,9 @@
 # TODO: clean this up, remove unnecessary options
 
 eval:
-  data_dir: /stor/work/AMDG_Gilpin_Summer2024/data
+  data_path: $WORK/data/test/
   checkpoint_path: /stor/work/AMDG_Gilpin_Summer2024/checkpoints
-  split: train
+  split: train  # ???
   output_dir: ./eval_results
   output_fname: null
   overwrite: false
@@ -21,21 +21,17 @@ eval:
 
   agg_axis: null # 1 to keep dimensions separate
 
-  # number of evaluation windows
-  num_test_instances: 1
-
   # for generating forecasts and getting test split
   limit_prediction_length: true
   prediction_length: 64
   offset: -64
   num_rolls: 1
 
-
-  # this is only useful, as opposed to reading all systems from data_dir, if we want to havve
-  # customizable prediction_length, offset, num_rolls, etc. for each system
-  custom_dysts: null
-  # - name: Lorenz96
-  #   path: /stor/work/AMDG_Gilpin_Summer2024/data/train/Lorenz96
-  #   prediction_length: 64
-  #   offset: 64
-  #   num_rolls: 1
+  # window style can be either sampled or rolling
+  # sampled: randomly samples windows from each timeseries (of length context_length) 
+  # rolling: takes consecutive windows of context_length with a stride of
+  #    window_stride from each timeseries
+  # if window style == sampled, then num_test_instances is the # of windows to sample from each timeseries
+  num_test_instances: 1
+  window_style: sampled
+  window_stride: 1
