@@ -55,7 +55,7 @@ def parse_arguments():
     parser.add_argument(
         "--max-duration",
         type=int,
-        default=60 * 8,
+        default=60 * 4,
         help="Maximum duration for the TimeLimitEvent",
     )
     parser.add_argument(
@@ -103,7 +103,7 @@ def parse_arguments():
     parser.add_argument(
         "--num-param-perturbations",
         type=int,
-        default=1,
+        default=3,
         help="Number of parameter perturbations for DystData",
     )
     parser.add_argument(

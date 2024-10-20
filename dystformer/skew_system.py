@@ -320,7 +320,8 @@ class SkewEnsemble:
             num_points=num_points,
             **kwargs,
         )
-        return sol_response
+        # Transpose solution to match the structure of dysts make_trajectory_ensemble
+        return sol_response.T if sol_response is not None else None
 
     def multiprocess_generate_ensemble(
         self,
