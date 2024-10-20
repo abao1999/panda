@@ -5,25 +5,29 @@ Search for valid skew-product dynamical sytems and generate trajectory datasets
 import argparse
 import os
 
-import dysts.flows as dfl
-import matplotlib.pyplot as plt
+from dystformer.sampling import (
+    GaussianParamSampler,
+    InstabilityEvent,
+    OnAttractorInitCondSampler,
+    TimeLimitEvent,
+)
+from dystformer.skew_system import SkewData
+from dystformer.utils import split_systems
 
-from dystformer.skew_system import SkewSystem
 
-WORK_DIR = os.getenv("WORK", "")
-
-if __name__ == "__main__":
-    # test_map()
-
+def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "dysts_names", help="Names of the dynamical systems", nargs="+", type=str
     )
     parser.add_argument(
+        "--n_combos", type=int, default=10, help="Number of skew pair combinations"
+    )
+    parser.add_argument(
         "--compute_coupling_strength",
         help="Whether to compute coupling strength",
         type=bool,
-        default=True,
+        default=False,
     )
     parser.add_argument(
         "--couple_phase_space",
@@ -37,59 +41,169 @@ if __name__ == "__main__":
         type=bool,
         default=False,  # can do both types of coupling
     )
-    args = parser.parse_args()
-    dysts_names = args.dysts_names
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=os.path.join(os.getenv("WORK", ""), "data"),
+        help="Directory to save the generated data",
+    )
+    parser.add_argument(
+        "--debug-mode",
+        action="store_true",
+        help="Enable debug mode for saving failed trajectory ensembles",
+    )
+    parser.add_argument(
+        "--rseed",
+        type=int,
+        default=999,
+        help="Random seed for split, IC, and param samplers",
+    )
+    parser.add_argument(
+        "--max-duration",
+        type=int,
+        default=60 * 3,
+        help="Maximum duration for the TimeLimitEvent",
+    )
+    parser.add_argument(
+        "--instability-threshold",
+        type=float,
+        default=5e2,
+        help="Threshold for the InstabilityEvent",
+    )
+    parser.add_argument(
+        "--param-scale",
+        type=float,
+        default=0.5,
+        help="Scale for the GaussianParamSampler",
+    )
+    parser.add_argument(
+        "--reference-traj-length",
+        type=int,
+        default=2048,
+        help="Reference trajectory length for OnAttractorInitCondSampler",
+    )
+    parser.add_argument(
+        "--reference-traj-transient",
+        type=float,
+        default=0.2,
+        help="Reference trajectory transient for OnAttractorInitCondSampler",
+    )
+    parser.add_argument(
+        "--num-periods",
+        type=int,
+        default=10,
+        help="Number of periods for DystData",
+    )
+    parser.add_argument(
+        "--num-points",
+        type=int,
+        default=2048,
+        help="Number of points for DystData",
+    )
+    parser.add_argument(
+        "--num-ics",
+        type=int,
+        default=3,
+        help="Number of initial conditions for DystData",
+    )
+    parser.add_argument(
+        "--num-param-perturbations",
+        type=int,
+        default=3,
+        help="Number of parameter perturbations for DystData",
+    )
+    parser.add_argument(
+        "--split-coords",
+        action="store_true",
+        help="Set to split coordinates into univariate time series",
+    )
+    parser.add_argument(
+        "--no-attractor-tests",
+        action="store_false",
+        help="Do not apply attractor tests",
+    )
+    parser.add_argument(
+        "--standardize",
+        action="store_true",
+        help="Standardize the data",
+    )
+    parser.add_argument(
+        "--test-split",
+        type=float,
+        default=0.3,
+        help="Fraction of systems to use for testing",
+    )
+    parser.add_argument(
+        "--sys-class",
+        type=str,
+        default="continuous",
+        help="System class for splitting",
+    )
 
-    assert (
-        len(dysts_names) == 2
-    ), "Must provide exactly two dynamical system names for now (TODO: generalize to n systems)"
+    return parser.parse_args()
 
-    driver_name, response_name = dysts_names
-    driver_sys = getattr(dfl, driver_name)()
-    response_sys = getattr(dfl, response_name)()
 
-    skew_system = SkewSystem(
-        driver_sys,
-        response_sys,
+if __name__ == "__main__":
+    args = parse_arguments()
+
+    # generate split of dynamical systems
+    test, train = split_systems(
+        args.test_split, seed=args.rseed, sys_class=args.sys_class
+    )
+
+    # events for solve_ivp
+    time_limit_event = TimeLimitEvent(max_duration=args.max_duration)
+    instability_event = InstabilityEvent(threshold=args.instability_threshold)
+    events = [time_limit_event, instability_event]
+
+    param_sampler = GaussianParamSampler(
+        random_seed=args.rseed, scale=args.param_scale, verbose=True
+    )
+    ic_sampler = OnAttractorInitCondSampler(
+        reference_traj_length=args.reference_traj_length,
+        reference_traj_transient=args.reference_traj_transient,
+        recompute_standardization=True,  # Important!
+        events=events,
+        verbose=True,
+    )
+
+    print(
+        f"Generating {args.n_combos} skew system combinations from {len(args.dysts_names)} systems"
+    )
+
+    skew_data_generator = SkewData(
+        rseed=args.rseed,
+        num_periods=args.num_periods,
+        num_points=args.num_points,
+        num_ics=args.num_ics,
+        num_param_perturbations=args.num_param_perturbations,
+        param_sampler=param_sampler,
+        ic_sampler=ic_sampler,
+        events=events,
+        verbose=True,
+        split_coords=args.split_coords,
+        apply_attractor_tests=args.no_attractor_tests,
+        attractor_validator_kwargs={
+            "verbose": 1,
+            "transient_time": 200,
+            "plot_save_dir": "tests/plots",
+        },
+        debug_mode=args.debug_mode,
         compute_coupling_strength=args.compute_coupling_strength,
+        couple_phase_space=args.couple_phase_space,
+        couple_flows=args.couple_flows,
     )
-    skew_sol = skew_system.run(
-        couple_phase_space=args.couple_phase_space, couple_flows=args.couple_flows
+
+    skew_pair_names = skew_data_generator.sample_skew_pairs(
+        args.dysts_names, args.n_combos
     )
-    sol_response = skew_sol[1]
-    print("response solution shape: ", sol_response.shape)
 
-    save_dir = "figs"
-    os.makedirs(save_dir, exist_ok=True)
-    plot_name = f"{driver_name}_driving_{response_name}"
-    # 3D plot (first three coordinates)
-    save_path = os.path.join(save_dir, f"{plot_name}_3D.png")
-    print("Plotting 3D trajectories and saving to ", save_path)
-    fig = plt.figure(figsize=(6, 6))
-    ax = fig.add_subplot(111, projection="3d")
-    # plot x and y and z
-    ax.plot(
-        sol_response[0, :],
-        sol_response[1, :],
-        sol_response[2, :],
-        alpha=0.8,
-        linewidth=1,
-    )  # X,Y,Z
-    ax.scatter(*sol_response[:3, 0], marker="*", s=100, alpha=0.5)
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")  # type: ignore
-    ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
-    ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
-    plt.title(plot_name.replace("_", " "))
-    plt.savefig(save_path, dpi=300)
-    plt.close()
+    print(f"Skew pair names: {skew_pair_names}")
 
-    # traj_save_path = os.path.join(WORK_DIR, "data", "skew_systems")
-    # print("Saving trajectories to ", traj_save_path)
-
-    # skew_name = f"{driver_name}_{response_name}"
-    # skew_dict = {
-    #     skew_name: np.expand_dims(sol_response, axis=0)
-    # }  # we have only one sample (ic + param perturbation)
-    # process_trajs(traj_save_path, skew_dict, verbose=True)
+    skew_data_generator.save_dyst_ensemble(
+        dysts_names=skew_pair_names,
+        split="skew_systems",
+        samples_process_interval=1,
+        save_dir=args.data_dir,
+        standardize=args.standardize,
+    )

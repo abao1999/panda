@@ -156,6 +156,7 @@ def main():
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=args.reference_traj_length,
         reference_traj_transient=args.reference_traj_transient,
+        recompute_standardization=True,  # Important!
         events=events,
         verbose=True,
     )
