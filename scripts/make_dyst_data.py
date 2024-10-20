@@ -131,6 +131,7 @@ def parse_arguments():
         "--sys-class",
         type=str,
         default="continuous",
+        choices=["continuous", "continuous_no_delay", "delay", "discrete"],
         help="System class for splitting",
     )
 

@@ -13,23 +13,22 @@ from gluonts.dataset.arrow import ArrowWriter
 
 
 def filter_dict(
-    dictionary: Dict[Any, Optional[np.ndarray]],
-) -> Tuple[Dict[Any, np.ndarray], List[str]]:
+    d: Dict[Any, Optional[np.ndarray]],
+) -> Tuple[Dict[Any, np.ndarray], List[Any]]:
     """
     Filter a dictionary by removing key-value pairs where the value is None.
 
     Args:
-        dictionary (Dict[Any, Optional[np.ndarray]]): The input dictionary to filter.
+        d (Dict[Any, Optional[np.ndarray]]): The input dictionary to filter.
 
     Returns:
         Tuple[Dict[Any, np.ndarray], List[Any]]: A tuple containing:
-            - The filtered dictionary with None values removed.
+            - The filtered dict with None values removed.
             - A list of keys that were excluded (i.e., had None values).
     """
-    excluded_keys = [key for key, value in dictionary.items() if value is None]
-    for key in excluded_keys:
-        dictionary.pop(key)
-    return dictionary, excluded_keys
+    excluded_keys = [key for key, value in d.items() if value is None]
+    filtered_dict = {key: value for key, value in d.items() if value is not None}
+    return filtered_dict, excluded_keys
 
 
 def split_systems(

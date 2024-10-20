@@ -35,19 +35,24 @@ class SkewSystem:
         driver: The driver system
         response: The response system
         coupling_map: The coupling map between the driver and response systems
-        compute_coupling_strength: Whether to compute the coupling strength between the driver and response systems
         couple_phase_space: Whether to couple the phase space of the driver and response systems
         couple_flows: Whether to couple the flow vectors of the driver and response systems
         events: List of events for numerical integration
 
     By default, the integration step size (self.dt) is the minimum of the dt for driver and response systems,
     and the "period" (self.period) is the maximum of the period for driver and response systems.
+
+    Design choices:
+        + Move all computation into run() method, so that instance initialization is fast and cheap
+        + coupling_map is a first-class citizen
+            i.e. if user provides coupling map, skip computation of default coupling map
+                 otherwise, compute default coupling map as:
+                     basic_affine_map which pre-computes a kappa vector: the coupling strength
     """
 
     driver: BaseDyn
     response: BaseDyn
     coupling_map: Optional[np.ndarray] = None
-    compute_coupling_strength: bool = False
     couple_phase_space: bool = True
     couple_flows: bool = False
     events: Optional[List[Callable]] = None
@@ -64,40 +69,50 @@ class SkewSystem:
             instability_event = InstabilityEvent(threshold=1e4)
             self.events = [time_limit_event, instability_event]
 
+        # dimension of driver and response systems
         self.n_driver, self.n_response = len(self.driver.ic), len(self.response.ic)
+        self.k = min(self.n_driver, self.n_response)
 
         # set integration time
         self.dt = min(self.driver.dt, self.response.dt)
         self.period = max(self.driver.period, self.response.period)
 
-        # set coupling strength kappa
-        self.kappa = np.ones(self.n_response)  # dummy
-        if self.compute_coupling_strength:
-            self.kappa = self._compute_coupling()
-
-        # set coupling map (default to basic affine map)
-        if self.coupling_map is None:
-            self.coupling_map = construct_basic_affine_map(
-                self.n_driver, self.n_response, self.kappa
-            )
-        print("Coupling map: ", self.coupling_map)
-
-    def _compute_coupling(self, ref_traj_len: int = 1000) -> np.ndarray:
+    def _compute_coupling_strength(self, ref_traj_len: int = 1000) -> np.ndarray:
         """
         Compute the coupling constants per dimension between the driver and response systems
         """
         print(
             f"Computing coupling strength between {self.driver.name} and {self.response.name}"
         )
-        sol_driver = self.driver.make_trajectory(ref_traj_len)
-        sol_response = self.response.make_trajectory(ref_traj_len)
+        # NOTE: this is possibly not integrable, so we need to check if the trajectory is complete
+        sol_driver = self.driver.make_trajectory(
+            ref_traj_len, events=self.events, standardize=False
+        )
+        sol_response = self.response.make_trajectory(
+            ref_traj_len, events=self.events, standardize=False
+        )
 
+        if sol_driver is None or sol_response is None:
+            warnings.warn(
+                f"Could not make a complete trajectory for {self.driver.name} and {self.response.name} with {ref_traj_len} points."
+            )
+            return np.ones(self.k)
+
+        # compute amplitude of driver and response systems
         amp_driver = np.mean(np.abs(sol_driver), axis=0)
         amp_response = np.mean(np.abs(sol_response), axis=0)
 
-        k = min(self.n_driver, self.n_response)
-        kappa = amp_response[:k] / amp_driver[:k]
+        # compute coupling strength vector as ratio of amplitudes
+        kappa = amp_response[: self.k] / amp_driver[: self.k]
         return kappa
+
+    def _make_default_coupling_map(self):
+        kappa = self._compute_coupling_strength()
+        # kappa = np.ones(self.k)  # dummy
+        self.coupling_map = construct_basic_affine_map(
+            self.n_driver, self.n_response, kappa
+        )
+        print("Coupling map: ", self.coupling_map)
 
     def _apply_coupling_map(self, x: np.ndarray, y: np.ndarray) -> List[np.ndarray]:
         """
@@ -154,12 +169,18 @@ class SkewSystem:
         method: str = "Radau",
         rtol: float = 1e-6,
         atol: float = 1e-6,
+        standardize: bool = True,
         **kwargs,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Run the skew-product system and return the trajectory of the driver and response systems
         TODO: resample, timescale, postprocess
         """
+
+        # set coupling map (default to basic affine map)
+        if self.coupling_map is None:
+            self._make_default_coupling_map()
+
         # combine initial conditions of driver and response system
         combined_ics = np.concatenate(
             [np.array(self.driver.ic), np.array(self.response.ic)]
@@ -184,7 +205,17 @@ class SkewSystem:
             **kwargs,
         )
 
+        print("Solution shape: ", sol.y.shape)
+        is_complete_traj = sol.y.shape[-1] == num_points
+        if not is_complete_traj:
+            warnings.warn(
+                f"Could not make a complete trajectory for {self.driver.name} and {self.response.name} with {num_periods} periods."
+            )
+            return (None, None)
+
         # TODO: standardize solution?
+        if standardize:
+            warnings.warn("Standardization not yet implemented for skew systems")
 
         sol_driver = sol.y[: self.n_driver]
         sol_response = sol.y[self.n_driver : self.n_driver + self.n_response]
@@ -198,14 +229,12 @@ class SkewEnsemble:
     Args:
         skew_pair_names: List of names of skew dynamical systems. The names are joined together by "_" to form the keys of the ensemble dictionary as strings.
             e.g. ["Lorenz_Rossler", "Rossler_Lorenz"] means two skew systems: Lorenz driving Rossler and Rossler driven by Lorenz.
-        compute_coupling_strength: Whether to compute the coupling strength between the driver and response systems
         couple_phase_space: Whether to couple the phase space of the driver and response systems
         couple_flows: Whether to couple the flow vectors of the driver and response systems
         events: List of events for numerical integration
     """
 
     skew_pair_names: List[str]
-    compute_coupling_strength: bool = False
     couple_phase_space: bool = True
     couple_flows: bool = False
     events: Optional[List[Callable]] = None
@@ -250,13 +279,11 @@ class SkewEnsemble:
             driver_sys.transform_ic(ic_transform)
             response_sys.transform_ic(ic_transform)
 
-        # NOTE: coupling map matrix is recomputed for each skew system
         try:
             skew_sys = SkewSystem(
                 driver=driver_sys,
                 response=response_sys,
                 coupling_map=None,  # creates basic affine map by default
-                compute_coupling_strength=self.compute_coupling_strength,
                 couple_phase_space=self.couple_phase_space,
                 couple_flows=self.couple_flows,
                 events=self.events,
@@ -265,12 +292,11 @@ class SkewEnsemble:
             print(f"System {skew_name} could not be made. {e} Skipping...")
             return None
 
-        # Get coupling strength kappa from ic sampler's trajectory cache if available
-        can_use_traj_cache = (
-            ic_transform is not None
-            and not self.compute_coupling_strength
-            and hasattr(ic_transform, "trajectory_cache")
+        # Avoid having to recompute coupling strength if ic sampler's trajectory cache is available
+        can_use_traj_cache = ic_transform is not None and hasattr(
+            ic_transform, "trajectory_cache"
         )
+        # This sidesteps needing to recompute kappa and make default coupling map in SkewSystem run() method
         if can_use_traj_cache:
             traj_cache = ic_transform.trajectory_cache  # type: ignore
             print("Using trajectory cache for coupling strength")
@@ -284,7 +310,7 @@ class SkewEnsemble:
                 n_driver, n_response = len(driver_sys.ic), len(response_sys.ic)
                 k = min(n_driver, n_response)
                 kappa = amp_response[:k] / amp_driver[:k]
-                print("Setting coupling map for ", skew_name)
+                # Set coupling map
                 skew_sys.coupling_map = construct_basic_affine_map(
                     n_driver, n_response, kappa
                 )
@@ -350,7 +376,6 @@ class SkewData(DystData):
     A dataset of skew-product dynamical systems
     """
 
-    compute_coupling_strength: bool = False
     couple_phase_space: bool = True
     couple_flows: bool = False
 
@@ -402,7 +427,6 @@ class SkewData(DystData):
 
                 skew_ensemble_generator = SkewEnsemble(
                     skew_pair_names=dysts_names,
-                    compute_coupling_strength=self.compute_coupling_strength,
                     couple_phase_space=self.couple_phase_space,
                     couple_flows=self.couple_flows,
                     events=self.events,

@@ -24,12 +24,6 @@ def parse_arguments():
         "--n_combos", type=int, default=10, help="Number of skew pair combinations"
     )
     parser.add_argument(
-        "--compute_coupling_strength",
-        help="Whether to compute coupling strength",
-        type=bool,
-        default=False,
-    )
-    parser.add_argument(
         "--couple_phase_space",
         help="Whether to couple phase space",
         type=bool,
@@ -61,13 +55,13 @@ def parse_arguments():
     parser.add_argument(
         "--max-duration",
         type=int,
-        default=60 * 3,
+        default=60 * 8,
         help="Maximum duration for the TimeLimitEvent",
     )
     parser.add_argument(
         "--instability-threshold",
         type=float,
-        default=5e2,
+        default=1e4,
         help="Threshold for the InstabilityEvent",
     )
     parser.add_argument(
@@ -91,25 +85,25 @@ def parse_arguments():
     parser.add_argument(
         "--num-periods",
         type=int,
-        default=10,
+        default=5,
         help="Number of periods for DystData",
     )
     parser.add_argument(
         "--num-points",
         type=int,
-        default=2048,
+        default=1024,
         help="Number of points for DystData",
     )
     parser.add_argument(
         "--num-ics",
         type=int,
-        default=3,
+        default=2,
         help="Number of initial conditions for DystData",
     )
     parser.add_argument(
         "--num-param-perturbations",
         type=int,
-        default=3,
+        default=1,
         help="Number of parameter perturbations for DystData",
     )
     parser.add_argument(
@@ -136,7 +130,8 @@ def parse_arguments():
     parser.add_argument(
         "--sys-class",
         type=str,
-        default="continuous",
+        default="continuous_no_delay",
+        choices=["continuous", "continuous_no_delay", "delay", "discrete"],
         help="System class for splitting",
     )
 
@@ -145,12 +140,12 @@ def parse_arguments():
 
 if __name__ == "__main__":
     args = parse_arguments()
-
-    # generate split of dynamical systems
-    test, train = split_systems(
-        args.test_split, seed=args.rseed, sys_class=args.sys_class
-    )
-
+    dysts_names = args.dysts_names
+    if dysts_names == ["all"]:
+        # generate split of dynamical systems
+        _, dysts_names = split_systems(
+            args.test_split, seed=args.rseed, sys_class=args.sys_class
+        )
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=args.max_duration)
     instability_event = InstabilityEvent(threshold=args.instability_threshold)
@@ -168,7 +163,7 @@ if __name__ == "__main__":
     )
 
     print(
-        f"Generating {args.n_combos} skew system combinations from {len(args.dysts_names)} systems"
+        f"Generating {args.n_combos} skew system combinations from {len(dysts_names)} systems"
     )
 
     skew_data_generator = SkewData(
@@ -184,26 +179,28 @@ if __name__ == "__main__":
         split_coords=args.split_coords,
         apply_attractor_tests=args.no_attractor_tests,
         attractor_validator_kwargs={
-            "verbose": 1,
-            "transient_time": 200,
+            "verbose": 0,
+            "transient_time_frac": 0.05,  # don't need long transient time because ic should be on attractor
             "plot_save_dir": "tests/plots",
         },
         debug_mode=args.debug_mode,
-        compute_coupling_strength=args.compute_coupling_strength,
         couple_phase_space=args.couple_phase_space,
         couple_flows=args.couple_flows,
     )
 
-    skew_pair_names = skew_data_generator.sample_skew_pairs(
-        args.dysts_names, args.n_combos
-    )
+    skew_pair_names = skew_data_generator.sample_skew_pairs(dysts_names, args.n_combos)
 
     print(f"Skew pair names: {skew_pair_names}")
 
     skew_data_generator.save_dyst_ensemble(
         dysts_names=skew_pair_names,
         split="skew_systems",
+        split_failures="failed_skew_systems",
         samples_process_interval=1,
         save_dir=args.data_dir,
         standardize=args.standardize,
+    )
+
+    skew_data_generator.save_summary(
+        os.path.join("outputs", "skew_system_checks.json"),
     )
