@@ -72,6 +72,7 @@ if __name__ == "__main__":
     dyst_data_generator.save_dyst_ensemble(
         dysts_names=dysts_names,
         split="debug",
+        split_failures="failed_attractors_debug",
         samples_process_interval=1,
         standardize=True,
         save_dir=DATA_DIR,

@@ -203,6 +203,7 @@ def main():
         dyst_data_generator.save_dyst_ensemble(
             dysts_names=train,
             split=f"{split_prefix}train",
+            split_failures="failed_attractors_train",
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_train,
@@ -210,6 +211,7 @@ def main():
         dyst_data_generator.save_dyst_ensemble(
             dysts_names=test,
             split=f"{split_prefix}test",
+            split_failures="failed_attractors_test",
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_test,
