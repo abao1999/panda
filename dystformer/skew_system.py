@@ -104,6 +104,9 @@ class SkewSystem:
         return kappa
 
     def _make_default_coupling_map(self):
+        """
+        Set the coupling map to be a basic affine map for the coupling between the driver and response systems
+        """
         kappa = self._compute_coupling_strength()
         # kappa = np.ones(self.k)  # dummy
         self.coupling_map = construct_basic_affine_map(
@@ -245,10 +248,6 @@ class SkewSystem:
             )
             return (None, None)
 
-        # TODO: standardize solution?
-        if standardize:
-            warnings.warn("Standardization not yet implemented for skew systems")
-
         sol_driver = sol.y[: self.n_driver]
         sol_response = sol.y[self.n_driver : self.n_driver + self.n_response]
         return (sol_driver, sol_response)
@@ -298,7 +297,7 @@ class SkewEnsemble:
         if param_transform is not None:
             if param_rng is not None:
                 param_transform.set_rng(param_rng)
-            # tansform both the driver and response systems parameters
+            # transform both the driver and response systems parameters
             driver_sys.transform_params(param_transform)
             response_sys.transform_params(param_transform)
 

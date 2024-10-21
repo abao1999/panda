@@ -24,7 +24,9 @@ from statsmodels.tsa.stattools import adfuller, kpss
 @dataclass
 class AttractorValidator:
     """
-    Class to handle test suite to determine if generated trajectories are valid attractors.
+    Framework to add tests, which are executed sequentially to determine if generated trajectories are valid attractors.
+    Upon first failure, the trajectory sample is added to the failed ensemble.
+    Custom tests can be added by adding functions that take a trajectory and return a boolean (True if the trajectory passes the test, False otherwise).
     """
 
     verbose: int = 1
@@ -310,9 +312,11 @@ def check_boundedness(
         else:
             print("Trajectory does not appear to be diverging.")
 
-    # Check if any dimension of the trajectory is a straight line
+    # Check if any dimension of the trajectory is a straight line in the last half of the trajectory
+    # NOTE: need to verify this tolerance is not too strict
+    n = traj.shape[1]
     for dim in range(traj.shape[0]):
-        if np.allclose(np.diff(traj[dim, :]), 0, atol=1e-5):
+        if np.allclose(np.diff(traj[dim, -n // 2 :]), 0, atol=1e-3):
             if verbose:
                 print(
                     f"Dimension {dim} of the trajectory appears to be a straight line."
@@ -475,7 +479,17 @@ def check_not_limit_cycle(
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
         tolerance (float): Tolerance for detecting revisits to the same region in phase space.
-        min_num_recurrences (int): Minimum number of recurrences to consider a recurrence time
+        min_prop_recurrences (float): Minimum proportion of the trajectory length that must be recurrences to consider a limit cycle
+        min_counts_per_rtime (int): Minimum number of counts per recurrence time to consider a recurrence time as valid
+        min_block_length (int): Minimum block length of consecutive recurrence times to consider a recurrence time as valid
+        min_recurrence_time (int): Minimum recurrence time to consider a recurrence time as valid
+                e.g. Setting min_recurrence_time = 1 means that we can catch when the integration fails (or converges to fixed point)
+        enforce_endpoint_recurrence (bool): Whether to enforce that either of the endpoints are recurrences
+                e.g. Setting enforce_endpoint_recurrence = True means that we are operating in a stricter regime where we require either
+                     the initial or final point to be a recurrence (repeated some time in the trajectory).
+
+    The default args are designed to be lenient, and catch pathological cases beyond purely limit cycles.
+        For strict mode, can set e.g. min_prop_recurrences = 0.1, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
     Returns:
         bool: True if the trajectory is not collapsing to a limit cycle, False otherwise.
     """
