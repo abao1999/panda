@@ -28,7 +28,7 @@ class SkewSystem:
     A skew-product dynamical system, which is a pair of dynamical systems: a driver and a response.
     The driver and response are coupled together by a custom user-defined map.
 
-    The class takes in two BaseDyn objects, which are dynamical systems.
+    The class takes in two BaseDyn objects, which are dynamical systems, class defined in the dysts library.
     If no coupling map is provided, a basic affine map is constructed by default.
 
     Args:
@@ -81,10 +81,7 @@ class SkewSystem:
         """
         Compute the coupling constants per dimension between the driver and response systems
         """
-        print(
-            f"Computing coupling strength between {self.driver.name} and {self.response.name}"
-        )
-        # NOTE: this is possibly not integrable, so we need to check if the trajectory is complete
+        # This is possibly not integrable, so we need to check if the trajectory is complete
         sol_driver = self.driver.make_trajectory(
             ref_traj_len, events=self.events, standardize=False
         )
@@ -130,9 +127,10 @@ class SkewSystem:
     ) -> Callable:
         """
         Wrapper for skew-product system rhs, taking in a pre-computed affine map
+        NOTE: we made coupling_map a class attribute, but consider passing it in as an arg here instead
         """
 
-        # TODO: need to standardize the rhs here
+        # TODO: need to standardize the rhs here?
         def _skew_rhs(t, combined_ics):
             """
             Skew-product system rhs signature
@@ -162,6 +160,15 @@ class SkewSystem:
 
         return _skew_rhs
 
+    def rhs(self, t, X):
+        """The right hand side of the skew system"""
+        skew_rhs = self._get_skew_rhs()
+        return skew_rhs(t, X)
+
+    def __call__(self, t, X):
+        """Wrapper around right hand side"""
+        return self.rhs(t, X)
+
     def run(
         self,
         num_periods: int = 20,
@@ -174,7 +181,17 @@ class SkewSystem:
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Run the skew-product system and return the trajectory of the driver and response systems
-        TODO: resample, timescale, postprocess
+        TODO: adapt timescale?
+
+        Args:
+            num_periods: Number of periods to integrate over
+            num_points: Number of points to integrate over
+            method: Integration method
+            rtol: Relative tolerance for integration
+            atol: Absolute tolerance for integration
+            standardize: Whether to standardize the solution to have mean 0 and std 1
+
+        Currently, the integration time is set to be the Fourier timescale, which makes tlim = num_periods * period
         """
 
         # set coupling map (default to basic affine map)
@@ -186,16 +203,32 @@ class SkewSystem:
             [np.array(self.driver.ic), np.array(self.response.ic)]
         )
 
-        # set up skew system rhs and solve
-        skew_rhs = self._get_skew_rhs()
+        # standardize the rhs
+        if standardize:
+            warnings.warn(
+                "Standardization not yet fully implemented and tested for skew systems"
+            )
 
+        # TODO: is the right standardization? i.e. can we just consider the driver and response systems separately?
+        mu_driver = self.driver.mean if standardize else np.zeros(self.n_driver)
+        std_driver = self.driver.std if standardize else np.ones(self.n_driver)
+        mu_response = self.response.mean if standardize else np.zeros(self.n_response)
+        std_response = self.response.std if standardize else np.ones(self.n_response)
+
+        mu = np.concatenate([mu_driver, mu_response])
+        std = np.concatenate([std_driver, std_response])
+
+        def standard_rhs(t, X):
+            return self(t, X * std + mu) / std
+
+        # This is the Fourier timescale
         tlim = num_periods * self.period
         tpts = np.linspace(0, tlim, num_points)
 
         sol = solve_ivp(
-            skew_rhs,
+            standard_rhs,
             [0, tlim],
-            combined_ics,
+            (combined_ics - mu) / std,
             t_eval=tpts,
             first_step=self.dt,
             method=method,
@@ -205,7 +238,6 @@ class SkewSystem:
             **kwargs,
         )
 
-        print("Solution shape: ", sol.y.shape)
         is_complete_traj = sol.y.shape[-1] == num_points
         if not is_complete_traj:
             warnings.warn(
@@ -374,7 +406,10 @@ class SkewEnsemble:
 @dataclass
 class SkewData(DystData):
     """
-    A dataset of skew-product dynamical systems
+    A dataset of skew-product dynamical systems, inherits from DystData
+    Args:
+        couple_phase_space: Whether to couple the phase space of the driver and response systems
+        couple_flows: Whether to couple the flow vectors of the driver and response systems
     """
 
     couple_phase_space: bool = True
