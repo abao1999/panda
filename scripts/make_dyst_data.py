@@ -131,6 +131,7 @@ def parse_arguments():
         "--sys-class",
         type=str,
         default="continuous",
+        choices=["continuous", "continuous_no_delay", "delay", "discrete"],
         help="System class for splitting",
     )
 
@@ -156,6 +157,7 @@ def main():
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=args.reference_traj_length,
         reference_traj_transient=args.reference_traj_transient,
+        recompute_standardization=True,  # Important!
         events=events,
         verbose=True,
     )
@@ -201,6 +203,7 @@ def main():
         dyst_data_generator.save_dyst_ensemble(
             dysts_names=train,
             split=f"{split_prefix}train",
+            split_failures="failed_attractors_train",
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_train,
@@ -208,6 +211,7 @@ def main():
         dyst_data_generator.save_dyst_ensemble(
             dysts_names=test,
             split=f"{split_prefix}test",
+            split_failures="failed_attractors_test",
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_test,

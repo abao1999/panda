@@ -6,6 +6,8 @@ from .data_utils import (
     sample_index_pairs,
     split_systems,
     stack_and_extract_metadata,
+    construct_basic_affine_map,
+    pad_array,
 )
 from .eval_utils import (
     average_nested_dict,

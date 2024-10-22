@@ -20,7 +20,7 @@ $ pip install -e .[rocm] --extra-index-url https://download.pytorch.org/whl/rocm
 ```
 
 ## Generating Dyst Dataset
-We structure our Arrow files as multivariate trajectories saved per sample instance, with default `1024` numerical integration timesteps. Each sample instance is a specific parameter perturbation and initial condition. For example, each Arrow file `[SAMPLE_IDX]_T-1024.arrow` within `[DATA_DIR]/train/Lorenz` corresponds to a single sample instance of the Lorenz system, and contains trajectories for all coordinates (dimensions) i.e. a numpy array of shape (3, 1024) for the Lorenz system.  
+We structure our Arrow files as multivariate trajectories saved per sample instance. Each sample instance is a specific parameter perturbation and initial condition. For example, each Arrow file `[SAMPLE_IDX]_T-1024.arrow` within `[DATA_DIR]/train/Lorenz` corresponds to a single sample instance of the Lorenz system, and contains trajectories for all coordinates (dimensions) i.e. a numpy array of shape (3, 1024) for the Lorenz system.  
 
 We provide several on-the-fly dataset augmentations compatible with the GluonTS framework, in [dystformer/augmentations.py](dystformer.augmentations). By default, all of these augmentations are used during training, but the choice of augmentations can be directly specified in the [dataset config](config/dataset.yaml).
 
@@ -29,36 +29,30 @@ Currently implemented data augmentations:
 - RandomConvexCombinationTransform
 - RandomProjectedSkewTransform
 
-We provide a script [make_dyst_data.py](scripts/make_dyst_data.py) for dataset generation. By default, this randomly splits all dysts into a 0.3 test/train split. You can manually specify your desired subset. Running `python scripts/make_dyst_data.py` will save trajectories for systems in the train and test splits to their respective data sub-directories. You can test the generated data and the data augmentations using our test scripts, e.g. `python tests/test_saved_data.py Lorenz` and `python tests/test_augmentations.py Lorenz Rossler`. Note that the `--one_dim_target` flag is required for Chronos dataset format, where the coordinates are split and then saved. An example workflow:
+We provide a script [make_dyst_data.py](scripts/make_dyst_data.py) for dataset generation. By default, this randomly splits all dysts into a 0.3 test/train split. You can manually specify your desired subset. Running `python scripts/make_dyst_data.py` will save trajectories for systems in the train and test splits to their respective data sub-directories. The `num-param-perturbations` and `num_ics` arguments specify the number of system parameter perturbations and initial conditions to sample from. You can test the generated data using `tests/test_saved_data.py`. Note that the `--one_dim_target` flag is required for some of the univariate models (such as Chronos), where the coordinates must be split by dimension and then saved. The `DystData` class includes a suite of attractor tests to filter out the samples that are valid attractors, please see [dyst_data.py](dystformer/dyst_data.py). An example workflow:
 
 ```
 python tests/make_dyst_data.py
 python tests/test_saved_data.py all --split train
-python tests/test_saved_data.py all --split test
-python tests/test_augmentations.py Lorenz Rossler --split train
 ```
 
-We provide a script [make_skew_systems.py](scripts/make_skew_systems.py) to generate trajectories for pairs dynamical systems, where the first system (the driver) is driving the second system (the response). TODO: work in progress. Example usage: `python scripts/make_skew_systems.py Blasius Aizawa --couple_phase_space True --couple_flows False`
+We provide a script [make_skew_systems.py](scripts/make_skew_systems.py) to search for skew system pairs (driver + response system) that yield valid attractors. This gives the user the ability to search through the space of all possible skew system pairs, and the `SkewData` class inherits from the `DystData` class. Setting `num-param-perturbations` and `num_ics` currently samples for the driver and response systems independently. Standardization is a work in progress. An example:
+```
+python scripts/make_skew_systems.py all --n_combos 40 --couple_phase_space True --couple_flows False --debug-mode
+```
 
 ### Testing Parameter and IC Perturbations
-We provide a script [test_attractor.py](scripts/test_attractor.py) to test parameter perturbations and check if the generated trajectories are valid attractors. An example workflow:
+We provide a script [test_attractor.py](scripts/test_attractor.py) to test parameter perturbations and check if the generated trajectories are valid attractors. An example workflow, which automatically saves failed attractors and valid attractors separately:
 
 ```
 ./scripts/clean_dataset.sh train all
-python tests/test_attractor.py Lorenz
-python tests/test_saved_data.py Lorenz
-```
-
-To investigate all failed attractors, run:
-```
 python tests/test_attractor.py all
-python tests/test_saved_data.py all --split failed_attractors --metadata_path tests/attractor_checks.json --samples_subset failed_samples
+python tests/test_saved_data.py all --split debug --metadata_path tests/attractor_checks.json --samples_subset valid_samples
+python tests/test_saved_data.py all --split failed_attractors_debug --metadata_path tests/attractor_checks.json --samples_subset failed_samples
 ```
-
-This will generate a trajectory ensemble for each parameter perturbation and save the trajectories to Arrow files.
 
 ## Training
-Our train and eval scripts use hydra for hierarchical config, and you can log experiments to wandb. You can simply run `CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py` or `CUDA_VISIBLE_DEVICES=0 python scripts/chronos/train.py` to run with the default configs. To run with custom configs, 
+Our train and eval scripts use hydra for hierarchical config, and you can log experiments to wandb. You can simply run `CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py` or `CUDA_VISIBLE_DEVICES=0 python scripts/chronos/train.py` to run with the default configs. 
 
 ### PatchTST Training
 See `scripts/patchtst/run_finetune.sh` for an example script.
@@ -66,7 +60,7 @@ See `scripts/patchtst/run_finetune.sh` for an example script.
 ### Chronos Training
 We are fine-tuning [Chronos](https://github.com/amazon-science/chronos-forecasting) on trajectories from dynamical systems. Chronos is itself a variation of the [T5 architecture](https://huggingface.co/docs/transformers/en/model_doc/t5) fine-tuned on various benchmark univariate timeseries datasets. Specifically, Chronos fine-tunes an deep-narrow [efficient T5](https://huggingface.co/google/t5-efficient-large).
 
-See `scripts/run_finetune.sh` for some example scripts. 
+See `scripts/chronos/run_finetune.sh` for some example scripts. 
 
 ### Distributed Training
 The torchrun launcher provides capability for distributed data-parallel (DDP) training. You can also try Huggingface's [accelerate](https://huggingface.co/docs/transformers/en/accelerate) launcher. For model-parallel training, see HF's [transformers model parallelism](https://huggingface.co/docs/transformers/v4.15.0/en/parallelism) guide.
@@ -74,13 +68,16 @@ The torchrun launcher provides capability for distributed data-parallel (DDP) tr
 If you run into a weird miopen error, see: https://github.com/pytorch/pytorch/issues/60477
 
 ## Evaluation
-To evalute the performance of a fine-tuned model, run `python scripts/evaluate.py` after setting the appropriate configuration in `configs/evaluation.yaml`. In particular, set `model_id` to point to the directory of your saved fine-tuned model checkpoint. The list of dynamical systems used for evaluation is also set in the configuration, but will default to using the test/train split.
+To evalute the performance of a fine-tuned model, run `python scripts/patchtst/evaluate.py` after setting the appropriate configuration in `configs/evaluation.yaml`. In particular, set `model_id` to point to the directory of your saved fine-tuned model checkpoint. The list of dynamical systems used for evaluation is also set in the configuration, but will default to using the test/train split.
+TODO: write up current PatchTST docs
 
 ## Development Goals
-
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
 + [MEDIUM | HARD] get torch compile working (rope is slow)
++ [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
++ [HIGH | MEDIUM] correct the standardization for skew systems, make jacobian function, and check that we don't lose numba speedup.
++ [HIGH | MEDIUM] "patchDMD" idea: apply time delay + kernels directly on patches, to lift
 + [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
@@ -89,4 +86,3 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 [W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
 [W sdp_utils.cpp:320] Warning: 1Torch was not compiled with memory efficient attention. (function operator())
 ```
-+ [LOW | EASY] Plotting utils to make it easy to debug computed quantities used in attractor checks e.g. power spectrum, polynomial fits, etc. And, enable multiprocessed attractor tests across ensemble

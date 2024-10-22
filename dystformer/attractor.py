@@ -24,7 +24,9 @@ from statsmodels.tsa.stattools import adfuller, kpss
 @dataclass
 class AttractorValidator:
     """
-    Class to handle test suite to determine if generated trajectories are valid attractors.
+    Framework to add tests, which are executed sequentially to determine if generated trajectories are valid attractors.
+    Upon first failure, the trajectory sample is added to the failed ensemble.
+    Custom tests can be added by adding functions that take a trajectory and return a boolean (True if the trajectory passes the test, False otherwise).
     """
 
     verbose: int = 1
@@ -113,6 +115,7 @@ class AttractorValidator:
                     f"Checking {dyst_name} sample {sample_idx}, shape {traj_sample.shape}"
                 )
             # Execute all tests
+            status = True
             for test_fn in self.tests:
                 status, test_name = self._execute_test_fn(
                     test_fn,
@@ -193,6 +196,7 @@ class AttractorValidator:
         for i, traj_sample in enumerate(all_traj):
             sample_idx = first_sample_idx + i
             # Execute all tests
+            status = True
             for test_fn in self.tests:
                 status, test_name = self._execute_test_fn(
                     test_fn,
@@ -308,9 +312,11 @@ def check_boundedness(
         else:
             print("Trajectory does not appear to be diverging.")
 
-    # Check if any dimension of the trajectory is a straight line
+    # Check if any dimension of the trajectory is a straight line in the last half of the trajectory
+    # NOTE: need to verify this tolerance is not too strict
+    n = traj.shape[1]
     for dim in range(traj.shape[0]):
-        if np.allclose(np.diff(traj[dim, :]), 0, atol=1e-5):
+        if np.allclose(np.diff(traj[dim, -n // 2 :]), 0, atol=1e-3):
             if verbose:
                 print(
                     f"Dimension {dim} of the trajectory appears to be a straight line."
@@ -460,7 +466,7 @@ def check_not_limit_cycle(
     tolerance: float = 1e-3,
     min_prop_recurrences: float = 0.0,
     min_counts_per_rtime: int = 100,
-    min_block_length: int = 0,
+    min_block_length: int = 1,
     min_recurrence_time: int = 1,
     enforce_endpoint_recurrence: bool = False,
     verbose: bool = False,
@@ -473,7 +479,17 @@ def check_not_limit_cycle(
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
         tolerance (float): Tolerance for detecting revisits to the same region in phase space.
-        min_num_recurrences (int): Minimum number of recurrences to consider a recurrence time
+        min_prop_recurrences (float): Minimum proportion of the trajectory length that must be recurrences to consider a limit cycle
+        min_counts_per_rtime (int): Minimum number of counts per recurrence time to consider a recurrence time as valid
+        min_block_length (int): Minimum block length of consecutive recurrence times to consider a recurrence time as valid
+        min_recurrence_time (int): Minimum recurrence time to consider a recurrence time as valid
+                e.g. Setting min_recurrence_time = 1 means that we can catch when the integration fails (or converges to fixed point)
+        enforce_endpoint_recurrence (bool): Whether to enforce that either of the endpoints are recurrences
+                e.g. Setting enforce_endpoint_recurrence = True means that we are operating in a stricter regime where we require either
+                     the initial or final point to be a recurrence (repeated some time in the trajectory).
+
+    The default args are designed to be lenient, and catch pathological cases beyond purely limit cycles.
+        For strict mode, can set e.g. min_prop_recurrences = 0.1, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
     Returns:
         bool: True if the trajectory is not collapsing to a limit cycle, False otherwise.
     """
@@ -507,13 +523,13 @@ def check_not_limit_cycle(
 
     if enforce_endpoint_recurrence:
         # check if an eps neighborhood around either n-1 or 0 is in either of the recurrence indices
-        eps = 3
+        eps = 0
         if not any(
-            (n - 1) - max(indices) < eps or min(indices) - 0 < eps
+            (n - 1) - max(indices) <= eps or min(indices) - 0 <= eps
             for indices in recurrence_indices
         ):
             if verbose:
-                print("Last time point seems to not be a recurrence.")
+                print("Neither endpoint seems to be a recurrence.")
             return True
 
     # get recurrence times
@@ -538,7 +554,7 @@ def check_not_limit_cycle(
         return True
 
     # Heuristic 3: Check if the valid recurrence times are formed of blocks of consecutive timepoints
-    if min_block_length > 0:
+    if min_block_length > 1:
         rtimes_dict = defaultdict(list)
         block_length = 1
         prev_rtime = None
@@ -570,70 +586,70 @@ def check_not_limit_cycle(
             if num_blocks >= 2:  # if valid, save computation and break
                 rtimes_is_valid = True
                 break
+        if not rtimes_is_valid:
+            return True
 
-    if rtimes_is_valid:
-        # Plot the recurrence times as histogram and 3D trajectory
-        if plot_save_dir is not None and plot_name is not None:
-            dyst_name = plot_name.split("_")[0]
-            plot_name = f"{plot_name}_recurrence_times_FAILED"
+    # Plot the recurrence times as histogram and 3D trajectory
+    # NOTE: at this point, this test has detected a limit cycle (return False)
+    if plot_save_dir is not None and plot_name is not None:
+        dyst_name = plot_name.split("_")[0]
+        plot_name = f"{plot_name}_recurrence_times_FAILED"
 
-            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 18))
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 18))
 
-            ax1.hist(recurrence_times, bins=100, edgecolor="black")
-            ax1.set_xlabel("Recurrence Time")
-            ax1.set_ylabel("Frequency")
-            ax1.set_title("Recurrence Times")
-            ax1.grid(True)
+        ax1.hist(recurrence_times, bins=100, edgecolor="black")
+        ax1.set_xlabel("Recurrence Time")
+        ax1.set_ylabel("Frequency")
+        ax1.set_title("Recurrence Times")
+        ax1.grid(True)
 
-            xyz = traj[:3, :]
-            xyz1 = xyz[:, : int(n / 2)]
-            xyz2 = xyz[:, int(n / 2) :]
-            ic_point = traj[:3, 0]
-            final_point = traj[:3, -1]
-            ax2 = fig.add_subplot(312, projection="3d")
-            ax2.plot(*xyz1, alpha=0.5, linewidth=1, color="tab:blue")
-            ax2.plot(*xyz2, alpha=0.5, linewidth=1, color="tab:orange")
-            ax2.scatter(*ic_point, marker="*", s=100, alpha=0.5, color="tab:blue")
-            ax2.scatter(*final_point, marker="x", s=100, alpha=0.5, color="tab:orange")
-            ax2.set_xlabel("X")
-            ax2.set_ylabel("Y")
-            ax2.set_zlabel("Z")  # type: ignore
-            ax2.set_title(dyst_name)
+        xyz = traj[:3, :]
+        xyz1 = xyz[:, : int(n / 2)]
+        xyz2 = xyz[:, int(n / 2) :]
+        ic_point = traj[:3, 0]
+        final_point = traj[:3, -1]
+        ax2 = fig.add_subplot(312, projection="3d")
+        ax2.plot(*xyz1, alpha=0.5, linewidth=1, color="tab:blue")
+        ax2.plot(*xyz2, alpha=0.5, linewidth=1, color="tab:orange")
+        ax2.scatter(*ic_point, marker="*", s=100, alpha=0.5, color="tab:blue")
+        ax2.scatter(*final_point, marker="x", s=100, alpha=0.5, color="tab:orange")
+        ax2.set_xlabel("X")
+        ax2.set_ylabel("Y")
+        ax2.set_zlabel("Z")  # type: ignore
+        ax2.set_title(dyst_name)
 
-            ax3 = fig.add_subplot(313)
-            X, Y = np.meshgrid(
-                np.arange(dist_matrix.shape[0]), np.arange(dist_matrix.shape[1])
-            )
-            pcolormesh = ax3.pcolormesh(
-                X,
-                Y,
-                dist_matrix,
-                cmap="viridis_r",
-                shading="auto",
-                norm=colors.LogNorm(),
-            )
-            plt.colorbar(pcolormesh, ax=ax3)
-            ax3.scatter(
-                recurrence_indices[0],
-                recurrence_indices[1],
-                color="black",
-                s=20,
-                alpha=0.5,
-            )
-            ax3.set_title("Recurrence Distance Matrix")
-            ax3.set_xlabel("Time")
-            ax3.set_ylabel("Time")
-            ax3.set_aspect("equal")
+        ax3 = fig.add_subplot(313)
+        X, Y = np.meshgrid(
+            np.arange(dist_matrix.shape[0]), np.arange(dist_matrix.shape[1])
+        )
+        pcolormesh = ax3.pcolormesh(
+            X,
+            Y,
+            dist_matrix,
+            cmap="viridis_r",
+            shading="auto",
+            norm=colors.LogNorm(),
+        )
+        plt.colorbar(pcolormesh, ax=ax3)
+        ax3.scatter(
+            recurrence_indices[0],
+            recurrence_indices[1],
+            color="black",
+            s=20,
+            alpha=0.5,
+        )
+        ax3.set_title("Recurrence Distance Matrix")
+        ax3.set_xlabel("Time")
+        ax3.set_ylabel("Time")
+        ax3.set_aspect("equal")
 
-            plot_save_path = os.path.join(plot_save_dir, f"{plot_name}.png")
-            plt.savefig(plot_save_path, dpi=300)
-            plt.tight_layout()
-            plt.close()
-
-        return False
+        plot_save_path = os.path.join(plot_save_dir, f"{plot_name}.png")
+        plt.savefig(plot_save_path, dpi=300)
+        plt.tight_layout()
+        plt.close()
 
     # Step 4: Identify if recurrences are periodic by looking at concentration
-    return True
+    return False
 
 
 def check_lyapunov_exponent(

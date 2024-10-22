@@ -127,6 +127,7 @@ class DystData:
         self,
         dysts_names: List[str],
         split: str = "train",
+        split_failures: str = "failed_attractors",
         samples_process_interval: int = 1,
         save_dir: Optional[str] = None,
         standardize: bool = False,
@@ -135,7 +136,9 @@ class DystData:
             f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}"
         )
 
-        save_dyst_dir, failed_dyst_dir = self._prepare_save_directories(save_dir, split)
+        save_dyst_dir, failed_dyst_dir = self._prepare_save_directories(
+            save_dir, split, split_failures=split_failures
+        )
         num_total_samples = self.num_param_perturbations * self.num_ics
 
         def process_and_save_callback():
@@ -227,13 +230,16 @@ class DystData:
                     event.reset()
 
     def _prepare_save_directories(
-        self, save_dir: Optional[str], split: str
+        self,
+        save_dir: Optional[str],
+        split: str,
+        split_failures: str = "failed_attractors",
     ) -> Tuple[Optional[str], Optional[str]]:
         if save_dir is not None:
             save_dyst_dir = os.path.join(save_dir, split)
             os.makedirs(save_dyst_dir, exist_ok=True)
             if self.debug_mode:
-                failed_dyst_dir = os.path.join(save_dir, "failed_attractors")
+                failed_dyst_dir = os.path.join(save_dir, split_failures)
                 os.makedirs(failed_dyst_dir, exist_ok=True)
                 print(f"valid attractors will be saved to {save_dyst_dir}")
                 print(f"failed attractors will be saved to {failed_dyst_dir}")
