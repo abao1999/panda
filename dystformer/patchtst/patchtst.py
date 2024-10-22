@@ -40,6 +40,57 @@ class PatchTSTEmbedding(nn.Module):
         return embeddings
 
 
+class PatchTSTDynamicsEmbedding(nn.Module):
+    """
+    Embeds patch inputs non-parametrically with a Takens embedding augmented by random Fourier features
+    """
+
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+        self.delay = config.delay
+        self.d_model = config.d_model
+        self.scale = torch.sqrt(torch.tensor(2.0 / self.d_model))
+        self.register_buffer(
+            # TODO: the shapes need to match the delay embedding
+            "random_matrix",
+            torch.randn(config.patch_length, self.d_model // 2),
+        )
+
+    def delay_embed(self, patch_input: torch.Tensor) -> torch.Tensor:
+        """
+        Embed via Takens by interleaving the delay embeddings
+
+        TODO: do this
+        """
+        return patch_input
+
+    def forward(self, patch_input: torch.Tensor) -> torch.Tensor:
+        """
+        Apply random Fourier features embedding to the patch input.
+
+        Parameters:
+            patch_input (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
+                Patch input for embedding
+
+        Returns:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
+        """
+        batch_size, num_channels, num_patches, patch_length = patch_input.shape
+
+        # Apply delay embedding
+        delayed_input = self.delay_embed(patch_input)
+
+        # Apply random Fourier features
+        projection = torch.matmul(delayed_input, self.random_matrix)
+        cos_features = torch.cos(projection)
+        sin_features = torch.sin(projection)
+
+        # Concatenate cos and sin features
+        embedded = self.scale * torch.cat([cos_features, sin_features], dim=-1)
+
+        return embedded
+
+
 class PatchTSTRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
         """
@@ -772,10 +823,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             output_attentions=output_attentions,
             return_dict=True,
         )
-
-        # both shapes: [bs x num_channels, 1, 1]
-        scale = model_output.scale.transpose(-1, -2).unsqueeze(-2)
-        loc = model_output.loc.transpose(-1, -2).unsqueeze(-2)
 
         x_hat = model_output.last_hidden_state
 
