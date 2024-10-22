@@ -74,11 +74,14 @@ TODO: write up current PatchTST docs
 ## Development Goals
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
++ [HIGH | MEDIUM] Get prediction finetuning working from mlm pretrained checkpoint.
 + [HIGH | MEDIUM] refactor augmentations to work with multivariate data
 + [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
 + [HIGH | MEDIUM] correct the standardization for skew systems, make jacobian function, and check that we don't lose numba speedup.
-+ [HIGH | MEDIUM] "patchDMD" idea: apply time delay + kernels directly on patches, to lift
-+ [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
++ [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data. Should we use standardization for mlm pretraining? the loss goes down after a while, and is smooth, and would simplify the whole pipeline.
++ [MEDIUM | MEDIUM] add feature to allow user to specify whether to use rope. We may want to use no positional encoding for mlm pretraining, but use rope for prediction finetuning.
++ [LOW | MEDIUM] curriculum learning setup for growing the training dataset - use some notion of complexity/hardness to learn.
++ [LOW | HARD] figure out how to adjust the timescales for parameter perturbations. See random phase surrogate method, make faster.
 + [MEDIUM | HARD] get torch compile working (rope is slow)
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
