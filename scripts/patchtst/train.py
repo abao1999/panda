@@ -153,7 +153,20 @@ def main(cfg):
         fixed_dim=cfg.fixed_dim,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    model = PatchTST(dict(cfg.patchtst), mode=cfg.patchtst.mode)
+    if (
+        cfg.patchtst.mode == "predict"
+        and cfg.patchtst.pretrained_encoder_path is not None
+    ):
+        log_on_main(
+            f"Loading pretrained encoder from {cfg.patchtst.pretrained_encoder_path}",
+            logger,
+        )
+
+    model = PatchTST(
+        dict(cfg.patchtst),
+        mode=cfg.patchtst.mode,
+        pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
+    )
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_on_main(f"Total trainable parameters: {trainable_params:,}", logger)

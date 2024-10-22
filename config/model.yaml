@@ -43,20 +43,11 @@ patchtst:
   output_range: null
   num_parallel_samples: 100
 
-  num_experts: 8
+  # rope positional embeddings
+  max_wavelength: 5000
+  rope_percent: 0.8
 
-  # for the channel mixing head
-  mix_channels: false
-  mixing_d_model: 128
-  mixing_num_attention_heads: 4
-  mixing_attention_dropout: 0.0
-  mixing_path_dropout: 0.0
-  mixing_norm_eps: 1e-05
-  mixing_ffn_dim: 512
-  mixing_bias: true
-  mixing_activation_function: "gelu"
-  mixing_ff_dropout: 0.0
-  mixing_pre_norm: true
+  pretrained_encoder_path: null
 
 chronos:
   model_id: amazon/chronos-t5-small

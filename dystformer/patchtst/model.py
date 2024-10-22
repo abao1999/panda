@@ -57,7 +57,7 @@ class PatchTST(nn.Module):
         elif mode == "predict":
             self.model = PatchTSTForPrediction(self.config)
 
-        if pretrained_encoder_path is not None:
+        if pretrained_encoder_path is not None and mode == "predict":
             self.load_pretrained_encoder(pretrained_encoder_path)
 
     @property

@@ -80,13 +80,9 @@ To evalute the performance of a fine-tuned model, run `python scripts/evaluate.p
 
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
++ [MEDIUM | HARD] get torch compile working (rope is slow)
 + [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
-+ [HIGH | HARD] limit cycle test for generating data
-+ [HIGH | EASY] [QUESTION] are random or regular predictions windows better?
-+ [HIGH | EASY] [QUESTION] figure out how to properly configure eval metrics (e.g. whats the right seasonality for mase?)
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
-+ [MEDIUM | MEDIUM] implement a better parameter sampler for generating dyst data
-+ [LOW | MEDIUM] different positional encoding might allow for torch compile to work !!!
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
 + [LOW | HARD] add flash attention support for AMD, see this warning: 
 ```

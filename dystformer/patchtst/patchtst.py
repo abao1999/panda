@@ -1,6 +1,4 @@
-"""
-Exposed PatchTST model, taken from HuggingFace transformers
-"""
+"""Exposed PatchTST model, taken from HuggingFace transformers"""
 
 from typing import Optional, Tuple, Union
 
@@ -12,14 +10,11 @@ from transformers.models.patchtst.modeling_patchtst import (
     BaseModelOutput,
     NegativeBinomialOutput,
     NormalOutput,
-    PatchTSTAttention,
-    PatchTSTEncoderLayer,
     PatchTSTForPredictionOutput,
     PatchTSTForPretrainingOutput,
     PatchTSTMasking,
     PatchTSTModelOutput,
     PatchTSTPatchify,
-    PatchTSTPositionalEncoding,
     PatchTSTScaler,
     SamplePatchTSTOutput,
     StudentTOutput,
@@ -45,85 +40,340 @@ class PatchTSTEmbedding(nn.Module):
         return embeddings
 
 
-class PatchTSTMixtureEmbedding(nn.Module):
-    def __init__(self, config: PatchTSTConfig):
+class PatchTSTRMSNorm(nn.Module):
+    def __init__(self, hidden_size, eps=1e-6):
+        """
+        Stolen from Llama
+        """
         super().__init__()
-        self.num_experts = config.num_experts
-        self.experts = nn.ModuleList(
-            [
-                nn.Linear(config.patch_length, config.d_model)
-                for _ in range(self.num_experts)
-            ]
-        )
-        self.gate = nn.Linear(config.patch_length, self.num_experts)
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = eps
 
-    def forward(self, patch_input: torch.Tensor):
-        """
-        Parameters:
-            patch_input (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
-                Patch input for embedding
-        return:
-            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
-        """
-        gate_scores = self.gate(patch_input)
-        gate_weights = torch.softmax(gate_scores, dim=-1)
-
-        expert_outputs = torch.stack(
-            [expert(patch_input) for expert in self.experts], dim=-1
-        )
-
-        embeddings = torch.einsum("...de,...e->...d", expert_outputs, gate_weights)
-        return embeddings
+    def forward(self, hidden_states):
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * hidden_states.to(input_dtype)
 
 
-class PatchTSTChannelAttention(nn.Module):
+def apply_p_rope_to_qk(
+    query_states: torch.Tensor,
+    key_states: torch.Tensor,
+    position_ids: torch.Tensor,
+    head_dim: int,
+    max_wavelength: int,
+    rope_percent: float,
+):
     """
-    Channel attention layer
+    Apply p-rotary positional embeddings to the query and key tensors
+
+    from: https://arxiv.org/pdf/2410.06205
+    """
+    rope_angles = int(rope_percent * head_dim // 2)
+    nope_angles = head_dim // 2 - rope_angles
+    fraction = (
+        2.0
+        * torch.arange(
+            0, rope_angles, device=query_states.device, dtype=query_states.dtype
+        )
+        / head_dim
+    )
+    timescale = torch.nn.functional.pad(
+        max_wavelength**fraction,
+        (0, nope_angles),
+        mode="constant",
+        value=torch.inf,
+    )
+
+    # want angles to have shape (..., 1, seq_len, head_dim//2)
+    sinusoid_inp = position_ids[..., None, :, None] / timescale[None, :]
+    sin = torch.sin(sinusoid_inp)
+    cos = torch.cos(sinusoid_inp)
+
+    query_first_half, query_second_half = torch.split(
+        query_states, query_states.shape[-1] // 2, dim=-1
+    )
+    key_first_half, key_second_half = torch.split(
+        key_states, key_states.shape[-1] // 2, dim=-1
+    )
+
+    query_first_part = query_first_half * cos - query_second_half * sin
+    query_second_part = query_second_half * cos + query_first_half * sin
+
+    key_first_part = key_first_half * cos - key_second_half * sin
+    key_second_part = key_second_half * cos + key_first_half * sin
+
+    query_states = torch.cat([query_first_part, query_second_part], dim=-1)
+    key_states = torch.cat([key_first_part, key_second_part], dim=-1)
+
+    return query_states, key_states
+
+
+class PatchTSTRopeAttention(nn.Module):
+    """
+    Multi-headed attention from 'Attention Is All You Need' paper
+
+    Implemented with p-rotary positional embeddings
     """
 
     def __init__(
         self,
-        d_model: int,
-        num_attention_heads: int,
-        attention_dropout: float,
-        path_dropout: float,
-        norm_eps: float,
-        ffn_dim: int,
-        bias: bool,
-        activation_function: str,
-        ff_dropout: float,
-        pre_norm: bool,
+        embed_dim: int,
+        num_heads: int,
+        dropout: float = 0.0,
+        is_decoder: bool = False,
+        bias: bool = True,
+        is_causal: bool = False,
+        max_wavelength: int = 10000,
+        rope_percent: float = 0.5,
+        config: Optional[PatchTSTConfig] = None,
     ):
         super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.dropout = dropout
+        self.head_dim = embed_dim // num_heads
+        self.max_wavelength = max_wavelength
+        self.rope_percent = rope_percent
+        self.config = config
 
+        if (self.head_dim * num_heads) != self.embed_dim:
+            raise ValueError(
+                f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim}"
+                f" and `num_heads`: {num_heads})."
+            )
+        self.scaling = self.head_dim**-0.5
+        self.is_decoder = is_decoder
+        self.is_causal = is_causal
+
+        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.v_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+
+    def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
+        return (
+            tensor.view(bsz, seq_len, self.num_heads, self.head_dim)
+            .transpose(1, 2)
+            .contiguous()
+        )
+
+    def get_seq_pos(self, seq_len, device, dtype, offset=0):
+        return torch.arange(seq_len, device=device, dtype=dtype) + offset
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        key_value_states: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        layer_head_mask: Optional[torch.Tensor] = None,
+        output_attentions: bool = False,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        """Input shape: Batch x Time x Channel"""
+
+        # if key_value_states are provided this layer is used as a cross-attention layer
+        # for the decoder
+        is_cross_attention = key_value_states is not None
+
+        bsz, tgt_len, _ = hidden_states.size()
+
+        # get query proj
+        query_states = self.q_proj(hidden_states) * self.scaling
+        # get key, value proj
+        # `past_key_value[0].shape[2] == key_value_states.shape[1]`
+        # is checking that the `sequence_length` of the `past_key_value` is the same as
+        # the provided `key_value_states` to support prefix tuning
+        if (
+            is_cross_attention
+            and past_key_value is not None
+            and past_key_value[0].shape[2] == key_value_states.shape[1]
+        ):
+            # reuse k,v, cross_attentions
+            key_states = past_key_value[0]
+            value_states = past_key_value[1]  # type: ignore
+        elif is_cross_attention:
+            # cross_attentions
+            key_states = self._shape(self.k_proj(key_value_states), -1, bsz)
+            value_states = self._shape(self.v_proj(key_value_states), -1, bsz)
+        elif past_key_value is not None:
+            # reuse k, v, self_attention
+            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
+            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+            key_states = torch.cat([past_key_value[0], key_states], dim=2)  # type: ignore
+            value_states = torch.cat([past_key_value[1], value_states], dim=2)  # type: ignore
+        else:
+            # self_attention
+            key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
+            value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
+
+        if self.is_decoder:
+            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
+            # Further calls to cross_attention layer can then reuse all cross-attention
+            # key/value_states (first "if" case)
+            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
+            # all previous decoder key/value_states. Further calls to uni-directional self-attention
+            # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
+            # if encoder bi-directional self-attention `past_key_value` is always `None`
+            past_key_value = (key_states, value_states)  # type: ignore
+
+        proj_shape = (bsz * self.num_heads, -1, self.head_dim)
+        query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
+        key_states = key_states.reshape(*proj_shape)
+        value_states = value_states.reshape(*proj_shape)
+
+        # apply rotary positional embeddings
+        src_len = key_states.size(1)
+        position_ids = self.get_seq_pos(src_len, key_states.device, key_states.dtype)
+        key_states, query_states = apply_p_rope_to_qk(
+            key_states,
+            query_states,
+            position_ids,
+            self.head_dim,
+            self.max_wavelength,
+            self.rope_percent,
+        )
+
+        attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
+
+        if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
+            raise ValueError(
+                f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is"
+                f" {attn_weights.size()}"
+            )
+
+        if attention_mask is not None:
+            if attention_mask.size() != (bsz, 1, tgt_len, src_len):
+                raise ValueError(
+                    f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
+                )
+            attn_weights = (
+                attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
+                + attention_mask
+            )
+            attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1)
+
+        if layer_head_mask is not None:
+            if layer_head_mask.size() != (self.num_heads,):
+                raise ValueError(
+                    f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
+                    f" {layer_head_mask.size()}"
+                )
+            attn_weights = layer_head_mask.view(1, -1, 1, 1) * attn_weights.view(
+                bsz, self.num_heads, tgt_len, src_len
+            )
+            attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+
+        if output_attentions:
+            # this operation is a bit awkward, but it's required to
+            # make sure that attn_weights keeps its gradient.
+            # In order to do so, attn_weights have to be reshaped
+            # twice and have to be reused in the following
+            attn_weights_reshaped = attn_weights.view(
+                bsz, self.num_heads, tgt_len, src_len
+            )
+            attn_weights = attn_weights_reshaped.view(
+                bsz * self.num_heads, tgt_len, src_len
+            )
+        else:
+            attn_weights_reshaped = None
+
+        attn_probs = nn.functional.dropout(
+            attn_weights, p=self.dropout, training=self.training
+        )
+
+        attn_output = torch.bmm(attn_probs, value_states)
+
+        if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
+            raise ValueError(
+                f"`attn_output` should be of size {(bsz * self.num_heads, tgt_len, self.head_dim)}, but is"
+                f" {attn_output.size()}"
+            )
+
+        attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
+        attn_output = attn_output.transpose(1, 2)
+
+        # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
+        # partitioned across GPUs when using tensor-parallelism.
+        attn_output = attn_output.reshape(bsz, tgt_len, self.embed_dim)
+
+        attn_output = self.out_proj(attn_output)
+
+        return attn_output, attn_weights_reshaped, past_key_value
+
+
+class PatchTSTEncoderLayerWithRope(nn.Module):
+    """
+    PatchTST encoder layer with rope positional embeddings
+    """
+
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+
+        self.channel_attention = config.channel_attention
         # Multi-Head attention
-        self.self_attn = PatchTSTAttention(
-            embed_dim=d_model,
-            num_heads=num_attention_heads,
-            dropout=attention_dropout,
+        self.self_attn = PatchTSTRopeAttention(
+            embed_dim=config.d_model,
+            num_heads=config.num_attention_heads,
+            dropout=config.attention_dropout,
+            max_wavelength=config.max_wavelength,
+            rope_percent=config.rope_percent,
         )
 
         # Add & Norm of the sublayer 1
         self.dropout_path1 = (
-            nn.Dropout(path_dropout) if path_dropout > 0 else nn.Identity()
+            nn.Dropout(config.path_dropout)
+            if config.path_dropout > 0
+            else nn.Identity()
         )
-        self.norm_sublayer1 = nn.LayerNorm(d_model, eps=norm_eps)
+        if config.norm_type == "rmsnorm":
+            self.norm_sublayer1 = PatchTSTRMSNorm(config.d_model, config.norm_eps)
+        elif config.norm_type == "layernorm":
+            self.norm_sublayer1 = nn.LayerNorm(config.d_model, eps=config.norm_eps)
+        else:
+            raise ValueError(f"{config.norm_type} is not a supported norm layer type.")
+
+        # Add & Norm of the sublayer 2
+        if self.channel_attention:
+            self.dropout_path2 = (
+                nn.Dropout(config.path_dropout)
+                if config.path_dropout > 0
+                else nn.Identity()
+            )
+            if config.norm_type == "rmsnorm":
+                self.norm_sublayer2 = PatchTSTRMSNorm(config.d_model, config.norm_eps)
+            elif config.norm_type == "layernorm":
+                self.norm_sublayer2 = nn.LayerNorm(config.d_model, eps=config.norm_eps)
+            else:
+                raise ValueError(
+                    f"{config.norm_type} is not a supported norm layer type."
+                )
 
         # Position-wise Feed-Forward
         self.ff = nn.Sequential(
-            nn.Linear(d_model, ffn_dim, bias=bias),
-            ACT2CLS[activation_function](),
-            nn.Dropout(ff_dropout) if ff_dropout > 0 else nn.Identity(),
-            nn.Linear(ffn_dim, d_model, bias=bias),
+            nn.Linear(config.d_model, config.ffn_dim, bias=config.bias),
+            ACT2CLS[config.activation_function](),
+            nn.Dropout(config.ff_dropout) if config.ff_dropout > 0 else nn.Identity(),
+            nn.Linear(config.ffn_dim, config.d_model, bias=config.bias),
         )
 
-        # Add & Norm of sublayer 2
-        self.dropout_path2 = (
-            nn.Dropout(path_dropout) if path_dropout > 0 else nn.Identity()
+        # Add & Norm of sublayer 3
+        self.dropout_path3 = (
+            nn.Dropout(config.path_dropout)
+            if config.path_dropout > 0
+            else nn.Identity()
         )
-        self.norm_sublayer2 = nn.LayerNorm(d_model, eps=norm_eps)
+        if config.norm_type == "rmsnorm":
+            self.norm_sublayer3 = PatchTSTRMSNorm(config.d_model, config.norm_eps)
+        elif config.norm_type == "layernorm":
+            self.norm_sublayer3 = nn.LayerNorm(config.d_model, eps=config.norm_eps)
+        else:
+            raise ValueError(f"{config.norm_type} is not a supported norm layer type.")
 
-        self.pre_norm = pre_norm
+        self.pre_norm = config.pre_norm
 
     def forward(
         self, hidden_state: torch.Tensor, output_attentions: Optional[bool] = None
@@ -140,40 +390,70 @@ class PatchTSTChannelAttention(nn.Module):
         """
         batch_size, num_input_channels, sequence_length, d_model = hidden_state.shape
 
-        # first sublayer: attention across channels
-        # hidden_state: [bs x sequence_length x num_channels x d_model]
-        hidden_state = hidden_state.transpose(2, 1).contiguous()
-        # hidden_state: [(bs*sequence_length) x num_channels x d_model]
+        # First sublayer: attention across time
+        # hidden_states: [(bs*num_channels) x sequence_length x d_model]
         hidden_state = hidden_state.view(
-            batch_size * sequence_length, num_input_channels, d_model
+            batch_size * num_input_channels, sequence_length, d_model
         )
+
         if self.pre_norm:
             ## Norm and Multi-Head attention and Add residual connection
-            attn_output, channel_attn_weights, _ = self.self_attn(
+            attn_output, attn_weights, _ = self.self_attn(
                 hidden_states=self.norm_sublayer1(hidden_state),
                 output_attentions=output_attentions,
             )
             # Add: residual connection with residual dropout
             hidden_state = hidden_state + self.dropout_path1(attn_output)
         else:
-            ## Multi-Head attention and Add residual connection and Norm
-            attn_output, channel_attn_weights, _ = self.self_attn(
+            ## Multi-Head attention and Add residual connection and Norm - Standard Transformer from BERT
+            attn_output, attn_weights, _ = self.self_attn(
                 hidden_states=hidden_state, output_attentions=output_attentions
             )
-            # hidden_states: [(bs*sequence_length) x num_channels x d_model]
+            # hidden_states: [(bs*num_channels) x sequence_length x d_model]
             hidden_state = self.norm_sublayer1(
                 hidden_state + self.dropout_path1(attn_output)
             )
 
-        # Reshape hidden state
-        # hidden_state: [bs x sequence_length x num_channels x d_model]
-        hidden_state = hidden_state.reshape(
-            batch_size, sequence_length, num_input_channels, d_model
-        )
         # hidden_state: [bs x num_channels x sequence_length x d_model]
-        hidden_state = hidden_state.transpose(1, 2).contiguous()
+        hidden_state = hidden_state.reshape(
+            batch_size, num_input_channels, sequence_length, d_model
+        )
 
-        # second sublayer: mixing across hidden
+        # second sublayer: attention across variable at any given time
+        if self.channel_attention:
+            # hidden_state: [bs x sequence_length x num_channels x d_model]
+            hidden_state = hidden_state.transpose(2, 1).contiguous()
+            # hidden_state: [(bs*sequence_length) x num_channels x d_model]
+            hidden_state = hidden_state.view(
+                batch_size * sequence_length, num_input_channels, d_model
+            )
+            if self.pre_norm:
+                ## Norm and Multi-Head attention and Add residual connection
+                attn_output, channel_attn_weights, _ = self.self_attn(
+                    hidden_states=self.norm_sublayer2(hidden_state),
+                    output_attentions=output_attentions,
+                )
+                # Add: residual connection with residual dropout
+                hidden_state = hidden_state + self.dropout_path2(attn_output)
+            else:
+                ## Multi-Head attention and Add residual connection and Norm
+                attn_output, channel_attn_weights, _ = self.self_attn(
+                    hidden_states=hidden_state, output_attentions=output_attentions
+                )
+                # hidden_states: [(bs*sequence_length) x num_channels x d_model]
+                hidden_state = self.norm_sublayer2(
+                    hidden_state + self.dropout_path2(attn_output)
+                )
+
+            # Reshape hidden state
+            # hidden_state: [bs x sequence_length x num_channels x d_model]
+            hidden_state = hidden_state.reshape(
+                batch_size, sequence_length, num_input_channels, d_model
+            )
+            # hidden_state: [bs x num_channels x sequence_length x d_model]
+            hidden_state = hidden_state.transpose(1, 2).contiguous()
+
+        # Third sublayer: mixing across hidden
         # hidden_state: [(batch_size*num_channels) x sequence_length x d_model]
         hidden_state = hidden_state.view(
             batch_size * num_input_channels, sequence_length, d_model
@@ -181,14 +461,14 @@ class PatchTSTChannelAttention(nn.Module):
         if self.pre_norm:
             ## Norm and Position-wise Feed-Forward and Add residual connection
             # Add: residual connection with residual dropout
-            hidden_state = hidden_state + self.dropout_path2(
-                self.ff(self.norm_sublayer2(hidden_state))
+            hidden_state = hidden_state + self.dropout_path3(
+                self.ff(self.norm_sublayer3(hidden_state))
             )
         else:
             ## Position-wise Feed-Forward and Add residual connection and Norm
             # Add: residual connection with residual dropout
-            hidden_state = self.norm_sublayer2(
-                hidden_state + self.dropout_path2(self.ff(hidden_state))
+            hidden_state = self.norm_sublayer3(
+                hidden_state + self.dropout_path3(self.ff(hidden_state))
             )
 
         # [bs x num_channels x sequence_length x d_model]
@@ -198,7 +478,12 @@ class PatchTSTChannelAttention(nn.Module):
 
         outputs = (hidden_state,)
         if output_attentions:
-            outputs += (channel_attn_weights,)
+            outputs += (
+                (attn_weights, channel_attn_weights)
+                if self.channel_attention
+                else (attn_weights,)
+            )
+
         return outputs
 
 
@@ -213,11 +498,16 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
 
         # Input embedding: projection of feature vectors onto a d-dim vector space
         self.embedder = PatchTSTEmbedding(config)
+
         # Positional encoding
-        self.positional_encoder = PatchTSTPositionalEncoding(config, num_patches)
+        # self.positional_encoder = PatchTSTPositionalEncoding(config, num_patches)
+
         # Encoder
         self.layers = nn.ModuleList(
-            [PatchTSTEncoderLayer(config) for i in range(config.num_hidden_layers)]
+            [
+                PatchTSTEncoderLayerWithRope(config)
+                for i in range(config.num_hidden_layers)
+            ]
         )
 
         # Initialize weights and apply final processing
@@ -252,8 +542,10 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
 
         # Input embedding
         patch_input = self.embedder(patch_input)
+        hidden_state = patch_input
+
         # Positional encoding
-        hidden_state = self.positional_encoder(patch_input)
+        # hidden_state = self.positional_encoder(patch_input)
 
         encoder_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
@@ -273,8 +565,8 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
                 all_attentions = all_attentions + (layer_outputs[1],)  # type: ignore
         # return past_values, hidden_states
         return BaseModelOutput(
-            last_hidden_state=hidden_state,
-            hidden_states=encoder_states,
+            last_hidden_state=hidden_state,  # type: ignore
+            hidden_states=encoder_states,  # type: ignore
             attentions=all_attentions,
         )
 
@@ -434,20 +726,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         )
         self.loss = nn.MSELoss(reduction="none")
 
-        if config.mix_channels:
-            self.mixing_head = PatchTSTChannelAttention(
-                d_model=config.d_model,
-                num_attention_heads=config.mixing_num_attention_heads,
-                attention_dropout=config.mixing_attention_dropout,
-                path_dropout=config.mixing_path_dropout,
-                norm_eps=config.mixing_norm_eps,
-                ffn_dim=config.mixing_ffn_dim,
-                bias=config.mixing_bias,
-                activation_function=config.mixing_activation_function,
-                ff_dropout=config.mixing_ff_dropout,
-                pre_norm=config.mixing_pre_norm,
-            )
-
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -500,11 +778,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         loc = model_output.loc.transpose(-1, -2).unsqueeze(-2)
 
         x_hat = model_output.last_hidden_state
-
-        # self attention over the channel dim (permutation invariantly)
-        if self.config.mix_channels:
-            # x_hat_embeds: [bs x num_channels x num_patches x d_model]
-            (x_hat,) = self.mixing_head(model_output.last_hidden_state)
 
         # last_hidden_state: [bs x num_channels x num_patches x d_model] or
         # [bs x num_channels x (num_patches+1) x d_model] if use cls_token

@@ -130,7 +130,9 @@ def main(cfg):
     }
 
     model = PatchTST(
-        cfg.patchtst, mode="predict", pretrained_encoder_path=cfg.eval.checkpoint_path
+        cfg.patchtst,
+        mode="predict",
+        pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
     )
     model.eval()
 
