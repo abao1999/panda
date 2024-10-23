@@ -112,7 +112,6 @@ class SkewSystem:
         self.coupling_map = construct_basic_affine_map(
             self.n_driver, self.n_response, kappa
         )
-        print("Coupling map: ", self.coupling_map)
 
     def _apply_coupling_map(self, x: np.ndarray, y: np.ndarray) -> List[np.ndarray]:
         """
@@ -222,6 +221,7 @@ class SkewSystem:
         std = np.concatenate([std_driver, std_response])
 
         def standard_rhs(t, X):
+            # TODO: divide by zero error
             return self(t, X * std + mu) / std
 
         # This is the Fourier timescale

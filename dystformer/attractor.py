@@ -30,7 +30,7 @@ class AttractorValidator:
     """
 
     verbose: int = 1
-    transient_time_frac: float = 0.2
+    transient_time_frac: float = 0.05  # should be low, should be on attractor
     plot_save_dir: Optional[str] = None
 
     def __post_init__(self):
@@ -319,7 +319,7 @@ def check_boundedness(
         if np.allclose(np.diff(traj[dim, -n // 2 :]), 0, atol=1e-3):
             if verbose:
                 print(
-                    f"Dimension {dim} of the trajectory appears to be a straight line."
+                    f"Dimension {dim} of the trajectory appears to collapse to a straight line."
                 )
             return False
 
