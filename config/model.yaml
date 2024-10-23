@@ -47,6 +47,9 @@ patchtst:
   max_wavelength: 5000
   rope_percent: 0.8
 
+  # dynamics embedding
+  delay: 4
+
   pretrained_encoder_path: null
 
 chronos:

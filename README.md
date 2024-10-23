@@ -79,6 +79,7 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 + [HIGH | MEDIUM] correct the standardization for skew systems, make jacobian function, and check that we don't lose numba speedup.
 + [HIGH | MEDIUM] "patchDMD" idea: apply time delay + kernels directly on patches, to lift
 + [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
++ [MEDIUM | EASY] check if rolling order in the delay embedding is correct/matters
 + [MEDIUM | HARD] get torch compile working (rope is slow)
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
