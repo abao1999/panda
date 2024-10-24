@@ -28,6 +28,7 @@ class RandomConvexCombinationTransform(Dataset):
     num_combinations: int
     alpha: float
     random_seed: Optional[int] = 0
+    split_coords: bool = False
 
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng(self.random_seed)
@@ -37,9 +38,17 @@ class RandomConvexCombinationTransform(Dataset):
         coeffs = self.rng.dirichlet(
             self.alpha * np.ones(coordinates.shape[0]), size=self.num_combinations
         )
-        return (
-            {"start": metadata[0], "target": combo} for combo in coeffs @ coordinates
-        )
+
+        if self.split_coords:
+            data_iterator = (
+                {"start": metadata[0], "target": combo}
+                for combo in coeffs @ coordinates
+            )
+        else:
+            data_iterator = iter(
+                [{"start": metadata[0], "target": coeffs @ coordinates}]
+            )
+        return data_iterator
 
 
 @dataclass
@@ -57,6 +66,7 @@ class RandomAffineTransform(Dataset):
     out_dim: int
     scale: float
     random_seed: Optional[int] = 0
+    split_coords: bool = False
 
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng(self.random_seed)
@@ -69,7 +79,13 @@ class RandomAffineTransform(Dataset):
         combos = (
             affine_transform[:, :-1] @ coordinates + affine_transform[:, -1, np.newaxis]
         )
-        return ({"start": metadata[0], "target": combination} for combination in combos)
+        if self.split_coords:
+            data_iterator = (
+                {"start": metadata[0], "target": combo} for combo in combos
+            )
+        else:
+            data_iterator = iter([{"start": metadata[0], "target": combos}])
+        return data_iterator
 
 
 @dataclass
@@ -86,6 +102,7 @@ class RandomProjectedSkewTransform:
     embedding_dim: int  # embedding dimension for the skew projection
     scale: float  # scale for the gaussian random projection matrices
     random_seed: Optional[int] = 0
+    split_coords: bool = False
 
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng(self.random_seed)
@@ -100,4 +117,10 @@ class RandomProjectedSkewTransform:
             scale=self.scale, size=(self.embedding_dim, coords2.shape[0])
         )
         transformed = proj1 @ coords1 + proj2 @ coords2
-        return ({"start": metadata[0], "target": coord} for coord in transformed)
+        if self.split_coords:
+            data_iterator = (
+                {"start": metadata[0], "target": coord} for coord in transformed
+            )
+        else:
+            data_iterator = iter([{"start": metadata[0], "target": transformed}])
+        return data_iterator

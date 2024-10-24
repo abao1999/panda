@@ -50,13 +50,13 @@ def parse_arguments():
     parser.add_argument(
         "--max-duration",
         type=int,
-        default=60 * 3,
+        default=60 * 4,
         help="Maximum duration for the TimeLimitEvent",
     )
     parser.add_argument(
         "--instability-threshold",
         type=float,
-        default=5e2,
+        default=1e3,
         help="Threshold for the InstabilityEvent",
     )
     parser.add_argument(
@@ -80,25 +80,25 @@ def parse_arguments():
     parser.add_argument(
         "--num-periods",
         type=int,
-        default=10,
+        default=20,
         help="Number of periods for DystData",
     )
     parser.add_argument(
         "--num-points",
         type=int,
-        default=2048,
+        default=1024 * 4,
         help="Number of points for DystData",
     )
     parser.add_argument(
         "--num-ics",
         type=int,
-        default=3,
+        default=1,
         help="Number of initial conditions for DystData",
     )
     parser.add_argument(
         "--num-param-perturbations",
         type=int,
-        default=3,
+        default=10,
         help="Number of parameter perturbations for DystData",
     )
     parser.add_argument(
@@ -175,8 +175,8 @@ def main():
         split_coords=args.split_coords,
         apply_attractor_tests=args.no_attractor_tests,
         attractor_validator_kwargs={
-            "verbose": 1,
-            "transient_time": 200,
+            "verbose": 0,
+            "transient_time_frac": 0.05,
             "plot_save_dir": "tests/plots",
         },
         debug_mode=args.debug_mode,
