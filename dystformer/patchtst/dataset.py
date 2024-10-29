@@ -66,7 +66,7 @@ class PseudoShuffledIterableDataset(IterableDataset):
 
 @dataclass
 class PatchTSTDataset(IterableDataset):
-    datasets: list
+    datasets: List
     probabilities: List[float]
     context_length: int = 512
     prediction_length: int = 64

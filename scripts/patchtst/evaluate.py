@@ -239,6 +239,9 @@ def main(cfg):
                 if file_path.is_file()
             ]
 
+    for system_name in test_data_dict:
+        print(f"{system_name}: {len(test_data_dict[system_name])}")
+
     log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
 
     test_datasets = {
