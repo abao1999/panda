@@ -241,6 +241,7 @@ def main(cfg):
 
     for system_name in test_data_dict:
         print(f"{system_name}: {len(test_data_dict[system_name])}")
+    breakpoint()
 
     log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
 
