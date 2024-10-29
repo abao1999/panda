@@ -227,16 +227,17 @@ def save_evaluation_results(
         )
 
 
-def prediction_window_indices(
+def rolling_prediction_window_indices(
     datasets: Dict[str, List],
     window_stride: int,
     context_length: int,
     prediction_length: int,
 ) -> Dict[str, List[List[int]]]:
     """
-    Get the indices of individual windows in the stacked prediction window array.
-    This is to handle the case where systems may have multiple timeseries data of
-    different lengths
+    Get the indices of individual windows for each timeseries in each system
+    in the stacked prediction window array from a rolling sampler.
+
+    This can handle multiple timeseries for each system, possible with different lengths
 
     For each system with stack prediction window array W of shape (..., num_windows*num_datasets, ...),
     return a list of tuples where each tuple contains the indices of the windows of its
@@ -253,16 +254,53 @@ def prediction_window_indices(
     Returns:
         Dictionary mapping system names to shape of the unpacked window arrays
     """
-    shapes = {}
+    indices = {}
     for system_name, timeseries in datasets.items():
-        shapes[system_name] = []
+        indices[system_name] = []
         for i, dataset in enumerate(timeseries):
             ts_shape = next(iter(dataset))["target"].shape
             assert len(ts_shape) == 2, "Target must be 2D"
             T = ts_shape[-1]
             windows = (T - context_length - prediction_length) // window_stride + 1
-            shapes[system_name].append(list(range(i * windows, (i + 1) * windows)))
-    return shapes
+            indices[system_name].append(list(range(i * windows, (i + 1) * windows)))
+    return indices
+
+
+def sampled_prediction_window_indices(
+    datasets: Dict[str, List],
+    num_samples: int,
+) -> Dict[str, List[List[int]]]:
+    """
+    Get the indices of individual windows for each timeseries in each system
+    in the stacked prediction window array from a sampled sampler.
+
+    This can handle multiple timeseries for each system, possibly with different lengths.
+
+    For each system with stack prediction window array W of shape (..., num_samples*num_datasets, ...),
+    return a list of tuples where each tuple contains the indices of the windows of its
+    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
+    i-th timeseries of that system.
+
+    NOTE: Assumes that the sample-style window sampler sampled a fixed number of
+    windows for each timeseries
+
+    Args:
+        datasets: Dictionary mapping system names to lists of datasets
+        num_samples: Number of samples to draw for each timeseries
+        context_length: Length of context window
+        prediction_length: Length of prediction window
+
+    Returns:
+        Dictionary mapping system names to shape of the unpacked window arrays
+    """
+    indices = {
+        system_name: [
+            list(range(i * num_samples, (i + 1) * num_samples))
+            for i in range(len(datasets[system_name]))
+        ]
+        for system_name in datasets
+    }
+    return indices
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -330,20 +368,13 @@ def main(cfg):
         batch_size=cfg.eval.batch_size,
         prediction_length=cfg.patchtst.prediction_length,
         limit_prediction_length=cfg.eval.limit_prediction_length,
-        metrics=[
-            "mse",
-            "mae",
-            "smape",
-            "mape",
-            "r2_score",
-            "spearman",
-            "pearson",
-        ],
+        metrics=["mse", "mae", "smape", "mape", "r2_score", "spearman", "pearson"],
         return_predictions=True,
         parallel_sample_reduction="mean",
     )
 
-    window_indices = prediction_window_indices(
+    # get the indices of each prediction window for each timeseries in each system
+    window_indices = rolling_prediction_window_indices(
         test_data_dict,
         cfg.eval.window_stride,
         cfg.patchtst.context_length,
