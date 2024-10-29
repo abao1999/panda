@@ -40,7 +40,7 @@ def evaluate_mlm_model(
 
     for system in tqdm(systems, desc="Evaluating MLM pretrain model"):
         dataset = systems[system]  # IterableDataset
-        print(f"Evaluating {system}")
+        log_on_main(f"Evaluating {system}", logger)
         all_completions = []
         for i, batch in enumerate(batcher(dataset, batch_size=batch_size)):
             past_values = [data["past_values"] for data in batch]
@@ -150,10 +150,12 @@ def evaluate_forecasting_model(
     return system_predictions if return_predictions else None, system_metrics
 
 
-def save_predictions(
-    predictions: Dict[str, np.ndarray],
+def save_evaluation_results(
     metrics: Dict[str, Dict[str, float]],
     eval_cfg: DictConfig,
+    window_indices: Optional[Dict[str, List[List[int]]]] = None,
+    window_dim: int = 0,
+    predictions: Optional[Dict[str, np.ndarray]] = None,
 ):
     """
     Save prediction metrics and optionally forecast trajectories.
@@ -162,6 +164,8 @@ def save_predictions(
         predictions: Dictionary mapping system names to prediction numpy arrays.
         metrics: Nested dictionary containing computed metrics for each system.
         eval_cfg: Configuration object containing evaluation settings.
+        unpacking_shapes: Optional dictionary mapping system names to tuples of
+            shapes to unpack the predictions and labels into.
 
     This function performs two main tasks:
     1. Saves evaluation metrics to a CSV file, appending to existing file if present.
@@ -179,7 +183,7 @@ def save_predictions(
 
     metrics_fname = eval_cfg.output_fname or f"{eval_cfg.split}_metrics.csv"
     metrics_save_path = os.path.join(eval_cfg.output_dir, metrics_fname)
-    print("Saving metrics to: ", metrics_save_path)
+    log_on_main(f"Saving metrics to: {metrics_save_path}", logger)
     os.makedirs(os.path.dirname(metrics_save_path), exist_ok=True)
 
     if os.path.isfile(metrics_save_path) and not eval_cfg.overwrite:
@@ -189,20 +193,76 @@ def save_predictions(
 
     # save predictions, which is a dictionary mapping system names to prediction numpy arrays, to arrow files
     if eval_cfg.forecast_save_dir is not None and predictions is not None:
-        print(f"forecast dysts: {predictions.keys()}")
+        log_on_main(f"forecast dysts: {predictions.keys()}", logger)
         for system in predictions:
-            print(f"{system}: {predictions[system].shape}")
+            log_on_main(f"{system}: {predictions[system].shape}", logger)
 
         os.makedirs(eval_cfg.forecast_save_dir, exist_ok=True)
-        print(
-            f"Saving all valid sampled trajectories from {len(predictions)} systems to arrow files within {eval_cfg.forecast_save_dir}"
+        log_on_main(
+            f"Saving all valid sampled trajectories from {len(predictions)} systems to arrow files within {eval_cfg.forecast_save_dir}",
+            logger,
         )
+
+        # regroup the predictions by the window indices before writing to arrow files
+        # currently each prediction array (for each system) has shape:
+        # [num_parallel_samples, sum(num_windows for each timeseries), prediction_length, num_channels]
+        # or if a reduction was applied to the parallel sample dim:
+        # [sum(num_windows for each timeseries), prediction_length, num_channels]
+        if window_indices is not None:
+            for system in predictions:
+                regrouped_predictions = [
+                    np.take(predictions[system], indices, axis=window_dim)
+                    for indices in window_indices[system]
+                ]
+
+                # regrouped_predictions is a ragged list of arrays of shape:
+                # (num_windows_for_this_timeseries, prediction_length, num_channels)
+                predictions[system] = regrouped_predictions  # type: ignore
+
         process_trajs(
             eval_cfg.forecast_save_dir,
             predictions,
             split_coords=eval_cfg.split_coords,
             verbose=eval_cfg.verbose,
         )
+
+
+def prediction_window_indices(
+    datasets: Dict[str, List],
+    window_stride: int,
+    context_length: int,
+    prediction_length: int,
+) -> Dict[str, List[List[int]]]:
+    """
+    Get the indices of individual windows in the stacked prediction window array.
+    This is to handle the case where systems may have multiple timeseries data of
+    different lengths
+
+    For each system with stack prediction window array W of shape (..., num_windows*num_datasets, ...),
+    return a list of tuples where each tuple contains the indices of the windows of its
+    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
+    i-th timeseries of that system.
+
+    Args:
+        datasets: Dictionary mapping system names to lists of datasets
+        window_stride: Stride length between consecutive windows
+        context_length: Length of context window
+        prediction_length: Length of prediction window
+        window_dim: Dimension along which to count windows (default: 0)
+
+    Returns:
+        Dictionary mapping system names to shape of the unpacked window arrays
+    """
+    shapes = {}
+    for system_name, timeseries in datasets.items():
+        shapes[system_name] = []
+        for i, dataset in enumerate(timeseries):
+            ts_shape = next(iter(dataset))["target"].shape
+            assert len(ts_shape) == 2, "Target must be 2D"
+            T = ts_shape[-1]
+            windows = (T - context_length - prediction_length) // window_stride + 1
+            shapes[system_name].append(list(range(i * windows, (i + 1) * windows)))
+    return shapes
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -238,10 +298,6 @@ def main(cfg):
                 for file_path in system_files
                 if file_path.is_file()
             ]
-
-    for system_name in test_data_dict:
-        print(f"{system_name}: {len(test_data_dict[system_name])}")
-    breakpoint()
 
     log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
 
@@ -284,10 +340,20 @@ def main(cfg):
             "pearson",
         ],
         return_predictions=True,
+        parallel_sample_reduction="mean",
+    )
+
+    window_indices = prediction_window_indices(
+        test_data_dict,
+        cfg.eval.window_stride,
+        cfg.patchtst.context_length,
+        cfg.patchtst.prediction_length,
     )
 
     if predictions is not None:
-        save_predictions(predictions, metrics, cfg.eval)
+        save_evaluation_results(
+            metrics, cfg.eval, predictions=predictions, window_indices=window_indices
+        )
 
 
 if __name__ == "__main__":

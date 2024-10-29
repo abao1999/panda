@@ -32,7 +32,7 @@ python scripts/patchtst/evaluate.py \
     patchtst.num_attention_heads=8 \
     patchtst.d_model=512 \
     patchtst.num_parallel_samples=1 \
-    eval.data_path=$WORK/data/test \
+    eval.data_path=$WORK/data/backup_test \
     eval.checkpoint_path=$WORK/checkpoints/run-182/checkpoint-final \
     eval.window_style=rolling \
     eval.window_stride=64 \
