@@ -40,6 +40,7 @@ class PatchTST(nn.Module):
         config: dict,
         mode: str = "predict",
         pretrained_encoder_path: Optional[str] = None,
+        device: Optional[Union[str, torch.device]] = None,  # Added device parameter
     ):
         super().__init__()
 
@@ -59,6 +60,10 @@ class PatchTST(nn.Module):
 
         if pretrained_encoder_path is not None and mode == "predict":
             self.load_pretrained_encoder(pretrained_encoder_path)
+
+        # Load model onto the specified device if provided
+        if device is not None:
+            self.to(device)  # Move model to the specified device
 
     @property
     def device(self):
@@ -177,6 +182,7 @@ class PatchTST(nn.Module):
         predictions = []
         remaining = prediction_length
 
+        # NOTE: this does the autoregressive prediction
         while remaining > 0:
             # prediction: [bs x num_samples x forecast_len x num_channels]
             outputs = self.model.generate(context_tensor)
@@ -187,6 +193,10 @@ class PatchTST(nn.Module):
 
             if remaining <= 0:
                 break
+
+            print("Prediction shape: ", prediction.shape)
+            print("Median shape: ", prediction.median(dim=1).values.shape)
+            print("Context tensor shape: ", context_tensor.shape)
 
             # need to contract over the num_samples dimension, use median
             context_tensor = torch.cat(

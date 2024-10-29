@@ -74,12 +74,11 @@ TODO: write up current PatchTST docs
 ## Development Goals
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
-+ [HIGH | MEDIUM] Get prediction finetuning working from mlm pretrained checkpoint.
-+ [HIGH | MEDIUM] refactor augmentations to work with multivariate data
-+ [HIGH | EASY] implement correct procedure for instance normalization + regenerate standardized training data
-+ [HIGH | MEDIUM] correct the standardization for skew systems, make jacobian function, and check that we don't lose numba speedup.
++ [HIGH | EASY] make a big dataset and submit a mlm pretrain + prediction finetune run using augmentations skew systems, non-standardized
++ [HIGH | MEDIUM] test and adapt eval script to plot forecasts. Also eval intermediate checkpoints to see how metrics improve
++ [HIGH | MEDIUM] correct the standardization for skew systems, couple flows.
++ [MEDIUM | EASY] implement correct procedure for instance normalization + regenerate standardized training data
 + [MEDIUM | EASY] check if rolling order in the delay embedding is correct/matters
-+ [MEDIUM | MEDIUM] add feature to allow user to specify whether to use rope. We may want to use no positional encoding for mlm pretraining, but use rope for prediction finetuning.
 + [LOW | MEDIUM] curriculum learning setup for growing the training dataset - use some notion of complexity/hardness to learn.
 + [LOW | HARD] figure out how to adjust the timescales for parameter perturbations. See random phase surrogate method, make faster.
 + [MEDIUM | HARD] get torch compile working (rope is slow)

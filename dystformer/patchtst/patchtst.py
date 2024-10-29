@@ -297,15 +297,15 @@ class PatchTSTRopeAttention(nn.Module):
         # apply rotary positional embeddings
         src_len = key_states.size(1)
         # TODO: add flag to disable rope
-        # position_ids = self.get_seq_pos(src_len, key_states.device, key_states.dtype)
-        # key_states, query_states = apply_p_rope_to_qk(
-        #     key_states,
-        #     query_states,
-        #     position_ids,
-        #     self.head_dim,
-        #     self.max_wavelength,
-        #     self.rope_percent,
-        # )
+        position_ids = self.get_seq_pos(src_len, key_states.device, key_states.dtype)
+        key_states, query_states = apply_p_rope_to_qk(
+            key_states,
+            query_states,
+            position_ids,
+            self.head_dim,
+            self.max_wavelength,
+            self.rope_percent,
+        )
 
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
 
