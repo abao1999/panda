@@ -6,18 +6,74 @@ from typing import Dict, List, Optional, Tuple
 
 import hydra
 import numpy as np
+import pandas as pd
 import torch
 import transformers
-from dysts.metrics import compute_metrics
+from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import batcher
 from tqdm.auto import tqdm
 
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
-from dystformer.utils import log_on_main
+from dystformer.utils import log_on_main, process_trajs
 
 logger = logging.getLogger(__name__)
+
+
+def evaluate_mlm_model(
+    model: PatchTST,
+    systems: Dict[str, PatchTSTDataset],
+    batch_size: int,
+    metrics: Optional[List[str]] = None,
+    return_completions: bool = False,
+) -> Tuple[Optional[Dict[str, np.ndarray]], Dict[str, Dict[str, float]]]:
+    """
+    past_observed_mask (`torch.BoolTensor` of shape `(batch_size, sequence_length, num_input_channels)`, *optional*):
+    Boolean mask to indicate which `past_values` were observed and which were missing. Mask values selected
+    in `[0, 1]`:
+    """
+    assert model.mode == "pretrain", "Model must be in pretrain mode"
+    system_completions = {}
+    system_metrics = {system: defaultdict(float) for system in systems}
+
+    for system in tqdm(systems, desc="Evaluating MLM pretrain model"):
+        dataset = systems[system]  # IterableDataset
+        print(f"Evaluating {system}")
+        all_completions = []
+        for i, batch in enumerate(batcher(dataset, batch_size=batch_size)):
+            past_values = [data["past_values"] for data in batch]
+            past_batch = torch.from_numpy(np.stack(past_values)).to(model.device)
+
+            # TODO: PatchTSTModel self.masking and mask in PatchTSTModel forward returned in PatchTSTModelOutput
+            past_masked = None
+
+            # see patchtstforpretraining
+            completions = (
+                model(past_batch, past_observed_mask=None).transpose(1, 0).cpu().numpy()
+            )
+
+            eval_metrics = compute_metrics(completions, past_masked, include=metrics)
+
+            # compute running average of metrics over batches
+            for metric, value in eval_metrics.items():
+                system_metrics[system][metric] += (
+                    value - system_metrics[system][metric]
+                ) / (i + 1)
+
+            if return_completions:
+                all_completions.append(completions)
+
+        if return_completions:
+            full_completion = np.concatenate(all_completions, axis=1)
+            system_completions[system] = full_completion
+
+    # convert defaultdicts to regular dicts
+    system_metrics = {
+        system: dict(metrics) for system, metrics in system_metrics.items()
+    }
+
+    return system_completions if return_completions else None, system_metrics
 
 
 def evaluate_forecasting_model(
@@ -42,6 +98,7 @@ def evaluate_forecasting_model(
             Only returned if `return_predictions` is True.
         - system_metrics: A nested dictionary containing computed metrics for each system.
     """
+    assert model.mode == "predict", "Model must be in predict mode"
     system_predictions = {}
     system_metrics = {system: defaultdict(float) for system in systems}
 
@@ -131,8 +188,9 @@ def main(cfg):
 
     model = PatchTST(
         cfg.patchtst,
-        mode="predict",
+        mode=cfg.eval.mode,
         pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
+        device=cfg.eval.device,
     )
     model.eval()
 
@@ -149,11 +207,50 @@ def main(cfg):
             "spearman",
             "pearson",
         ],
-        return_predictions=False,
+        return_predictions=True,
     )
 
-    for system in metrics:
-        print(system, metrics[system])
+    # for system in metrics:
+    #     print(system, metrics[system])
+
+    result_rows = []
+    result_rows.extend(
+        {
+            "system": system,
+            **metrics[system],
+        }
+        for system in metrics
+    )
+    results_df = pd.DataFrame(result_rows)
+
+    # save metrics to specified output path
+    metrics_fname = cfg.eval.output_fname or f"{cfg.eval.split}_metrics.csv"
+    metrics_save_path = os.path.join(cfg.eval.output_dir, metrics_fname)
+    print("Saving metrics to: ", metrics_save_path)
+    os.makedirs(os.path.dirname(metrics_save_path), exist_ok=True)
+
+    if os.path.isfile(metrics_save_path) and not cfg.eval.overwrite:
+        existing_df = pd.read_csv(metrics_save_path)
+        results_df = pd.concat([existing_df, results_df], ignore_index=True)
+    results_df.to_csv(metrics_save_path, index=False)
+
+    # save predictions, which is a dictionary mapping system names to prediction numpy arrays, to arrow files
+
+    if cfg.eval.forecast_save_dir is not None and predictions is not None:
+        print(f"forecast dysts: {predictions.keys()}")
+        for system in predictions:
+            print(f"{system}: {predictions[system].shape}")
+
+        os.makedirs(cfg.eval.forecast_save_dir, exist_ok=True)
+        print(
+            f"Saving all valid sampled trajectories from {len(predictions)} systems to arrow files within {cfg.eval.forecast_save_dir}"
+        )
+        process_trajs(
+            cfg.eval.forecast_save_dir,
+            predictions,
+            split_coords=cfg.eval.split_coords,
+            verbose=cfg.eval.verbose,
+        )
 
 
 if __name__ == "__main__":

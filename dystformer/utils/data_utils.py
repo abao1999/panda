@@ -62,7 +62,7 @@ def convert_to_arrow(
     """
     assert isinstance(time_series, list) or (
         isinstance(time_series, np.ndarray) and time_series.ndim == 2
-    )
+    ), "time_series must be a list of 1D numpy arrays or a 2D numpy array"
 
     # GluonTS requires this datetime format for reading arrow file
     start = datetime.now().strftime("%Y-%m-%d %H:%M")

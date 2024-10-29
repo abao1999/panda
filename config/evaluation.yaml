@@ -1,6 +1,7 @@
 # TODO: clean this up, remove unnecessary options
 
 eval:
+  mode: predict
   data_path: $WORK/data/test/
   checkpoint_path: /stor/work/AMDG_Gilpin_Summer2024/checkpoints
   split: train  # ???
@@ -35,3 +36,5 @@ eval:
   num_test_instances: 1
   window_style: sampled
   window_stride: 1
+  split_coords: false
+  verbose: true
