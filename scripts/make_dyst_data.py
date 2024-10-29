@@ -134,6 +134,12 @@ def parse_arguments():
         choices=["continuous", "continuous_no_delay", "delay", "discrete"],
         help="System class for splitting",
     )
+    parser.add_argument(
+        "--positivity-prop",
+        type=float,
+        default=0.0,
+        help="Proportion of parameters to enforce positivity on",
+    )
 
     return parser.parse_args()
 
@@ -152,7 +158,10 @@ def main():
     events = [time_limit_event, instability_event]
 
     param_sampler = GaussianParamSampler(
-        random_seed=args.rseed, scale=args.param_scale, verbose=True
+        random_seed=args.rseed,
+        scale=args.param_scale,
+        positivity_prop=args.positivity_prop,
+        verbose=True,
     )
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=args.reference_traj_length,
@@ -160,6 +169,7 @@ def main():
         recompute_standardization=True,  # Important!
         events=events,
         verbose=True,
+        random_seed=args.rseed
     )
 
     dyst_data_generator = DystData(
@@ -207,7 +217,12 @@ def main():
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_train,
+            use_multiprocessing=True 
         )
+        dyst_data_generator.save_summary(
+            os.path.join("outputs", "train_attractor_checks.json"),
+        )
+
         dyst_data_generator.save_dyst_ensemble(
             dysts_names=test,
             split=f"{split_prefix}test",
@@ -215,9 +230,11 @@ def main():
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_test,
+            reset_attractor_validator=True,  # save validator results separately for test
+            use_multiprocessing=True
         )
         dyst_data_generator.save_summary(
-            os.path.join("outputs", "attractor_checks.json"),
+            os.path.join("outputs", "test_attractor_checks.json"),
         )
 
 

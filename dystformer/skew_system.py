@@ -9,7 +9,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import dysts.flows as dfl
 import numpy as np
-from dysts.base import BaseDyn
+from dysts.base import DynSys, staticjit
 from scipy.integrate import solve_ivp
 from tqdm import trange
 
@@ -22,8 +22,7 @@ from dystformer.utils import (
 )
 
 
-@dataclass
-class SkewSystem:
+class SkewSystem(DynSys):
     """
     A skew-product dynamical system, which is a pair of dynamical systems: a driver and a response.
     The driver and response are coupled together by a custom user-defined map.
@@ -32,32 +31,29 @@ class SkewSystem:
     If no coupling map is provided, a basic affine map is constructed by default.
 
     Args:
-        driver: The driver system
-        response: The response system
-        coupling_map: The coupling map between the driver and response systems
-        couple_phase_space: Whether to couple the phase space of the driver and response systems
-        couple_flows: Whether to couple the flow vectors of the driver and response systems
-        events: List of events for numerical integration
-
-    By default, the integration step size (self.dt) is the minimum of the dt for driver and response systems,
-    and the "period" (self.period) is the maximum of the period for driver and response systems.
-
-    Design choices:
-        + Move all computation into run() method, so that instance initialization is fast and cheap
-        + coupling_map is a first-class citizen
-            i.e. if user provides coupling map, skip computation of default coupling map
-                 otherwise, compute default coupling map as:
-                     basic_affine_map which pre-computes a kappa vector: the coupling strength
+        driver (DynSys): The driver dynamical system.
+        response (DynSys): The response dynamical system.
+        coupling_map (Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]]):
+            A function that defines the coupling between driver and response systems.
+            If None, a basic affine map is used. Default is None.
+        couple_phase_space (bool): If True, couples the phase space of driver and response.
+            Default is False.
+        couple_flows (bool): If True, couples the flow vectors of driver and response.
+            Default is True.
+        events (Optional[List[Callable]]): List of event functions for numerical integration.
+            If None, default events are used. Default is None.
     """
 
-    driver: BaseDyn
-    response: BaseDyn
-    coupling_map: Optional[np.ndarray] = None
-    couple_phase_space: bool = True
-    couple_flows: bool = False
+    driver: DynSys
+    response: DynSys
+    coupling_map: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None
+    couple_phase_space: bool = False
+    couple_flows: bool = True
     events: Optional[List[Callable]] = None
 
     def __post_init__(self):
+        self.name = f"{self.driver.name}_{self.response.name}"
+
         # Set default integration events if none are provided
         if self.events is None:
             warnings.warn(
@@ -107,11 +103,7 @@ class SkewSystem:
         """
         Set the coupling map to be a basic affine map for the coupling between the driver and response systems
         """
-        kappa = self._compute_coupling_strength()
-        # kappa = np.ones(self.k)  # dummy
-        self.coupling_map = construct_basic_affine_map(
-            self.n_driver, self.n_response, kappa
-        )
+        return None
 
     def _apply_coupling_map(self, x: np.ndarray, y: np.ndarray) -> List[np.ndarray]:
         """
@@ -124,6 +116,10 @@ class SkewSystem:
         y = transformed_vector[n : n + m]
         return [x, y, transformed_vector[n + m :]]
 
+    @staticjit
+    def _rhs():
+        pass
+
     def _get_skew_rhs(
         self,
     ) -> Callable:
@@ -132,7 +128,6 @@ class SkewSystem:
         NOTE: we made coupling_map a class attribute, but consider passing it in as an arg here instead
         """
 
-        # TODO: need to standardize the rhs here?
         def _skew_rhs(t, combined_ics):
             """
             Skew-product system rhs signature

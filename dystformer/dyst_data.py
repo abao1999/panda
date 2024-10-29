@@ -134,10 +134,17 @@ class DystData:
         samples_process_interval: int = 1,
         save_dir: Optional[str] = None,
         standardize: bool = False,
+        use_multiprocessing: bool = True,
+        reset_attractor_validator: bool = False,
+        **kwargs
     ) -> None:
         print(
             f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}"
         )
+
+        if self.attractor_validator is not None and reset_attractor_validator:
+            self.attractor_validator.reset()
+            self.failed_integrations.clear()
 
         save_dyst_dir, failed_dyst_dir = self._prepare_save_directories(
             save_dir, split, split_failures=split_failures
@@ -181,6 +188,8 @@ class DystData:
             dysts_names,
             [handle_failed_integrations_callback, process_and_save_callback()],
             standardize=standardize,
+            use_multiprocessing=use_multiprocessing,
+            **kwargs
         )
 
     def _generate_ensembles(
@@ -193,6 +202,7 @@ class DystData:
         pp_rng_stream = np.random.default_rng(self.rseed).spawn(
             self.num_param_perturbations
         )
+
         for i, param_rng in zip(range(self.num_param_perturbations), pp_rng_stream):
             if self.param_sampler is not None:
                 self.param_sampler.set_rng(param_rng)
@@ -206,9 +216,7 @@ class DystData:
                 print("Making ensemble for sample ", sample_idx)
                 ensemble = make_trajectory_ensemble(
                     self.num_points,
-                    resample=True,
                     subset=dysts_names,
-                    use_multiprocessing=True,
                     ic_transform=self.ic_sampler if sample_idx > 0 else None,
                     param_transform=self.param_sampler if i > 0 else None,
                     ic_rng=param_rng,
@@ -329,11 +337,23 @@ class DystData:
             failed_samples = self.attractor_validator.failed_samples
             valid_samples = self.attractor_validator.valid_samples
             summary_dict = {
+                "num_parameter_successes": sum(
+                    np.unique(np.array(sample_inds).astype(int) // self.num_ics).shape[
+                        0
+                    ]
+                    for sample_inds in valid_samples.values()
+                ),
+                "num_total_candidates": self.num_param_perturbations
+                * len(
+                    valid_samples.keys()
+                    | failed_samples.keys()
+                    | self.failed_integrations.keys()
+                ),
                 "valid_dyst_counts": valid_dyst_counts,
                 "failed_checks": failed_checks,
                 "failed_integrations": self.failed_integrations,
-                "failed_samples": failed_samples,  # list of all failed sample indices
-                "valid_samples": valid_samples,  # list of all valid sample indices
+                "failed_samples": failed_samples,
+                "valid_samples": valid_samples,
             }
 
         with open(save_json_path, "w") as f:

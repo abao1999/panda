@@ -42,6 +42,15 @@ class AttractorValidator:
         if self.plot_save_dir is not None:
             os.makedirs(self.plot_save_dir, exist_ok=True)
 
+    def reset(self):
+        """
+        Reset all defaultdict attributes to their initial state.
+        """
+        self.failed_checks.clear()
+        self.valid_dyst_counts.clear()
+        self.failed_samples.clear()
+        self.valid_samples.clear()
+
     def add_test_fn(self, test_fn):
         """
         Add a test_fn to the list of attractorchecks.
