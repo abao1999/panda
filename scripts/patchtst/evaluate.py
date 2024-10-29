@@ -136,6 +136,7 @@ def evaluate_forecasting_model(
         # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         predictions = torch.cat(predictions, dim=1).cpu().numpy()
+        print(f"Predictions shape: {predictions.shape}")
         # shape: (num_parallel_samples, num_windows*num_datasets, num_channels)
         labels = torch.cat(labels, dim=0).cpu().numpy()
 
@@ -366,7 +367,7 @@ def main(cfg):
         model,
         test_datasets,
         batch_size=cfg.eval.batch_size,
-        prediction_length=cfg.patchtst.prediction_length,
+        prediction_length=cfg.eval.prediction_length,
         limit_prediction_length=cfg.eval.limit_prediction_length,
         metrics=["mse", "mae", "smape", "mape", "r2_score", "spearman", "pearson"],
         return_predictions=True,

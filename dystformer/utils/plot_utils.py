@@ -329,7 +329,7 @@ def plot_forecast_gt_trajs_multivariate(
     plt.xlabel("X")
     plt.ylabel("Y")
     plt.title(f"{dyst_name} Forecast vs Ground Truth")
-    # plt.legend()
+    plt.legend()
     plt.savefig(save_path, dpi=300)
     plt.close()
 
@@ -340,6 +340,7 @@ def plot_forecast_gt_trajs_multivariate(
         fig = plt.figure(figsize=(6, 6))
         ax = fig.add_subplot(111, projection="3d")
         for sample_idx in range(n_samples_plot):
+            curr_color = COLORS[sample_idx]
             ax.scatter(
                 *gt_data[sample_idx, :3, 0],
                 marker="*",

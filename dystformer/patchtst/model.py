@@ -165,6 +165,7 @@ class PatchTST(nn.Module):
         ), "Model must be in predict mode to use this method"
 
         context_tensor = self._prepare_and_validate_context(context=context)
+        context_length = context_tensor.shape[1]
 
         if prediction_length is None:
             prediction_length = self.config.prediction_length
@@ -194,17 +195,14 @@ class PatchTST(nn.Module):
             if remaining <= 0:
                 break
 
-            print("Prediction shape: ", prediction.shape)
-            print("Median shape: ", prediction.median(dim=1).values.shape)
-            print("Context tensor shape: ", context_tensor.shape)
-
             # need to contract over the num_samples dimension, use median
             context_tensor = torch.cat(
-                [context_tensor, prediction.median(dim=1).values], dim=-1
+                [context_tensor, prediction.median(dim=1).values], dim=1
             )
+            context_tensor = context_tensor[:, -context_length:]
 
         # shape: [bs x num_samples x prediction_length x num_channels]
-        return torch.cat(predictions, dim=-1)
+        return torch.cat(predictions, dim=-2)
 
     def forward(self, *args, **kwargs):
         """

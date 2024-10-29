@@ -6,17 +6,13 @@ from typing import Iterable, Optional
 
 import hydra
 import numpy as np
-import pandas as pd
 import torch
-from gluonts.ev.metrics import MASE, RMSE, SMAPE, MeanWeightedSumQuantileLoss
 from gluonts.itertools import batcher
-from gluonts.model.evaluation import evaluate_forecasts
 from gluonts.model.forecast import Forecast, SampleForecast
 from tqdm.auto import tqdm
 
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
-    average_nested_dict,
     load_and_split_dataset_from_arrow,
 )
 
@@ -51,6 +47,7 @@ def generate_sample_forecasts_patchtst(
                 **predict_kwargs,
             )
             .transpose(1, 0)
+            .cpu()
             .numpy()
         )
     forecast_samples = np.concatenate(forecast_samples)
@@ -140,85 +137,87 @@ def main(cfg):
                 save_path=forecast_save_path,
             )
 
-            logger.info("Evaluating forecasts")
+            print(f"Forecast samples shape: {np.array(sample_forecasts).shape}")
 
-            metrics = []
-            if test_data.input:
-                metrics = (
-                    evaluate_forecasts(
-                        sample_forecasts,
-                        test_data=test_data,
-                        metrics=[
-                            SMAPE(),
-                            MASE(),
-                            RMSE(),
-                            MeanWeightedSumQuantileLoss(np.arange(0.1, 1.0, 0.1)),
-                        ],
-                        batch_size=5000,
-                        axis=cfg.eval.agg_axis,
-                    )
-                    .reset_index(drop=True)
-                    .to_dict(orient="records")
-                )
+            # logger.info("Evaluating forecasts")
 
-            keys = metrics[0].keys()
-            if not all(m.keys() == keys for m in metrics):
-                raise ValueError(
-                    "Not all dictionaries (per dim) in metrics list have the same keys."
-                )
+            # metrics = []
+            # if test_data.input:
+            #     metrics = (
+            #         evaluate_forecasts(
+            #             sample_forecasts,
+            #             test_data=test_data,
+            #             metrics=[
+            #                 SMAPE(),
+            #                 MASE(),
+            #                 RMSE(),
+            #                 MeanWeightedSumQuantileLoss(np.arange(0.1, 1.0, 0.1)),
+            #             ],
+            #             batch_size=5000,
+            #             axis=cfg.eval.agg_axis,
+            #         )
+            #         .reset_index(drop=True)
+            #         .to_dict(orient="records")
+            #     )
 
-            for dim_idx, metrics_per_dim in enumerate(metrics):
-                for metric_name, metric_value in metrics_per_dim.items():
-                    metrics_all_samples[dim_idx][metric_name].append(metric_value)
+            # keys = metrics[0].keys()
+            # if not all(m.keys() == keys for m in metrics):
+            #     raise ValueError(
+            #         "Not all dictionaries (per dim) in metrics list have the same keys."
+            #     )
 
-        metrics_dict = {k: dict(v) for k, v in metrics_all_samples.items()}
-        metrics_all_samples = average_nested_dict(metrics_dict)
+            # for dim_idx, metrics_per_dim in enumerate(metrics):
+            #     for metric_name, metric_value in metrics_per_dim.items():
+            #         metrics_all_samples[dim_idx][metric_name].append(metric_value)
 
-        if cfg.eval.agg_axis is None:
-            assert (
-                len(metrics_all_samples) == 1
-            ), "Expected only one dimension for axis=None aggregation"
-            result_rows.append(
-                {
-                    "dataset": dyst_name,
-                    "model": cfg.eval.model_id,
-                    **metrics_all_samples[0],
-                }
-            )
-        elif cfg.eval.agg_axis == 1:
-            result_rows.extend(
-                {
-                    "dataset": dyst_name,
-                    "dimension": dim_idx,
-                    "model": cfg.eval.model_id,
-                    **metrics_all_samples[dim_idx],
-                }
-                for dim_idx in range(len(metrics_all_samples))
-            )
-        else:
-            raise ValueError(f"Invalid aggregation axis: {cfg.eval.agg_axis}")
+        # metrics_dict = {k: dict(v) for k, v in metrics_all_samples.items()}
+        # metrics_all_samples = average_nested_dict(metrics_dict)
 
-    results_df = (
-        pd.DataFrame(result_rows)
-        .rename(
-            {
-                "sMAPE[0.5]": "sMAPE",
-                "MASE[0.5]": "MASE",
-                "RMSE[mean]": "RMSE",
-                "mean_weighted_sum_quantile_loss": "WQL",
-            },
-            axis="columns",
-        )
-        .sort_values(by="dataset")
-    )
+        # if cfg.eval.agg_axis is None:
+        #     assert (
+        #         len(metrics_all_samples) == 1
+        #     ), "Expected only one dimension for axis=None aggregation"
+        #     result_rows.append(
+        #         {
+        #             "dataset": dyst_name,
+        #             "model": cfg.eval.model_id,
+        #             **metrics_all_samples[0],
+        #         }
+        #     )
+        # elif cfg.eval.agg_axis == 1:
+        #     result_rows.extend(
+        #         {
+        #             "dataset": dyst_name,
+        #             "dimension": dim_idx,
+        #             "model": cfg.eval.model_id,
+        #             **metrics_all_samples[dim_idx],
+        #         }
+        #         for dim_idx in range(len(metrics_all_samples))
+        #     )
+        # else:
+        #     raise ValueError(f"Invalid aggregation axis: {cfg.eval.agg_axis}")
 
-    metrics_path = os.path.join(cfg.eval.output_dir, cfg.eval.output_fname)
-    print("Saving metrics to: ", metrics_path)
-    os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
-    if os.path.isfile(metrics_path) and not cfg.eval.overwrite:
-        existing_df = pd.read_csv(metrics_path)
-        results_df = pd.concat([existing_df, results_df], ignore_index=True)
-    results_df.to_csv(metrics_path, index=False)
+    # results_df = (
+    #     pd.DataFrame(result_rows)
+    #     .rename(
+    #         {
+    #             "sMAPE[0.5]": "sMAPE",
+    #             "MASE[0.5]": "MASE",
+    #             "RMSE[mean]": "RMSE",
+    #             "mean_weighted_sum_quantile_loss": "WQL",
+    #         },
+    #         axis="columns",
+    #     )
+    #     .sort_values(by="dataset")
+    # )
+
+    # metrics_path = os.path.join(cfg.eval.output_dir, cfg.eval.output_fname)
+    # print("Saving metrics to: ", metrics_path)
+    # os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
+    # if os.path.isfile(metrics_path) and not cfg.eval.overwrite:
+    #     existing_df = pd.read_csv(metrics_path)
+    #     results_df = pd.concat([existing_df, results_df], ignore_index=True)
+    # results_df.to_csv(metrics_path, index=False)
 
 
 if __name__ == "__main__":
