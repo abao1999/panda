@@ -117,14 +117,14 @@ class OnAttractorInitCondSampler(BaseSampler):
         reference_traj_length: Length of the reference trajectory to use for sampling ic on attractor.
         reference_traj_transient: Transient length to ignore for the reference trajectory
         trajectory_cache: Cache of reference trajectories for each system.
-        events: events to pass to solve_ivp
+        events: integration events to pass to solve_ivp
     """
 
     reference_traj_length: int = 4096
     reference_traj_transient: float = 0.2
     trajectory_cache: Dict[str, Array] = field(default_factory=dict)
     verbose: bool = False
-    events: Optional[List[Callable]] = None  # solve_ivp callbacks
+    events: Optional[List[Callable]] = None
     recompute_standardization: bool = False
 
     def __post_init__(self):

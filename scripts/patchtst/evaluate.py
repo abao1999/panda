@@ -12,6 +12,7 @@ import transformers
 from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import batcher
+from omegaconf import DictConfig
 from tqdm.auto import tqdm
 
 from dystformer.patchtst.dataset import PatchTSTDataset
@@ -83,6 +84,7 @@ def evaluate_forecasting_model(
     prediction_length: int,
     limit_prediction_length: bool = False,
     metrics: Optional[List[str]] = None,
+    parallel_sample_reduction: str = "none",
     return_predictions: bool = False,
 ) -> Tuple[Optional[Dict[str, np.ndarray]], Dict[str, Dict[str, float]]]:
     """
@@ -93,6 +95,8 @@ def evaluate_forecasting_model(
         systems: A dictionary mapping system names to their respective PatchTSTDataset.
         batch_size: The batch size to use for evaluation.
         metrics: Optional list of metric names to compute.
+        parallel_sample_reduction: How to reduce the parallel samples over dim 0,
+            only used if return_predictions is True
         return_predictions: Whether to return the predictions.
     Returns:
         A tuple containing:
@@ -102,47 +106,103 @@ def evaluate_forecasting_model(
     """
     assert model.mode == "predict", "Model must be in predict mode"
     system_predictions = {}
-    system_metrics = {system: defaultdict(float) for system in systems}
+    system_metrics = {system: {} for system in systems}
+
+    parallel_sample_reduction_fn = {
+        "mean": lambda x: np.mean(x, axis=0),
+        "median": lambda x: np.median(x, axis=0),
+    }.get(parallel_sample_reduction, lambda x: x)
 
     for system in tqdm(systems, desc="Evaluating model"):
         dataset = systems[system]
-        preds = []
-        for i, batch in enumerate(batcher(dataset, batch_size=batch_size)):
+        predictions, labels = [], []
+        for batch in batcher(dataset, batch_size=batch_size):
             past_values, future_values = zip(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
-            past_batch = torch.from_numpy(np.stack(past_values)).to(model.device)
-            predictions = (
-                model.predict(
-                    past_batch,
-                    prediction_length=prediction_length,
-                    limit_prediction_length=limit_prediction_length,
-                )
-                .transpose(1, 0)
-                .cpu()
-                .numpy()
-            )
-            future_batch = np.stack(future_values)
-            eval_metrics = compute_metrics(predictions, future_batch, include=metrics)
+            past_batch = torch.stack(past_values, dim=0).to(model.device)
+            preds = model.predict(
+                past_batch,
+                prediction_length=prediction_length,
+                limit_prediction_length=limit_prediction_length,
+            ).transpose(1, 0)
 
-            # compute running average of metrics over batches
-            for metric, value in eval_metrics.items():
-                system_metrics[system][metric] += (
-                    value - system_metrics[system][metric]
-                ) / (i + 1)
+            future_batch = torch.stack(future_values, dim=0)
 
-            if return_predictions:
-                preds.append(predictions)
+            labels.append(future_batch)
+            predictions.append(preds)
 
+        # num_windows is either config.eval.num_test_instances for the sampled window style
+        # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
+        # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
+        predictions = torch.cat(predictions, dim=1).cpu().numpy()
+        # shape: (num_parallel_samples, num_windows*num_datasets, num_channels)
+        labels = torch.cat(labels, dim=0).cpu().numpy()
+
+        eval_metrics = compute_metrics(predictions, labels, include=metrics)
+        system_metrics[system] = eval_metrics
+
+        # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
+        # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
         if return_predictions:
-            system_predictions[system] = np.concatenate(preds, axis=1)
-
-    # convert defaultdicts to regular dicts
-    system_metrics = {
-        system: dict(metrics) for system, metrics in system_metrics.items()
-    }
+            system_predictions[system] = parallel_sample_reduction_fn(predictions)
 
     return system_predictions if return_predictions else None, system_metrics
+
+
+def save_predictions(
+    predictions: Dict[str, np.ndarray],
+    metrics: Dict[str, Dict[str, float]],
+    eval_cfg: DictConfig,
+):
+    """
+    Save prediction metrics and optionally forecast trajectories.
+
+    Args:
+        predictions: Dictionary mapping system names to prediction numpy arrays.
+        metrics: Nested dictionary containing computed metrics for each system.
+        eval_cfg: Configuration object containing evaluation settings.
+
+    This function performs two main tasks:
+    1. Saves evaluation metrics to a CSV file, appending to existing file if present.
+    2. If specified in eval_cfg, saves forecast trajectories as arrow files.
+    """
+    result_rows = []
+    result_rows.extend(
+        {
+            "system": system,
+            **metrics[system],
+        }
+        for system in metrics
+    )
+    results_df = pd.DataFrame(result_rows)
+
+    metrics_fname = eval_cfg.output_fname or f"{eval_cfg.split}_metrics.csv"
+    metrics_save_path = os.path.join(eval_cfg.output_dir, metrics_fname)
+    print("Saving metrics to: ", metrics_save_path)
+    os.makedirs(os.path.dirname(metrics_save_path), exist_ok=True)
+
+    if os.path.isfile(metrics_save_path) and not eval_cfg.overwrite:
+        existing_df = pd.read_csv(metrics_save_path)
+        results_df = pd.concat([existing_df, results_df], ignore_index=True)
+    results_df.to_csv(metrics_save_path, index=False)
+
+    # save predictions, which is a dictionary mapping system names to prediction numpy arrays, to arrow files
+    if eval_cfg.forecast_save_dir is not None and predictions is not None:
+        print(f"forecast dysts: {predictions.keys()}")
+        for system in predictions:
+            print(f"{system}: {predictions[system].shape}")
+
+        os.makedirs(eval_cfg.forecast_save_dir, exist_ok=True)
+        print(
+            f"Saving all valid sampled trajectories from {len(predictions)} systems to arrow files within {eval_cfg.forecast_save_dir}"
+        )
+        process_trajs(
+            eval_cfg.forecast_save_dir,
+            predictions,
+            split_coords=eval_cfg.split_coords,
+            verbose=eval_cfg.verbose,
+        )
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -222,47 +282,8 @@ def main(cfg):
         return_predictions=True,
     )
 
-    # for system in metrics:
-    #     print(system, metrics[system])
-
-    result_rows = []
-    result_rows.extend(
-        {
-            "system": system,
-            **metrics[system],
-        }
-        for system in metrics
-    )
-    results_df = pd.DataFrame(result_rows)
-
-    # save metrics to specified output path
-    metrics_fname = cfg.eval.output_fname or f"{cfg.eval.split}_metrics.csv"
-    metrics_save_path = os.path.join(cfg.eval.output_dir, metrics_fname)
-    print("Saving metrics to: ", metrics_save_path)
-    os.makedirs(os.path.dirname(metrics_save_path), exist_ok=True)
-
-    if os.path.isfile(metrics_save_path) and not cfg.eval.overwrite:
-        existing_df = pd.read_csv(metrics_save_path)
-        results_df = pd.concat([existing_df, results_df], ignore_index=True)
-    results_df.to_csv(metrics_save_path, index=False)
-
-    # save predictions, which is a dictionary mapping system names to prediction numpy arrays, to arrow files
-
-    if cfg.eval.forecast_save_dir is not None and predictions is not None:
-        print(f"forecast dysts: {predictions.keys()}")
-        for system in predictions:
-            print(f"{system}: {predictions[system].shape}")
-
-        os.makedirs(cfg.eval.forecast_save_dir, exist_ok=True)
-        print(
-            f"Saving all valid sampled trajectories from {len(predictions)} systems to arrow files within {cfg.eval.forecast_save_dir}"
-        )
-        process_trajs(
-            cfg.eval.forecast_save_dir,
-            predictions,
-            split_coords=cfg.eval.split_coords,
-            verbose=cfg.eval.verbose,
-        )
+    if predictions is not None:
+        save_predictions(predictions, metrics, cfg.eval)
 
 
 if __name__ == "__main__":
