@@ -9,9 +9,9 @@ import numpy as np
 
 from dystformer.dyst_data import DystData
 from dystformer.sampling import (
-    GaussianParamSampler,
     InstabilityEvent,
     OnAttractorInitCondSampler,
+    SignedGaussianParamSampler,
     TimeLimitEvent,
 )
 from dystformer.utils import plot_trajs_multivariate, split_systems
@@ -135,10 +135,10 @@ def parse_arguments():
         help="System class for splitting",
     )
     parser.add_argument(
-        "--positivity-prop",
+        "--sign-match-probability",
         type=float,
         default=0.0,
-        help="Proportion of parameters to enforce positivity on",
+        help="Proportion of parameters to enforce sign match on",
     )
 
     return parser.parse_args()
@@ -157,10 +157,10 @@ def main():
     instability_event = InstabilityEvent(threshold=args.instability_threshold)
     events = [time_limit_event, instability_event]
 
-    param_sampler = GaussianParamSampler(
+    param_sampler = SignedGaussianParamSampler(
         random_seed=args.rseed,
         scale=args.param_scale,
-        positivity_prop=args.positivity_prop,
+        sign_match_probability=args.sign_match_probability,
         verbose=True,
     )
     ic_sampler = OnAttractorInitCondSampler(
@@ -169,7 +169,7 @@ def main():
         recompute_standardization=True,  # Important!
         events=events,
         verbose=True,
-        random_seed=args.rseed
+        random_seed=args.rseed,
     )
 
     dyst_data_generator = DystData(
@@ -217,7 +217,7 @@ def main():
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_train,
-            use_multiprocessing=True 
+            use_multiprocessing=True,
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", "train_attractor_checks.json"),
@@ -231,7 +231,7 @@ def main():
             save_dir=args.data_dir,
             standardize=args.standardize_test,
             reset_attractor_validator=True,  # save validator results separately for test
-            use_multiprocessing=True
+            use_multiprocessing=True,
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", "test_attractor_checks.json"),

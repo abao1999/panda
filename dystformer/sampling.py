@@ -53,7 +53,7 @@ class InstabilityEvent:
 
 
 @dataclass
-class GaussianParamSampler(BaseSampler):
+class SignedGaussianParamSampler(BaseSampler):
     """Sample gaussian perturbations for system parameters
 
     NOTE:
@@ -62,11 +62,12 @@ class GaussianParamSampler(BaseSampler):
 
     Args:
         scale: std (isotropic) of gaussian used for sampling
+        sign_match_probability: proportion of perturbations that match the sign of the parameter
     """
 
     scale: float = 1e-2
-    verbose: bool = False  # for testing purposes
-    positivity_prop: float = 0.0
+    sign_match_probability: float = 0.0
+    verbose: bool = False
 
     def __call__(
         self, name: str, param: Array, system: Optional[BaseDyn] = None
@@ -78,17 +79,18 @@ class GaussianParamSampler(BaseSampler):
         flat_param = np.array(param, dtype=np.float32).flatten()
         scale = np.abs(flat_param) * self.scale
         cov = np.diag(np.square(scale))
-        perturbed_param = (
-            self.rng.multivariate_normal(mean=flat_param, cov=cov)
-            .reshape(shape)
-        )
+        perturbation = self.rng.multivariate_normal(
+            mean=np.zeros_like(flat_param), cov=cov
+        ).reshape(shape)
 
         # demote singletons to scalar
         if np.isscalar(param):
-            perturbed_param = perturbed_param.item()
+            perturbation = perturbation.item()
 
-        if self.rng.random() < self.positivity_prop:
-            perturbed_param = np.abs(perturbed_param)
+        if self.rng.random() < self.sign_match_probability:
+            perturbation = np.sign(param) * np.abs(perturbation)
+
+        perturbed_param = param + perturbation
 
         if self.verbose:
             if system is not None:
