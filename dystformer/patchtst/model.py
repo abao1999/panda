@@ -182,6 +182,7 @@ class PatchTST(nn.Module):
         predictions = []
         remaining = prediction_length
 
+        # NOTE: this does the autoregressive prediction
         while remaining > 0:
             # prediction: [bs x num_samples x forecast_len x num_channels]
             outputs = self.model.generate(context_tensor)
@@ -192,6 +193,10 @@ class PatchTST(nn.Module):
 
             if remaining <= 0:
                 break
+
+            print("Prediction shape: ", prediction.shape)
+            print("Median shape: ", prediction.median(dim=1).values.shape)
+            print("Context tensor shape: ", context_tensor.shape)
 
             # need to contract over the num_samples dimension, use median
             context_tensor = torch.cat(

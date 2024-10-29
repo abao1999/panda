@@ -41,6 +41,7 @@ def load_and_split_dataset_from_arrow(
     offset: int,
     num_rolls: int,
     filepath: Union[str, Path],
+    one_dim_target: bool = False,
     verbose: bool = False,
 ) -> TestData:
     """
@@ -63,8 +64,8 @@ def load_and_split_dataset_from_arrow(
         print(f"And using offset {offset} and prediction length {prediction_length}")
 
     gts_dataset = FileDataset(
-        path=Path(filepath), freq="h"
-    )  # TODO: consider other frequencies?
+        path=Path(filepath), freq="h", one_dim_target=one_dim_target
+    )
 
     # Split dataset for evaluation
     _, test_template = split(gts_dataset, offset=offset)

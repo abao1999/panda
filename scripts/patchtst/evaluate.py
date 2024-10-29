@@ -80,6 +80,8 @@ def evaluate_forecasting_model(
     model: PatchTST,
     systems: Dict[str, PatchTSTDataset],
     batch_size: int,
+    prediction_length: int,
+    limit_prediction_length: bool = False,
     metrics: Optional[List[str]] = None,
     return_predictions: bool = False,
 ) -> Tuple[Optional[Dict[str, np.ndarray]], Dict[str, Dict[str, float]]]:
@@ -110,8 +112,16 @@ def evaluate_forecasting_model(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
             past_batch = torch.from_numpy(np.stack(past_values)).to(model.device)
-            predictions = model.predict(past_batch).transpose(1, 0).cpu().numpy()
-
+            predictions = (
+                model.predict(
+                    past_batch,
+                    prediction_length=prediction_length,
+                    limit_prediction_length=limit_prediction_length,
+                )
+                .transpose(1, 0)
+                .cpu()
+                .numpy()
+            )
             future_batch = np.stack(future_values)
             eval_metrics = compute_metrics(predictions, future_batch, include=metrics)
 
@@ -198,6 +208,8 @@ def main(cfg):
         model,
         test_datasets,
         batch_size=cfg.eval.batch_size,
+        prediction_length=cfg.patchtst.prediction_length,
+        limit_prediction_length=cfg.eval.limit_prediction_length,
         metrics=[
             "mse",
             "mae",
