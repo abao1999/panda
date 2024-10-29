@@ -91,13 +91,26 @@ class PatchTST(nn.Module):
         self.model.model.encoder = pretrained_model.model.encoder
 
     @classmethod
-    def from_pretrained(cls, pretrain_path: str, **kwargs):
+    def from_pretrained(
+        cls,
+        mode: str,
+        pretrain_path: str,
+        device: Optional[Union[str, torch.device]] = None,
+    ):
         """
-        Load a pretrained model from a path.
+        Load a pretrained model from a path and move it to the specified device.
         """
         config = PatchTSTConfig.from_pretrained(pretrain_path)
-        model = cls(config=config.to_dict(), mode=kwargs.get("mode", "predict"))
-        model.model = PatchTSTForPretraining.from_pretrained(pretrain_path)
+        model = cls(config=config.to_dict(), mode=mode)
+
+        # Load the model based on the mode
+        model.model = (
+            PatchTSTForPretraining if mode == "pretrain" else PatchTSTForPrediction
+        ).from_pretrained(pretrain_path)
+
+        if device is not None:
+            model.to(device)
+
         return model
 
     def _prepare_and_validate_context(

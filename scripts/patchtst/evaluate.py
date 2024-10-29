@@ -22,6 +22,82 @@ from dystformer.utils import log_on_main, process_trajs
 logger = logging.getLogger(__name__)
 
 
+def rolling_prediction_window_indices(
+    datasets: Dict[str, List],
+    window_stride: int,
+    context_length: int,
+    prediction_length: int,
+) -> Dict[str, List[List[int]]]:
+    """
+    Get the indices of individual windows for each timeseries in each system
+    in the stacked prediction window array from a rolling sampler.
+
+    This can handle multiple timeseries for each system, possible with different lengths
+
+    For each system with stack prediction window array W of shape (..., num_windows*num_datasets, ...),
+    return a list of tuples where each tuple contains the indices of the windows of its
+    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
+    i-th timeseries of that system.
+
+    Args:
+        datasets: Dictionary mapping system names to lists of datasets
+        window_stride: Stride length between consecutive windows
+        context_length: Length of context window
+        prediction_length: Length of prediction window
+        window_dim: Dimension along which to count windows (default: 0)
+
+    Returns:
+        Dictionary mapping system names to shape of the unpacked window arrays
+    """
+    indices = {}
+    for system_name, timeseries in datasets.items():
+        indices[system_name] = []
+        for i, dataset in enumerate(timeseries):
+            ts_shape = next(iter(dataset))["target"].shape
+            assert len(ts_shape) == 2, "Target must be 2D"
+            T = ts_shape[-1]
+            windows = (T - context_length - prediction_length) // window_stride + 1
+            indices[system_name].append(list(range(i * windows, (i + 1) * windows)))
+    return indices
+
+
+def sampled_prediction_window_indices(
+    datasets: Dict[str, List],
+    num_samples: int,
+) -> Dict[str, List[List[int]]]:
+    """
+    Get the indices of individual windows for each timeseries in each system
+    in the stacked prediction window array from a sampled sampler.
+
+    This can handle multiple timeseries for each system, possibly with different lengths.
+
+    For each system with stack prediction window array W of shape (..., num_samples*num_datasets, ...),
+    return a list of tuples where each tuple contains the indices of the windows of its
+    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
+    i-th timeseries of that system.
+
+    NOTE: Assumes that the sample-style window sampler sampled a fixed number of
+    windows for each timeseries
+
+    Args:
+        datasets: Dictionary mapping system names to lists of datasets
+        num_samples: Number of samples to draw for each timeseries
+        context_length: Length of context window
+        prediction_length: Length of prediction window
+
+    Returns:
+        Dictionary mapping system names to shape of the unpacked window arrays
+    """
+    indices = {
+        system_name: [
+            list(range(i * num_samples, (i + 1) * num_samples))
+            for i in range(len(datasets[system_name]))
+        ]
+        for system_name in datasets
+    }
+    return indices
+
+
 def evaluate_mlm_model(
     model: PatchTST,
     systems: Dict[str, PatchTSTDataset],
@@ -136,7 +212,6 @@ def evaluate_forecasting_model(
         # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         predictions = torch.cat(predictions, dim=1).cpu().numpy()
-        print(f"Predictions shape: {predictions.shape}")
         # shape: (num_parallel_samples, num_windows*num_datasets, num_channels)
         labels = torch.cat(labels, dim=0).cpu().numpy()
 
@@ -172,14 +247,7 @@ def save_evaluation_results(
     1. Saves evaluation metrics to a CSV file, appending to existing file if present.
     2. If specified in eval_cfg, saves forecast trajectories as arrow files.
     """
-    result_rows = []
-    result_rows.extend(
-        {
-            "system": system,
-            **metrics[system],
-        }
-        for system in metrics
-    )
+    result_rows = [{"system": system, **metrics[system]} for system in metrics]
     results_df = pd.DataFrame(result_rows)
 
     metrics_fname = eval_cfg.output_fname or f"{eval_cfg.split}_metrics.csv"
@@ -226,82 +294,6 @@ def save_evaluation_results(
             split_coords=eval_cfg.split_coords,
             verbose=eval_cfg.verbose,
         )
-
-
-def rolling_prediction_window_indices(
-    datasets: Dict[str, List],
-    window_stride: int,
-    context_length: int,
-    prediction_length: int,
-) -> Dict[str, List[List[int]]]:
-    """
-    Get the indices of individual windows for each timeseries in each system
-    in the stacked prediction window array from a rolling sampler.
-
-    This can handle multiple timeseries for each system, possible with different lengths
-
-    For each system with stack prediction window array W of shape (..., num_windows*num_datasets, ...),
-    return a list of tuples where each tuple contains the indices of the windows of its
-    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
-    i-th timeseries of that system.
-
-    Args:
-        datasets: Dictionary mapping system names to lists of datasets
-        window_stride: Stride length between consecutive windows
-        context_length: Length of context window
-        prediction_length: Length of prediction window
-        window_dim: Dimension along which to count windows (default: 0)
-
-    Returns:
-        Dictionary mapping system names to shape of the unpacked window arrays
-    """
-    indices = {}
-    for system_name, timeseries in datasets.items():
-        indices[system_name] = []
-        for i, dataset in enumerate(timeseries):
-            ts_shape = next(iter(dataset))["target"].shape
-            assert len(ts_shape) == 2, "Target must be 2D"
-            T = ts_shape[-1]
-            windows = (T - context_length - prediction_length) // window_stride + 1
-            indices[system_name].append(list(range(i * windows, (i + 1) * windows)))
-    return indices
-
-
-def sampled_prediction_window_indices(
-    datasets: Dict[str, List],
-    num_samples: int,
-) -> Dict[str, List[List[int]]]:
-    """
-    Get the indices of individual windows for each timeseries in each system
-    in the stacked prediction window array from a sampled sampler.
-
-    This can handle multiple timeseries for each system, possibly with different lengths.
-
-    For each system with stack prediction window array W of shape (..., num_samples*num_datasets, ...),
-    return a list of tuples where each tuple contains the indices of the windows of its
-    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
-    i-th timeseries of that system.
-
-    NOTE: Assumes that the sample-style window sampler sampled a fixed number of
-    windows for each timeseries
-
-    Args:
-        datasets: Dictionary mapping system names to lists of datasets
-        num_samples: Number of samples to draw for each timeseries
-        context_length: Length of context window
-        prediction_length: Length of prediction window
-
-    Returns:
-        Dictionary mapping system names to shape of the unpacked window arrays
-    """
-    indices = {
-        system_name: [
-            list(range(i * num_samples, (i + 1) * num_samples))
-            for i in range(len(datasets[system_name]))
-        ]
-        for system_name in datasets
-    }
-    return indices
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -355,10 +347,9 @@ def main(cfg):
         for system_name in test_data_dict
     }
 
-    model = PatchTST(
-        cfg.patchtst,
-        mode=cfg.eval.mode,
-        pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
+    model = PatchTST.from_pretrained(
+        mode="predict",
+        pretrain_path=cfg.eval.checkpoint_path,
         device=cfg.eval.device,
     )
     model.eval()
