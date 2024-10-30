@@ -136,7 +136,7 @@ class DystData:
         standardize: bool = False,
         use_multiprocessing: bool = True,
         reset_attractor_validator: bool = False,
-        **kwargs
+        **kwargs,
     ) -> None:
         print(
             f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}"
@@ -189,7 +189,7 @@ class DystData:
             [handle_failed_integrations_callback, process_and_save_callback()],
             standardize=standardize,
             use_multiprocessing=use_multiprocessing,
-            **kwargs
+            **kwargs,
         )
 
     def _generate_ensembles(
@@ -206,6 +206,9 @@ class DystData:
         for i, param_rng in zip(range(self.num_param_perturbations), pp_rng_stream):
             if self.param_sampler is not None:
                 self.param_sampler.set_rng(param_rng)
+
+            if self.ic_sampler is not None:
+                self.ic_sampler.clear_cache()
 
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j
