@@ -190,6 +190,7 @@ def evaluate_forecasting_model(
     }.get(parallel_sample_reduction, lambda x: x)
 
     for system in tqdm(systems, desc="Evaluating model"):
+        print(f"Evaluating {system}")
         dataset = systems[system]
         predictions, labels = [], []
         for batch in batcher(dataset, batch_size=batch_size):
@@ -197,13 +198,20 @@ def evaluate_forecasting_model(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
             past_batch = torch.stack(past_values, dim=0).to(model.device)
+
+            # shape: (num_parallel_samples, batch_size, prediction_length, num_channels)
             preds = model.predict(
                 past_batch,
                 prediction_length=prediction_length,
                 limit_prediction_length=limit_prediction_length,
             ).transpose(1, 0)
 
+            # shape: (batch_size, sampler_prediction_length, num_channels)h
             future_batch = torch.stack(future_values, dim=0)
+
+            # Truncate predictions to match future_batch length if needed
+            if preds.shape[2] > future_batch.shape[1]:
+                preds = preds[..., : future_batch.shape[1], :]
 
             labels.append(future_batch)
             predictions.append(preds)
@@ -215,8 +223,7 @@ def evaluate_forecasting_model(
         # shape: (num_parallel_samples, num_windows*num_datasets, num_channels)
         labels = torch.cat(labels, dim=0).cpu().numpy()
 
-        eval_metrics = compute_metrics(predictions, labels, include=metrics)
-        system_metrics[system] = eval_metrics
+        system_metrics[system] = compute_metrics(predictions, labels, include=metrics)
 
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none

@@ -10,6 +10,10 @@ from numpy.typing import NDArray
 
 Array = NDArray[np.float64]
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # Event functions for solve_ivp
 @dataclass
@@ -100,7 +104,7 @@ class GaussianParamSampler(BaseSampler):
 
 @dataclass
 class SignedGaussianParamSampler(BaseSampler):
-    """Sample gaussian perturbations for system parameters
+    """Sample sign-matched gaussian perturbations for system parameters
 
     NOTE:
         - This is a MWE of a parameter transform
@@ -112,7 +116,6 @@ class SignedGaussianParamSampler(BaseSampler):
     """
 
     scale: float = 1e-2
-    sign_match_probability: float = 0.0
     verbose: bool = False
 
     def __call__(
@@ -133,18 +136,13 @@ class SignedGaussianParamSampler(BaseSampler):
         if np.isscalar(param):
             perturbation = perturbation.item()
 
-        if self.rng.random() < self.sign_match_probability:
-            perturbation = np.sign(param) * np.abs(perturbation)
-
-        perturbed_param = param + perturbation
+        # add a signed perturbation with sign matching the og parameter
+        perturbed_param = param + np.sign(param) * np.abs(perturbation)
 
         if self.verbose:
             if system is not None:
                 print(f"System: {system.name}")
-            print(f"Parameter name: {name}")
-            print(f"--> Original parameter: {param}")
-            print(f"--> Perturbed parameter: {perturbed_param}")
-
+            print(f"Parameter {name}: {param} -> {perturbed_param}")
         return perturbed_param
 
 
@@ -187,9 +185,8 @@ class OnAttractorInitCondSampler(BaseSampler):
         if system.name is None:
             raise ValueError("System must have a name")
 
-        # make reference trajectory if not already cached
+        # # make reference trajectory if not already cached
         if system.name not in self.trajectory_cache:
-            # Integrate the system with default parameters
             reference_traj = system.make_trajectory(
                 self.reference_traj_length,
                 events=self.events,
@@ -218,9 +215,7 @@ class OnAttractorInitCondSampler(BaseSampler):
         new_ic = self.rng.choice(trajectory)
 
         if self.verbose:
-            print(f"System: {system.name}")
-            print(f"--> Original initial condition: {ic}")
-            print(f"--> New initial condition: {new_ic}")
+            print(f"System: {system.name} ic: {ic} -> {new_ic}")
 
         return new_ic
 

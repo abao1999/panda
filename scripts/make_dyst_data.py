@@ -9,7 +9,6 @@ import numpy as np
 
 from dystformer.dyst_data import DystData
 from dystformer.sampling import (
-    GaussianParamSampler,
     InstabilityEvent,
     OnAttractorInitCondSampler,
     TimeLimitEvent,
@@ -50,7 +49,7 @@ def parse_arguments():
     parser.add_argument(
         "--max-duration",
         type=int,
-        default=60 * 4,
+        default=60 * 3,
         help="Maximum duration for the TimeLimitEvent",
     )
     parser.add_argument(
@@ -135,10 +134,9 @@ def parse_arguments():
         help="System class for splitting",
     )
     parser.add_argument(
-        "--sign-match-probability",
-        type=float,
-        default=0.0,
-        help="Proportion of parameters to enforce sign match on",
+        "--multiprocessing",
+        action="store_true",
+        help="Use multiprocessing for integrating the ensemble",
     )
 
     return parser.parse_args()
@@ -157,14 +155,10 @@ def main():
     instability_event = InstabilityEvent(threshold=args.instability_threshold)
     events = [time_limit_event, instability_event]
 
-    # param_sampler = SignedGaussianParamSampler(
-    #     random_seed=args.rseed,
-    #     scale=args.param_scale,
-    #     sign_match_probability=args.sign_match_probability,
-    #     verbose=False,
-    # )
-    param_sampler = GaussianParamSampler(
-        random_seed=args.rseed, scale=args.param_scale, verbose=True
+    param_sampler = SignedGaussianParamSampler(
+        random_seed=args.rseed,
+        scale=args.param_scale,
+        verbose=True,
     )
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=args.reference_traj_length,
@@ -203,7 +197,6 @@ def main():
         samples = np.array(
             [ensemble[args.debug_dyst] for ensemble in ensembles if len(ensemble) > 0]
         ).transpose(0, 2, 1)
-        print(samples.shape)
         plot_trajs_multivariate(
             samples,
             save_dir="figures",
@@ -220,7 +213,7 @@ def main():
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_train,
-            use_multiprocessing=True,
+            use_multiprocessing=args.multiprocessing,
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", "train_attractor_checks.json"),
@@ -234,7 +227,7 @@ def main():
             save_dir=args.data_dir,
             standardize=args.standardize_test,
             reset_attractor_validator=True,  # save validator results separately for test
-            use_multiprocessing=True,
+            use_multiprocessing=args.multiprocessing,
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", "test_attractor_checks.json"),

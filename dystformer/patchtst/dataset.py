@@ -20,6 +20,10 @@ from gluonts.transform import (
 )
 from torch.utils.data import IterableDataset, get_worker_info
 
+# used for prediction length in test mode when window style is single
+# if you're predicting for more timepoints than this at a time...what are you doing??
+MAX_PREDICTION_LENGTH = 1_000_000
+
 
 class RegularWindowedSampler(InstanceSampler):
     """
@@ -39,6 +43,22 @@ class RegularWindowedSampler(InstanceSampler):
             return np.array([], dtype=int)
 
         return np.arange(a, b + 1, self.stride)
+
+
+class SingleContextSampler(InstanceSampler):
+    """
+    Sample a single context window from the beginning of each series.
+
+    Used for autoregressive prediction where the model should predict the
+    rest of the entire timeseries.
+    """
+
+    def __call__(self, ts: np.ndarray) -> np.ndarray:
+        a, b = self._get_bounds(ts)
+        if a > b:
+            return np.array([], dtype=int)
+
+        return np.array([a])
 
 
 class PseudoShuffledIterableDataset(IterableDataset):
@@ -120,14 +140,19 @@ class PatchTSTDataset(IterableDataset):
 
     def _create_instance_splitter(self, mode: str):
         assert mode in ["train", "test", "validation"]
-        assert self.window_style in [
-            "sampled",
-            "rolling",
-        ], "evaluation windows can only either be rolling or randomly sampled"
+        assert (
+            self.window_style
+            in [
+                "sampled",  # randomly sample eval windows from each timeseries
+                "rolling",  # take sliding windows of context_length with a stride of window_stride from each timeseries
+                "single",  # get only the first context window from each timeseries, predict the rest
+            ]
+        ), "evaluation windows can only either be rolling or randomly sampled"
 
         test_sampler = {
             "sampled": partial(NumInstanceSampler, N=self.num_test_instances),
             "rolling": partial(RegularWindowedSampler, stride=self.window_stride),
+            "single": SingleContextSampler,
         }[self.window_style]
 
         instance_sampler = {
@@ -144,6 +169,11 @@ class PatchTSTDataset(IterableDataset):
             "validation": ValidationSplitSampler(min_future=self.prediction_length),
         }[mode]
 
+        prediction_length = (
+            MAX_PREDICTION_LENGTH
+            if mode == "test" and self.window_style == "single"
+            else self.prediction_length
+        )
         return InstanceSplitter(
             target_field="target",
             is_pad_field="is_pad",
@@ -151,7 +181,7 @@ class PatchTSTDataset(IterableDataset):
             forecast_start_field="forecast_start",
             instance_sampler=instance_sampler,
             past_length=self.context_length,
-            future_length=self.prediction_length,
+            future_length=prediction_length,
             dummy_value=np.nan,
         )
 

@@ -2,8 +2,6 @@ import os
 from datetime import datetime
 from itertools import combinations
 from pathlib import Path
-
-# for type hints
 from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
 
 import numpy as np
