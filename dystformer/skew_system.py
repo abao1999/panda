@@ -22,7 +22,8 @@ from dystformer.utils import (
 )
 
 
-class SkewSystem(DynSys):
+@dataclass
+class SkewSystem:
     """
     A skew-product dynamical system, which is a pair of dynamical systems: a driver and a response.
     The driver and response are coupled together by a custom user-defined map.

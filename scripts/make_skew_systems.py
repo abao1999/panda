@@ -42,6 +42,12 @@ def parse_arguments():
         help="Directory to save the generated data",
     )
     parser.add_argument(
+        "--split-prefix",
+        type=str,
+        default=None,
+        help="Optional prefix for the split names (e.g., 'patchtst' for 'patchtst_train')",
+    )
+    parser.add_argument(
         "--debug-mode",
         action="store_true",
         help="Enable debug mode for saving failed trajectory ensembles",
@@ -97,13 +103,13 @@ def parse_arguments():
     parser.add_argument(
         "--num-ics",
         type=int,
-        default=2,
+        default=1,
         help="Number of initial conditions for DystData",
     )
     parser.add_argument(
         "--num-param-perturbations",
         type=int,
-        default=3,
+        default=4,
         help="Number of parameter perturbations for DystData",
     )
     parser.add_argument(
@@ -143,9 +149,10 @@ if __name__ == "__main__":
     dysts_names = args.dysts_names
     if dysts_names == ["all"]:
         # generate split of dynamical systems
-        _, dysts_names = split_systems(
+        test_dysts_names, train_dysts_names = split_systems(
             args.test_split, seed=args.rseed, sys_class=args.sys_class
         )
+        dysts_names = train_dysts_names + test_dysts_names
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=args.max_duration)
     instability_event = InstabilityEvent(threshold=args.instability_threshold)
@@ -167,6 +174,8 @@ if __name__ == "__main__":
     print(
         f"Generating {args.n_combos} skew system combinations from {len(dysts_names)} systems"
     )
+
+    split_prefix = args.split_prefix + "_" if args.split_prefix else ""
 
     skew_data_generator = SkewData(
         rseed=args.rseed,
@@ -196,8 +205,8 @@ if __name__ == "__main__":
 
     skew_data_generator.save_dyst_ensemble(
         dysts_names=skew_pair_names,
-        split="skew_systems",
-        split_failures="failed_skew_systems",
+        split=f"{split_prefix}skew_systems",
+        split_failures=f"{split_prefix}failed_skew_systems",
         samples_process_interval=1,
         save_dir=args.data_dir,
         standardize=args.standardize,
