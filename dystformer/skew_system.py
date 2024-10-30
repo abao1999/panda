@@ -47,7 +47,7 @@ class SkewSystem:
 
     driver: DynSys
     response: DynSys
-    coupling_map: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None
+    coupling_map: Optional[np.ndarray] = None
     couple_phase_space: bool = False
     couple_flows: bool = True
     events: Optional[List[Callable]] = None
@@ -104,7 +104,11 @@ class SkewSystem:
         """
         Set the coupling map to be a basic affine map for the coupling between the driver and response systems
         """
-        return None
+        kappa = self._compute_coupling_strength()
+        # kappa = np.ones(self.k)  # dummy
+        self.coupling_map = construct_basic_affine_map(
+            self.n_driver, self.n_response, kappa
+        )
 
     def _apply_coupling_map(self, x: np.ndarray, y: np.ndarray) -> List[np.ndarray]:
         """
