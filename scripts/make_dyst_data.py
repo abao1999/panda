@@ -9,9 +9,9 @@ import numpy as np
 
 from dystformer.dyst_data import DystData
 from dystformer.sampling import (
+    GaussianParamSampler,
     InstabilityEvent,
     OnAttractorInitCondSampler,
-    SignedGaussianParamSampler,
     TimeLimitEvent,
 )
 from dystformer.utils import plot_trajs_multivariate, split_systems
@@ -157,18 +157,21 @@ def main():
     instability_event = InstabilityEvent(threshold=args.instability_threshold)
     events = [time_limit_event, instability_event]
 
-    param_sampler = SignedGaussianParamSampler(
-        random_seed=args.rseed,
-        scale=args.param_scale,
-        sign_match_probability=args.sign_match_probability,
-        verbose=True,
+    # param_sampler = SignedGaussianParamSampler(
+    #     random_seed=args.rseed,
+    #     scale=args.param_scale,
+    #     sign_match_probability=args.sign_match_probability,
+    #     verbose=False,
+    # )
+    param_sampler = GaussianParamSampler(
+        random_seed=args.rseed, scale=args.param_scale, verbose=True
     )
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=args.reference_traj_length,
         reference_traj_transient=args.reference_traj_transient,
         recompute_standardization=True,  # Important!
         events=events,
-        verbose=True,
+        verbose=False,
         random_seed=args.rseed,
     )
 
