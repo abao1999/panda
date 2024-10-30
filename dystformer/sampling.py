@@ -128,7 +128,7 @@ class OnAttractorInitCondSampler(BaseSampler):
     recompute_standardization: bool = False
 
     def __post_init__(self):
-        super().__post_init__()
+        # super().__post_init__()
         assert (
             0 < self.reference_traj_transient < 1
         ), "Transient must be a fraction of the trajectory length"

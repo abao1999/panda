@@ -219,6 +219,7 @@ def main():
             standardize=args.standardize_train,
             use_multiprocessing=True,
         )
+        fdsfsdfs
         dyst_data_generator.save_summary(
             os.path.join("outputs", "train_attractor_checks.json"),
         )
