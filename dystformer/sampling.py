@@ -54,6 +54,55 @@ class InstabilityEvent:
 
 
 @dataclass
+class GaussianParamSampler(BaseSampler):
+    """Sample gaussian perturbations for system parameters
+    NOTE:
+        - This is a MWE of a parameter transform
+        - Other parameter transforms should follow this dataclass template
+    Args:
+        scale: std (isotropic) of gaussian used for sampling
+    """
+
+    scale: float = 1e-2
+    verbose: bool = False  # for testing purposes
+
+    def __call__(
+        self, name: str, param: Array, system: Optional[BaseDyn] = None
+    ) -> Array | float:
+        # scale each parameter relatively
+        shape = 1 if np.isscalar(param) else param.shape
+
+        # avoid shape errors
+        flat_param = np.array(param).flatten()
+        scale = np.abs(flat_param) * self.scale
+        cov = np.diag(np.square(scale))
+        perturbed_param = (
+            self.rng.multivariate_normal(mean=flat_param, cov=cov)
+            .reshape(shape)
+            .squeeze()
+        )
+        if isinstance(param, (float, int)):
+            perturbed_param = float(perturbed_param)
+
+        if self.verbose:
+            if system is not None:
+                print(
+                    f"System: {system.name} \n"
+                    f"Parameter name: {name} \n"
+                    f"--> Original parameter: {param} \n"
+                    f"--> Perturbed parameter: {perturbed_param}"
+                )
+            else:
+                print(
+                    f"Parameter name: {name}\n"
+                    f"--> Original parameter: {param}\n"
+                    f"--> Perturbed parameter: {perturbed_param}"
+                )
+
+        return perturbed_param
+
+
+@dataclass
 class SignedGaussianParamSampler(BaseSampler):
     """Sample sign-matched gaussian perturbations for system parameters
 

@@ -85,10 +85,9 @@ def main(cfg):
         f"Loading checkpoint from {cfg.eval.checkpoint_path} onto device: {cfg.eval.device}"
     )
 
-    model = PatchTST(
-        cfg.patchtst,
-        mode=cfg.eval.mode,
-        pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
+    model = PatchTST.from_pretrained(
+        mode="predict",
+        pretrain_path=cfg.eval.checkpoint_path,
         device=cfg.eval.device,
     )
     model.eval()
