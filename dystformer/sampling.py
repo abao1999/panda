@@ -88,16 +88,10 @@ class GaussianParamSampler(BaseSampler):
             if system is not None:
                 print(
                     f"System: {system.name} \n"
-                    f"Parameter name: {name} \n"
-                    f"--> Original parameter: {param} \n"
-                    f"--> Perturbed parameter: {perturbed_param}"
+                    f"Parameter {name}: {param} -> {perturbed_param}"
                 )
             else:
-                print(
-                    f"Parameter name: {name}\n"
-                    f"--> Original parameter: {param}\n"
-                    f"--> Perturbed parameter: {perturbed_param}"
-                )
+                print(f"Parameter {name}: {param} -> {perturbed_param}")
 
         return perturbed_param
 
@@ -141,8 +135,12 @@ class SignedGaussianParamSampler(BaseSampler):
 
         if self.verbose:
             if system is not None:
-                print(f"System: {system.name}")
-            print(f"Parameter {name}: {param} -> {perturbed_param}")
+                print(
+                    f"System: {system.name} \n"
+                    f"Parameter {name}: {param} -> {perturbed_param}"
+                )
+            else:
+                print(f"Parameter {name}: {param} -> {perturbed_param}")
         return perturbed_param
 
 
@@ -244,8 +242,9 @@ class GaussianInitialConditionSampler(BaseSampler):
         perturbed_ic = self.rng.multivariate_normal(mean=ic, cov=scaled_cov)
 
         if self.verbose:
-            print(f"System: {system.name}")
-            print(f"--> Original initial condition: {ic}")
-            print(f"--> Perturbed initial condition: {perturbed_ic}")
+            if system is not None:
+                print(f"System: {system.name} \n" f"IC: {ic} -> {perturbed_ic}")
+            else:
+                print(f"IC: {ic} -> {perturbed_ic}")
 
         return perturbed_ic

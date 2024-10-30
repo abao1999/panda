@@ -6,9 +6,9 @@ import argparse
 import os
 
 from dystformer.sampling import (
-    GaussianParamSampler,
     InstabilityEvent,
     OnAttractorInitCondSampler,
+    SignedGaussianParamSampler,
     TimeLimitEvent,
 )
 from dystformer.skew_system import SkewData
@@ -151,8 +151,10 @@ if __name__ == "__main__":
     instability_event = InstabilityEvent(threshold=args.instability_threshold)
     events = [time_limit_event, instability_event]
 
-    param_sampler = GaussianParamSampler(
-        random_seed=args.rseed, scale=args.param_scale, verbose=True
+    param_sampler = SignedGaussianParamSampler(
+        random_seed=args.rseed,
+        scale=args.param_scale,
+        verbose=True,
     )
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=args.reference_traj_length,

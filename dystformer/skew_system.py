@@ -449,6 +449,9 @@ class SkewData(DystData):
             if self.param_sampler is not None:
                 self.param_sampler.set_rng(param_rng)
 
+            if self.ic_sampler is not None:
+                self.ic_sampler.clear_cache()
+
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j
 

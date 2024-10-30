@@ -11,6 +11,7 @@ from dystformer.dyst_data import DystData
 from dystformer.sampling import (
     InstabilityEvent,
     OnAttractorInitCondSampler,
+    SignedGaussianParamSampler,
     TimeLimitEvent,
 )
 from dystformer.utils import plot_trajs_multivariate, split_systems
