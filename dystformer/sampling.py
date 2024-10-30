@@ -111,6 +111,7 @@ class SignedGaussianParamSampler(BaseSampler):
 
     scale: float = 1e-2
     verbose: bool = False
+    unmatch_sign_probability: float = 0.0
 
     def __call__(
         self, name: str, param: Array, system: Optional[BaseDyn] = None
@@ -130,8 +131,12 @@ class SignedGaussianParamSampler(BaseSampler):
         if np.isscalar(param):
             perturbation = perturbation.item()
 
+        # dont sign match with low probability
+        if self.rng.random() > self.unmatch_sign_probability:
+            perturbation = np.sign(param) * np.abs(perturbation)
+
         # add a signed perturbation with sign matching the og parameter
-        perturbed_param = param + np.sign(param) * np.abs(perturbation)
+        perturbed_param = param + perturbation
 
         if self.verbose:
             if system is not None:
