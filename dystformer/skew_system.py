@@ -22,7 +22,8 @@ from dystformer.utils import (
 )
 
 
-class SkewSystem(DynSys):
+@dataclass
+class SkewSystem:
     """
     A skew-product dynamical system, which is a pair of dynamical systems: a driver and a response.
     The driver and response are coupled together by a custom user-defined map.
@@ -46,7 +47,7 @@ class SkewSystem(DynSys):
 
     driver: DynSys
     response: DynSys
-    coupling_map: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None
+    coupling_map: Optional[np.ndarray] = None
     couple_phase_space: bool = False
     couple_flows: bool = True
     events: Optional[List[Callable]] = None
@@ -103,7 +104,11 @@ class SkewSystem(DynSys):
         """
         Set the coupling map to be a basic affine map for the coupling between the driver and response systems
         """
-        return None
+        kappa = self._compute_coupling_strength()
+        # kappa = np.ones(self.k)  # dummy
+        self.coupling_map = construct_basic_affine_map(
+            self.n_driver, self.n_response, kappa
+        )
 
     def _apply_coupling_map(self, x: np.ndarray, y: np.ndarray) -> List[np.ndarray]:
         """
@@ -448,6 +453,9 @@ class SkewData(DystData):
         for i, param_rng in zip(range(self.num_param_perturbations), pp_rng_stream):
             if self.param_sampler is not None:
                 self.param_sampler.set_rng(param_rng)
+
+            if self.ic_sampler is not None:
+                self.ic_sampler.clear_cache()
 
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j

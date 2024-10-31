@@ -11,6 +11,7 @@ from dystformer.dyst_data import DystData
 from dystformer.sampling import (
     InstabilityEvent,
     OnAttractorInitCondSampler,
+    SignedGaussianParamSampler,
     TimeLimitEvent,
 )
 from dystformer.utils import plot_trajs_multivariate, split_systems
@@ -209,7 +210,7 @@ def main():
         dyst_data_generator.save_dyst_ensemble(
             dysts_names=train,
             split=f"{split_prefix}train",
-            split_failures="failed_attractors_train",
+            split_failures=f"{split_prefix}failed_attractors_train",
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_train,
@@ -222,7 +223,7 @@ def main():
         dyst_data_generator.save_dyst_ensemble(
             dysts_names=test,
             split=f"{split_prefix}test",
-            split_failures="failed_attractors_test",
+            split_failures=f"{split_prefix}failed_attractors_test",
             samples_process_interval=1,
             save_dir=args.data_dir,
             standardize=args.standardize_test,
