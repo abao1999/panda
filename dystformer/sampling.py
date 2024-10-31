@@ -110,8 +110,9 @@ class SignedGaussianParamSampler(BaseSampler):
     """
 
     scale: float = 1e-2
-    verbose: bool = False
+    eps: float = 1e-6
     unmatch_sign_probability: float = 0.0
+    verbose: bool = False
 
     def __call__(
         self, name: str, param: Array, system: Optional[BaseDyn] = None
@@ -122,7 +123,7 @@ class SignedGaussianParamSampler(BaseSampler):
         # avoid shape errors
         flat_param = np.array(param, dtype=np.float32).flatten()
         scale = np.abs(flat_param) * self.scale
-        cov = np.diag(np.square(scale))
+        cov = np.diag(np.square(scale + self.eps))
         perturbation = self.rng.multivariate_normal(
             mean=np.zeros_like(flat_param), cov=cov
         ).reshape(shape)

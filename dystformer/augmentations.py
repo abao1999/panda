@@ -10,17 +10,63 @@ from numpy.typing import Array
 
 
 @dataclass
-class RandomConvexCombinationTransform(Dataset):
-    """Random convex combinations of coordinates with coefficients sampled from a dirichlet distribution
+class RandomDelayEmbeddingsTransform:
+    """Delay embeddings of a randomly selected dimension of a timeseries
 
-    NOTE: this augmentation is on the system scale (across coordinates)
+    NOTE: this changes the length of the timeseries due to truncating the rolling artifacts
+
+    :param embedding_dim: embedding dimension for the delay embeddings
+    :param random_seed: RNG seed
+    """
+    random_seed: Optional[int] = 0
+
+    def __post_init__(self) -> None:
+        self.rng = np.random.default_rng(self.random_seed)
+
+    def __call__(self, timeseries: Array) -> Array:
+        num_dims = timeseries.shape[0]
+        selected_dim = self.rng.randint(num_dims)
+        selected_series = timeseries[selected_dim]
+
+        # Create delay embeddings
+        delay_embeddings = np.stack(
+            [np.roll(selected_series, shift) for shift in range(num_dims)]
+        )[:, num_dims - 1 :]  # cut off rolling artifacts
+
+        return delay_embeddings
+
+
+@dataclass
+class QuantileTransform:
+    """Quantize a timeseries into discrete bins
+
+    TODO: this is just a template, migrate this inside patchtst right after
+    standardization and rewrite in torch
+
+    :param num_bins: number of bins to quantize into
+    """
+    num_bins: int
+
+    def __post_init__(self) -> None:
+        self.bin_edges = np.linspace(self.low, self.high, self.num_bins + 1)
+
+    def __call__(self, timeseries: Array) -> Array:
+        bins = np.linspace(
+            np.floor(timeseries.min()), np.ceil(timeseries.max()), self.num_bins + 1
+        )
+        bin_indices = np.digitize(timeseries, bins)
+        return bins[bin_indices]
+
+
+@dataclass
+class RandomConvexCombinationTransform:
+    """Random convex combinations of coordinates with coefficients sampled from a dirichlet distribution
 
     :param num_combinations: number of random convex combinations to sample
     :param alpha: dirichlet distribution scale
     :param random_seed: RNG seed
     """
 
-    dataset: Dataset
     num_combinations: int
     alpha: float
     random_seed: Optional[int] = 0
@@ -37,8 +83,7 @@ class RandomConvexCombinationTransform(Dataset):
 
 
 @dataclass
-class RandomAffineTransform(Dataset):
-    pass
+class RandomAffineTransform:
     """Random affine transformations of coordinates with coefficients sampled from a zero-mean Gaussian
 
     :param out_dim: output dimension of the linear map

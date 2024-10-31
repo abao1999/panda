@@ -78,13 +78,12 @@ Please grade each item with the convention [Priority | Difficulty], where priori
 + [HIGH | MEDIUM] implement the progressive quantization scheme (partioning phase space)
 + [HIGH | HARD] compute periods for systems (with param perturbations) to be used to align timescales of training data (blocky trajectories no good). See random phase surrogate method, make faster.
 + [HIGH | MEDIUM] correct the standardization error for skew systems, couple flows.
-+ [MEDIUM | EASY] unify finalize eval script
-+ [MEDIUM | EASY] implement correct procedure for instance normalization + regenerate standardized training data
-+ [MEDIUM | EASY] check if rolling order in the delay embedding is correct/matters
-+ [LOW | MEDIUM] curriculum learning setup for growing the training dataset - use some notion of complexity/hardness to learn.
++ [MEDIUM | EASY] check min, max of instance normalized training timeseries to determine the high 
+and low for the quantile transform
 + [MEDIUM | HARD] get torch compile working (rope is slow)
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
++ [LOW | MEDIUM] curriculum learning setup for growing the training dataset - use some notion of complexity/hardness to learn.
 + [LOW | HARD] add flash attention support for AMD, see this warning: 
 ```
 [W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
