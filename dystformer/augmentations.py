@@ -1,30 +1,72 @@
-"""Augmentations for dynamical systems
-
-TODO
-    - consider adding option to cache the iteratables via Cached wrapper https://ts.gluon.ai/stable/api/gluonts/gluonts.itertools.html
+"""
+Training augmentations for multivariate time series
 """
 
 from dataclasses import dataclass
-from typing import Iterator, Optional
+from typing import Optional
 
 import numpy as np
-from gluonts.dataset import Dataset
-
-from dystformer.utils import stack_and_extract_metadata
+from numpy.typing import Array
 
 
 @dataclass
-class RandomConvexCombinationTransform(Dataset):
-    """Random convex combinations of coordinates with coefficients sampled from a dirichlet distribution
+class RandomDelayEmbeddingsTransform:
+    """Delay embeddings of a randomly selected dimension of a timeseries
 
-    NOTE: this augmentation is on the system scale (across coordinates)
+    NOTE: this changes the length of the timeseries due to truncating the rolling artifacts
+
+    :param embedding_dim: embedding dimension for the delay embeddings
+    :param random_seed: RNG seed
+    """
+    random_seed: Optional[int] = 0
+
+    def __post_init__(self) -> None:
+        self.rng = np.random.default_rng(self.random_seed)
+
+    def __call__(self, timeseries: Array) -> Array:
+        num_dims = timeseries.shape[0]
+        selected_dim = self.rng.randint(num_dims)
+        selected_series = timeseries[selected_dim]
+
+        # Create delay embeddings
+        delay_embeddings = np.stack(
+            [np.roll(selected_series, shift) for shift in range(num_dims)]
+        )[:, num_dims - 1 :]  # cut off rolling artifacts
+
+        return delay_embeddings
+
+
+@dataclass
+class QuantileTransform:
+    """Quantize a timeseries into discrete bins
+
+    TODO: this is just a template, migrate this inside patchtst right after
+    standardization and rewrite in torch
+
+    :param num_bins: number of bins to quantize into
+    """
+    num_bins: int
+
+    def __post_init__(self) -> None:
+        self.bin_edges = np.linspace(self.low, self.high, self.num_bins + 1)
+
+    def __call__(self, timeseries: Array) -> Array:
+        bins = np.linspace(
+            np.floor(timeseries.min()), np.ceil(timeseries.max()), self.num_bins + 1
+        )
+        bin_indices = np.digitize(timeseries, bins)
+        return bins[bin_indices]
+
+
+@dataclass
+class RandomConvexCombinationTransform:
+    """Random convex combinations of coordinates with coefficients sampled from a dirichlet distribution
 
     :param num_combinations: number of random convex combinations to sample
     :param alpha: dirichlet distribution scale
     :param random_seed: RNG seed
     """
 
-    dataset: Dataset
     num_combinations: int
     alpha: float
     random_seed: Optional[int] = 0
@@ -33,94 +75,61 @@ class RandomConvexCombinationTransform(Dataset):
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng(self.random_seed)
 
-    def __iter__(self) -> Iterator:
-        coordinates, metadata = stack_and_extract_metadata(self.dataset)
+    def __call__(self, timeseries: Array) -> Array:
         coeffs = self.rng.dirichlet(
             self.alpha * np.ones(coordinates.shape[0]), size=self.num_combinations
         )
-
-        if self.split_coords:
-            data_iterator = (
-                {"start": metadata[0], "target": combo}
-                for combo in coeffs @ coordinates
-            )
-        else:
-            data_iterator = iter(
-                [{"start": metadata[0], "target": coeffs @ coordinates}]
-            )
-        return data_iterator
+        return coeffs @ timeseries
 
 
 @dataclass
-class RandomAffineTransform(Dataset):
-    pass
+class RandomAffineTransform:
     """Random affine transformations of coordinates with coefficients sampled from a zero-mean Gaussian
-
-    NOTE: this augmentation is on the system scale (across coordinates)
 
     :param out_dim: output dimension of the linear map
     :param scale: gaussian distribution scale
     :param random_seed: RNG seed
     """
-    dataset: Dataset
     out_dim: int
     scale: float
     random_seed: Optional[int] = 0
-    split_coords: bool = False
 
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng(self.random_seed)
 
-    def __iter__(self) -> Iterator:
-        coordinates, metadata = stack_and_extract_metadata(self.dataset)
+    def __call__(self, timeseries: Array) -> Array:
         affine_transform = self.rng.normal(
-            scale=self.scale, size=(self.out_dim, 1 + coordinates.shape[0])
+            scale=self.scale, size=(self.out_dim, 1 + timeseries.shape[0])
         )
-        combos = (
-            affine_transform[:, :-1] @ coordinates + affine_transform[:, -1, np.newaxis]
-        )
-        if self.split_coords:
-            data_iterator = (
-                {"start": metadata[0], "target": combo} for combo in combos
-            )
-        else:
-            data_iterator = iter([{"start": metadata[0], "target": combos}])
-        return data_iterator
+        return affine_transform[:, :-1] @ timeseries + affine_transform[:, -1, np.newaxis]
 
 
 @dataclass
 class RandomProjectedSkewTransform:
     """
-    Randomly combines pairs of timeseries and linearly maps them into common embedding space
+    Randomly combines pairs of timeseries and linearly maps them into a common embedding space
     Linear maps are zero mean gaussian random matrices
 
-    NOTE: this is an example of an ensemble-scale transformation
-    """
+    :param embedding_dim: embedding dimension for the skew projection
+    :param scale: scale for the gaussian random projection matrices
+    :param random_seed: RNG seed
 
-    dataset1: Dataset
-    dataset2: Dataset
-    embedding_dim: int  # embedding dimension for the skew projection
-    scale: float  # scale for the gaussian random projection matrices
+    TODO: 
+        - figure out how to make this on-the-fly
+        - maybe even deprecate this, is chaoticity preserved?
+    """
+    embedding_dim: int
+    scale: float
     random_seed: Optional[int] = 0
-    split_coords: bool = False
 
     def __post_init__(self) -> None:
         self.rng = np.random.default_rng(self.random_seed)
 
-    def __iter__(self) -> Iterator:
-        coords1, metadata = stack_and_extract_metadata(self.dataset1)
-        coords2, _ = stack_and_extract_metadata(self.dataset2)
+    def __call__(self, timeseries1: Array, timeseries2: Array) -> Array:
         proj1 = self.rng.normal(
-            scale=self.scale, size=(self.embedding_dim, coords1.shape[0])
+            scale=self.scale, size=(self.embedding_dim, timeseries1.shape[0])
         )
         proj2 = self.rng.normal(
-            scale=self.scale, size=(self.embedding_dim, coords2.shape[0])
+            scale=self.scale, size=(self.embedding_dim, timeseries2.shape[0])
         )
-        transformed = proj1 @ coords1 + proj2 @ coords2
-        if self.split_coords:
-            data_iterator = (
-                {"start": metadata[0], "target": coord} for coord in transformed
-            )
-        else:
-            data_iterator = iter([{"start": metadata[0], "target": transformed}])
-        return data_iterator
+        return proj1 @ timeseries1 + proj2 @ timeseries2

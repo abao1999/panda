@@ -15,9 +15,13 @@ from transformers import (
 )
 
 import wandb
-from dystformer import augmentations
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
+from dystformer.augmentations import (
+    RandomConvexCombination,
+    RandomAffineTransform,
+    RandomProjectedSkewTransform,
+)
 from dystformer.utils import (
     ensure_contiguous,
     get_next_path,
@@ -96,34 +100,34 @@ def main(cfg):
         for data_path in train_data_paths
     ]
 
-    # system-scale augmentations
-    log_on_main("Applying system-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.system:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [augmentation_fn(ds) for ds in train_datasets[: len(train_data_paths)]]
-        )
+    # # system-scale augmentations
+    # log_on_main("Applying system-scale augmentations", logger)
+    # for augmentation_cls_name in cfg.augmentations.system:
+    #     augmentation_cls = getattr(augmentations, augmentation_cls_name)
+    #     log_on_main(
+    #         f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
+    #     )
+    #     kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
+    #     augmentation_fn = partial(augmentation_cls, **kwargs)
+    #     train_datasets.extend(
+    #         [augmentation_fn(ds) for ds in train_datasets[: len(train_data_paths)]]
+    #     )
 
-    # ensemble-scale augmentations
-    log_on_main("Applying ensemble-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.ensemble:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [
-                augmentation_fn(train_datasets[i], train_datasets[j])
-                for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
-            ]
-        )
+    # # ensemble-scale augmentations
+    # log_on_main("Applying ensemble-scale augmentations", logger)
+    # for augmentation_cls_name in cfg.augmentations.ensemble:
+    #     augmentation_cls = getattr(augmentations, augmentation_cls_name)
+    #     log_on_main(
+    #         f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
+    #     )
+    #     kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
+    #     augmentation_fn = partial(augmentation_cls, **kwargs)
+    #     train_datasets.extend(
+    #         [
+    #             augmentation_fn(train_datasets[i], train_datasets[j])
+    #             for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
+    #         ]
+    #     )
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -146,6 +150,11 @@ def main(cfg):
 
     log_on_main("Initializing model", logger)
 
+    augmentations = [
+        RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
+        RandomAffineTransform(out_dim=6, scale=1.0),
+    ]
+
     shuffled_train_dataset = PatchTSTDataset(
         datasets=train_datasets,
         probabilities=probability,
@@ -153,6 +162,7 @@ def main(cfg):
         prediction_length=cfg.patchtst.prediction_length,
         mode="train",
         fixed_dim=cfg.fixed_dim,
+        augmentations=augmentations,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     if (

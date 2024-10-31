@@ -99,10 +99,20 @@ class PatchTSTDataset(IterableDataset):
     num_test_instances: int = 1
     window_style: str = "sampled"
     window_stride: int = 1
+    augmentations: Optional[List[Callable]] = None
+    augmentation_probabilities: Optional[List[float]] = None
 
     def __post_init__(self):
         assert len(self.probabilities) == len(self.datasets)
         assert self.mode in ("train", "validation", "test")
+
+        if self.augmentations is not None and self.augmentation_probabilities is None:
+            self.augmentation_probabilities = [
+                1.0 / len(self.augmentations)
+            ] * len(self.augmentations)
+
+        assert len(self.augmentations) == len(self.augmentation_probabilities)
+        assert sum(self.augmentation_probabilities) <= 1.0
 
     def shuffle(self, shuffle_buffer_length: int = 100):
         return PseudoShuffledIterableDataset(self, shuffle_buffer_length)
@@ -118,23 +128,11 @@ class PatchTSTDataset(IterableDataset):
             )
             entry["target"] = entry["target"][sampled_dims, :]
 
-        if (
-            mode == "train"
-            and self.delay_embed_prob > np.random.rand()
-            and entry["target"].shape[0] > 1
-        ):
-            # Randomly select a dimension
-            num_dims = entry["target"].shape[0]
-            selected_dim = np.random.randint(num_dims)
-            selected_series = entry["target"][selected_dim]
-
-            # Create delay embeddings
-            delay_embeddings = np.stack(
-                [np.roll(selected_series, shift) for shift in range(num_dims)]
-            )[:, num_dims - 1 :]  # cut off rolling artifacts
-
-            # Replace the original target with delay embeddings
-            entry["target"] = delay_embeddings
+        if mode == "train" and self.augmentations is not None:
+            augmentation_idx = np.random.choice(
+                len(self.augmentations), p=self.augmentation_probabilities
+            )
+            entry["target"] = self.augmentations[augmentation_idx](entry["target"])
 
         return entry
 
