@@ -114,7 +114,9 @@ class RandomProjectedSkewTransform:
     :param scale: scale for the gaussian random projection matrices
     :param random_seed: RNG seed
 
-    TODO: figure out how to make this on-the-fly
+    TODO: 
+        - figure out how to make this on-the-fly
+        - maybe even deprecate this, is chaoticity preserved?
     """
     embedding_dim: int
     scale: float
