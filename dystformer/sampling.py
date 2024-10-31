@@ -48,22 +48,7 @@ class InstabilityEvent:
     terminal: bool = True
 
     def __call__(self, t, y):
-        if np.any(np.abs(y) > self.threshold):
-            return 0  # Trigger the event
-        return 1  # Continue the integration
-
-
-@dataclass
-class InvalidStateEvent:
-    """
-    Event to check if the system state is invalid (either NaN or Inf)
-    """
-
-    terminal: bool = True
-
-    def __call__(self, t, y):
-        if np.any(np.isnan(y)) or np.any(np.isinf(y)):
-            print("Invalid state!")
+        if np.any(np.abs(y) > self.threshold) or np.any(np.isnan(y)):
             return 0  # Trigger the event
         return 1  # Continue the integration
 

@@ -228,6 +228,12 @@ class SkewSystem:
         tlim = num_periods * self.period
         tpts = np.linspace(0, tlim, num_points)
 
+        if not np.isfinite(standard_rhs(0, combined_ics)).all():
+            warnings.warn(
+                f"Initial state of {self.driver.name} and {self.response.name} is invalid!"
+            )
+            return (None, None)
+
         sol = solve_ivp(
             standard_rhs,
             [0, tlim],
