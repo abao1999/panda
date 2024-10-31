@@ -7,9 +7,11 @@ import os
 
 from dystformer.sampling import (
     InstabilityEvent,
+    InvalidStateEvent,
     OnAttractorInitCondSampler,
     SignedGaussianParamSampler,
     TimeLimitEvent,
+    TimeStepEvent,
 )
 from dystformer.skew_system import SkewData
 from dystformer.utils import split_systems
@@ -156,8 +158,12 @@ if __name__ == "__main__":
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=args.max_duration)
     instability_event = InstabilityEvent(threshold=args.instability_threshold)
-    events = [time_limit_event, instability_event]
+    invalid_state_event = InvalidStateEvent()
+    # NOTE: default min_step=1e-20 may be too small, doesn't catch anything
+    time_step_event = TimeStepEvent(min_step=1e-16)
+    events = [time_limit_event, instability_event, invalid_state_event, time_step_event]
 
+    # NOTE: if coupling phase space, need extra caution to make sure g(x+y) is valid rhs i.e. that (x+y) is valid parameter choice for response system
     param_sampler = SignedGaussianParamSampler(
         random_seed=args.rseed,
         scale=args.param_scale,
