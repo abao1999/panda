@@ -1,0 +1,28 @@
+dyst_data:
+  data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
+  sys_class: continuous
+  test_split: 0.3
+  split_prefix: null
+  rseed: 999
+  reference_traj_length: 2048
+  reference_traj_transient: 0.2
+  num_periods: 20
+  num_points: 4096
+  num_ics: 1
+  num_param_perturbations: 4
+  param_scale: 0.5
+  max_duration: 480
+  instability_threshold: 1e4
+  split_coords: false
+  enable_attractor_tests: true
+  debug_mode: false
+  standardize: false
+  verbose: false
+  multiprocessing: true
+
+
+skew:
+  n_combos: 10
+  couple_phase_space: true
+  couple_flows: false
+  use_all_systems: true

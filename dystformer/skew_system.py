@@ -2,6 +2,7 @@
 Search for valid skew-product dynamical sytems and generate trajectory datasets
 """
 
+import logging
 import warnings
 from dataclasses import dataclass
 from multiprocessing import Pool
@@ -20,6 +21,8 @@ from dystformer.utils import (
     filter_dict,
     sample_index_pairs,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -326,7 +329,7 @@ class SkewEnsemble:
                 events=self.events,
             )
         except AttributeError as e:
-            print(f"System {skew_name} could not be made. {e} Skipping...")
+            logger.info(f"System {skew_name} could not be made. {e} Skipping...")
             return None
 
         # Avoid having to recompute coupling strength if ic sampler's trajectory cache is available
@@ -336,7 +339,6 @@ class SkewEnsemble:
         # This sidesteps needing to recompute kappa and make default coupling map in SkewSystem run() method
         if can_use_traj_cache:
             traj_cache = ic_transform.trajectory_cache  # type: ignore
-            print("Using trajectory cache for coupling strength")
             if driver_name in traj_cache and response_name in traj_cache:
                 traj_driver = traj_cache[driver_name]
                 traj_response = traj_cache[response_name]
@@ -352,11 +354,22 @@ class SkewEnsemble:
                     n_driver, n_response, kappa
                 )
 
-        _, sol_response = skew_sys.run(
-            num_periods=num_periods,
-            num_points=num_points,
-            **kwargs,
-        )
+        try:
+            _, sol_response = skew_sys.run(
+                num_periods=num_periods,
+                num_points=num_points,
+                **kwargs,
+            )
+        except Exception as e:
+            logger.info(
+                f"Error in skew system {skew_name} ({driver_name} driving {response_name}): {e}"
+            )
+            logger.info(f"Driver IC: {driver_sys.ic} | Response IC: {response_sys.ic}")
+            logger.info(
+                f"Driver params: {driver_sys.params} | Response params: {response_sys.params}"
+            )
+            return None
+
         # Transpose solution to match the structure of dysts make_trajectory_ensemble
         return sol_response.T if sol_response is not None else None
 

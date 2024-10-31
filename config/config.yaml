@@ -4,6 +4,7 @@ defaults:
   - train
   - evaluation
   - dataset
+  - dysts
   # - override hydra/job_logging: disabled 
   - override hydra/hydra_logging: disabled 
 

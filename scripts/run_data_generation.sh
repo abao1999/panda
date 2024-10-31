@@ -1,35 +1,24 @@
 #!/bin/bash
 
 # # Couple phase space: NOTE: need to be very careful beccause x+y may not be valid parameter choice for response
-# python -W ignore scripts/make_skew_systems.py all \
-#     --split-prefix=big \
-#     --couple_phase_space=True \
-#     --couple_flows=False \
-#     --n_combos=100 \
-#     --max-duration=240 \
-#     --num-param-perturbations=10 \
-#     --param-scale=0.5 \
-#     --sys-class=continuous_no_delay \
+# python -W ignore scripts/make_skew_systems.py \
+#     dyst_data.sys_class=continuous_no_delay \
+#     dyst_data.split_prefix=big \
+#     skew.couple_phase_space=True \
+#     skew.couple_flows=False \
+#     skew.n_combos=100 \
+#     dyst_data.max_duration=240 \
+#     dyst_data.num_param_perturbations=10 \
+#     dyst_data.param_scale=0.5 \
 
 
 # couple flow space
-python -W ignore scripts/make_skew_systems.py all \
-    --split-prefix=big_flow \
-    --couple_phase_space=False \
-    --couple_flows=True \
-    --n_combos=100 \
-    --max-duration=240 \
-    --num-param-perturbations=10 \
-    --param-scale=0.5 \
-    --sys-class=continuous_no_delay \
-
-# Couple phase space: NOTE: need to be very careful beccause x+y may not be valid parameter choice for response
-python -W ignore scripts/make_skew_systems.py all \
-    --split-prefix=another \
-    --couple_phase_space=True \
-    --couple_flows=False \
-    --n_combos=40 \
-    --max-duration=240 \
-    --num-param-perturbations=20 \
-    --param-scale=0.5 \
-    --sys-class=continuous_no_delay \
+python -W ignore scripts/make_skew_systems.py \
+    dyst_data.sys_class=continuous_no_delay \
+    dyst_data.split_prefix=big_flow \
+    skew.couple_phase_space=False \
+    skew.couple_flows=True \
+    skew.n_combos=1000 \
+    dyst_data.max_duration=300 \
+    dyst_data.num_param_perturbations=20 \
+    dyst_data.param_scale=0.5 \
