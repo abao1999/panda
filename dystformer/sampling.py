@@ -54,6 +54,43 @@ class InstabilityEvent:
 
 
 @dataclass
+class InvalidStateEvent:
+    """
+    Event to check if the system state is invalid (either NaN or Inf)
+    """
+
+    terminal: bool = True
+
+    def __call__(self, t, y):
+        if np.any(np.isnan(y)) or np.any(np.isinf(y)):
+            print("Invalid state!")
+            return 0  # Trigger the event
+        return 1  # Continue the integration
+
+
+@dataclass
+class TimeStepEvent:
+    """
+    Event to check if the system time step is invalid
+    """
+
+    terminal: bool = True
+    min_step: float = 1e-20
+
+    def __post_init__(self):
+        self.last_t = float("inf")
+
+    def __call__(self, t, y):
+        t_diff = abs(t - self.last_t)
+        if t_diff < self.min_step:
+            print(f"Time step too small! {t_diff}")
+            return 0  # Trigger the event
+
+        self.last_t = t
+        return 1  # Continue the integration
+
+
+@dataclass
 class GaussianParamSampler(BaseSampler):
     """Sample gaussian perturbations for system parameters
     NOTE:
