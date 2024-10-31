@@ -1,29 +1,22 @@
 eval:
   mode: predict
-  data_path: $WORK/data/test/
+  data_path: /stor/work/AMDG_Gilpin_Summer2024/data/test/
   checkpoint_path: /stor/work/AMDG_Gilpin_Summer2024/checkpoints
-  output_dir: ./eval_results
-  output_fname: null
-  overwrite: false
-  model_id: /stor/work/AMDG_Gilpin_Summer2024/checkpoints/checkpoint-80000
   device: cuda:7
   torch_dtype: bfloat16 # float32?
   batch_size: 32
-  num_samples: 20
-  temperature: null
-  top_k: null
-  top_p: null
+  num_samples: 20 # TODO: use this
 
   save_forecasts_to_npy: false
   forecast_save_dir: null
-
+  output_dir: ./eval_results
+  output_fname: null
+  overwrite: false
   agg_axis: null # 1 to keep dimensions separate
 
   # for generating forecasts and getting test split
   limit_prediction_length: true
   prediction_length: 64
-  offset: -64
-  num_rolls: 1
 
   # window style can be either sampled or rolling
   # sampled: randomly samples windows from each timeseries (of length context_length) 
@@ -35,3 +28,12 @@ eval:
   window_stride: 1
   split_coords: false
   verbose: true
+
+
+chronos_eval:
+  model_id: /stor/work/AMDG_Gilpin_Summer2024/checkpoints/checkpoint-80000
+  temperature: null
+  top_k: null
+  top_p: null
+  offset: -64
+  num_rolls: 1

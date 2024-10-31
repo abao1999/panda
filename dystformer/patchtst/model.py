@@ -131,9 +131,6 @@ class PatchTST(nn.Module):
         context: Union[torch.Tensor, List[torch.Tensor]],
         prediction_length: Optional[int] = None,
         num_samples: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_k: Optional[int] = None,
-        top_p: Optional[float] = None,
         limit_prediction_length: bool = True,
     ) -> torch.Tensor:
         """
@@ -152,15 +149,6 @@ class PatchTST(nn.Module):
         num_samples
             Number of sample paths to predict. Defaults to what
             specified in ``self.model.config``.
-        temperature
-            Temperature to use for generating sample tokens.
-            Defaults to what specified in ``self.model.config``.
-        top_k
-            Top-k parameter to use for generating sample tokens.
-            Defaults to what specified in ``self.model.config``.
-        top_p
-            Top-p parameter to use for generating sample tokens.
-            Defaults to what specified in ``self.model.config``.
         limit_prediction_length
             Force prediction length smaller or equal than the
             built-in prediction length from the model. True by
@@ -171,7 +159,7 @@ class PatchTST(nn.Module):
         -------
         samples
             Tensor of sample forecasts, of shape
-            (batch_size, num_samples, prediction_length).
+            [bs x num_samples x prediction_length x num_channels]
         """
         assert (
             self.mode == "predict"

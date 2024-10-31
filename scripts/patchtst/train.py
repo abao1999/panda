@@ -15,20 +15,18 @@ from transformers import (
 )
 
 import wandb
+from dystformer.augmentations import (
+    RandomAffineTransform,
+    RandomConvexCombinationTransform,
+)
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
-from dystformer.augmentations import (
-    RandomConvexCombination,
-    RandomAffineTransform,
-    RandomProjectedSkewTransform,
-)
 from dystformer.utils import (
     ensure_contiguous,
     get_next_path,
     has_enough_observations,
     is_main_process,
     log_on_main,
-    sample_index_pairs,
     save_training_info,
 )
 
