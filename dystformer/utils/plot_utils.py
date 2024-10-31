@@ -51,7 +51,7 @@ def plot_trajs_univariate(
             label_sample_idx = sample_idx
             if samples_subset is not None:
                 label_sample_idx = samples_subset[sample_idx]
-            curr_color = COLORS[label_sample_idx]
+            curr_color = COLORS[label_sample_idx % len(COLORS)]
             plt.plot(
                 dyst_data[sample_idx, dim_idx, :],
                 alpha=0.5,
@@ -87,7 +87,11 @@ def plot_trajs_multivariate(
     """
     os.makedirs(save_dir, exist_ok=True)
 
-    n_samples_plot = dyst_data.shape[0] if n_samples_plot is None else n_samples_plot
+    if n_samples_plot is None:
+        num_tot_samples = dyst_data.shape[0]
+        n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
+    else:
+        n_samples_plot = min(N_SAMPLES_PLOT, n_samples_plot)
 
     if samples_subset is not None:
         if n_samples_plot > len(samples_subset):
@@ -105,7 +109,8 @@ def plot_trajs_multivariate(
                 samples_subset[sample_idx] if samples_subset is not None else sample_idx
             )
             label = f"Sample {label_sample_idx}"
-            curr_color = COLORS[label_sample_idx]
+            print(f"Plotting sample {label_sample_idx}")
+            curr_color = COLORS[label_sample_idx % len(COLORS)]
 
             xy = dyst_data[sample_idx, :2, :]
             plt.plot(*xy, alpha=0.5, linewidth=1, color=curr_color, label=label)
@@ -134,7 +139,7 @@ def plot_trajs_multivariate(
                 samples_subset[sample_idx] if samples_subset is not None else sample_idx
             )
             label = f"Sample {label_sample_idx}"
-            curr_color = COLORS[label_sample_idx]
+            curr_color = COLORS[label_sample_idx % len(COLORS)]
 
             xyz = dyst_data[sample_idx, :3, :]
             ax.plot(*xyz, alpha=0.5, linewidth=1, color=curr_color, label=label)
@@ -180,7 +185,7 @@ def plot_forecast_trajs_multivariate(
     print("Plotting 2D trajectories and saving to ", save_path)
     plt.figure(figsize=(6, 6))
     for sample_idx in range(n_samples_plot):
-        curr_color = COLORS[sample_idx]
+        curr_color = COLORS[sample_idx % len(COLORS)]
         plt.scatter(
             *dyst_data[sample_idx, :2, 0],
             marker="*",
@@ -224,7 +229,7 @@ def plot_forecast_trajs_multivariate(
         fig = plt.figure(figsize=(6, 6))
         ax = fig.add_subplot(111, projection="3d")
         for sample_idx in range(n_samples_plot):
-            curr_color = COLORS[sample_idx]
+            curr_color = COLORS[sample_idx % len(COLORS)]
             ax.scatter(
                 *dyst_data[sample_idx, :3, 0],
                 marker="*",
@@ -292,7 +297,7 @@ def plot_forecast_gt_trajs_multivariate(
     print("Plotting 2D trajectories and saving to ", save_path)
     plt.figure(figsize=(6, 6))
     for sample_idx in range(n_samples_plot):
-        curr_color = COLORS[sample_idx]
+        curr_color = COLORS[sample_idx % len(COLORS)]
         plt.scatter(
             *gt_data[sample_idx, :2, 0],
             marker="*",
@@ -340,7 +345,7 @@ def plot_forecast_gt_trajs_multivariate(
         fig = plt.figure(figsize=(6, 6))
         ax = fig.add_subplot(111, projection="3d")
         for sample_idx in range(n_samples_plot):
-            curr_color = COLORS[sample_idx]
+            curr_color = COLORS[sample_idx % len(COLORS)]
             ax.scatter(
                 *gt_data[sample_idx, :3, 0],
                 marker="*",

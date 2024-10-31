@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
-from numpy.typing import Array
+from numpy.typing import NDArray
 
 
 @dataclass
@@ -18,14 +18,15 @@ class RandomDelayEmbeddingsTransform:
     :param embedding_dim: embedding dimension for the delay embeddings
     :param random_seed: RNG seed
     """
+
     random_seed: Optional[int] = 0
 
     def __post_init__(self) -> None:
-        self.rng = np.random.default_rng(self.random_seed)
+        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
-    def __call__(self, timeseries: Array) -> Array:
+    def __call__(self, timeseries: NDArray) -> NDArray:
         num_dims = timeseries.shape[0]
-        selected_dim = self.rng.randint(num_dims)
+        selected_dim = self.rng.integers(num_dims)
         selected_series = timeseries[selected_dim]
 
         # Create delay embeddings
@@ -45,12 +46,10 @@ class QuantileTransform:
 
     :param num_bins: number of bins to quantize into
     """
+
     num_bins: int
 
-    def __post_init__(self) -> None:
-        self.bin_edges = np.linspace(self.low, self.high, self.num_bins + 1)
-
-    def __call__(self, timeseries: Array) -> Array:
+    def __call__(self, timeseries: NDArray) -> NDArray:
         bins = np.linspace(
             np.floor(timeseries.min()), np.ceil(timeseries.max()), self.num_bins + 1
         )
@@ -73,11 +72,11 @@ class RandomConvexCombinationTransform:
     split_coords: bool = False
 
     def __post_init__(self) -> None:
-        self.rng = np.random.default_rng(self.random_seed)
+        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
-    def __call__(self, timeseries: Array) -> Array:
+    def __call__(self, timeseries: NDArray) -> NDArray:
         coeffs = self.rng.dirichlet(
-            self.alpha * np.ones(coordinates.shape[0]), size=self.num_combinations
+            self.alpha * np.ones(timeseries.shape[0]), size=self.num_combinations
         )
         return coeffs @ timeseries
 
@@ -90,18 +89,21 @@ class RandomAffineTransform:
     :param scale: gaussian distribution scale
     :param random_seed: RNG seed
     """
+
     out_dim: int
     scale: float
     random_seed: Optional[int] = 0
 
     def __post_init__(self) -> None:
-        self.rng = np.random.default_rng(self.random_seed)
+        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
-    def __call__(self, timeseries: Array) -> Array:
+    def __call__(self, timeseries: NDArray) -> NDArray:
         affine_transform = self.rng.normal(
             scale=self.scale, size=(self.out_dim, 1 + timeseries.shape[0])
         )
-        return affine_transform[:, :-1] @ timeseries + affine_transform[:, -1, np.newaxis]
+        return (
+            affine_transform[:, :-1] @ timeseries + affine_transform[:, -1, np.newaxis]
+        )
 
 
 @dataclass
@@ -114,18 +116,19 @@ class RandomProjectedSkewTransform:
     :param scale: scale for the gaussian random projection matrices
     :param random_seed: RNG seed
 
-    TODO: 
+    TODO:
         - figure out how to make this on-the-fly
         - maybe even deprecate this, is chaoticity preserved?
     """
+
     embedding_dim: int
     scale: float
     random_seed: Optional[int] = 0
 
     def __post_init__(self) -> None:
-        self.rng = np.random.default_rng(self.random_seed)
+        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
-    def __call__(self, timeseries1: Array, timeseries2: Array) -> Array:
+    def __call__(self, timeseries1: NDArray, timeseries2: NDArray) -> NDArray:
         proj1 = self.rng.normal(
             scale=self.scale, size=(self.embedding_dim, timeseries1.shape[0])
         )
