@@ -5,7 +5,7 @@ Dataset for PatchTST
 import itertools
 from dataclasses import dataclass
 from functools import partial
-from typing import Iterator, List, Optional
+from typing import Callable, Iterator, List, Optional
 
 import numpy as np
 import torch
@@ -106,13 +106,13 @@ class PatchTSTDataset(IterableDataset):
         assert len(self.probabilities) == len(self.datasets)
         assert self.mode in ("train", "validation", "test")
 
-        if self.augmentations is not None and self.augmentation_probabilities is None:
-            self.augmentation_probabilities = [
-                1.0 / len(self.augmentations)
-            ] * len(self.augmentations)
-
-        assert len(self.augmentations) == len(self.augmentation_probabilities)
-        assert sum(self.augmentation_probabilities) <= 1.0
+        if self.augmentations is not None:
+            if self.augmentation_probabilities is None:
+                self.augmentation_probabilities = [1.0 / len(self.augmentations)] * len(
+                    self.augmentations
+                )
+            assert len(self.augmentations) == len(self.augmentation_probabilities)
+            assert sum(self.augmentation_probabilities) <= 1.0
 
     def shuffle(self, shuffle_buffer_length: int = 100):
         return PseudoShuffledIterableDataset(self, shuffle_buffer_length)

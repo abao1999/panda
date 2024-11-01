@@ -48,7 +48,6 @@ def plot_saved_data(
         filepaths = get_system_filepaths(dyst_name, DATA_DIR, split)
         print(f"{dyst_name} filepaths: ", filepaths)
 
-        # NOTE: this is same as accumulate_dyst_samples in tests/test_augmentations.py
         dyst_coords_samples = []
         for filepath in filepaths:
             # create dataset by reading directly from filepath into FileDataset
@@ -118,10 +117,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    if args.split is None:
+        raise ValueError("Split must be provided for loading data")
+
     if args.dysts_names == ["all"]:
-        # get all folder names in DATA_DIR/{split}
-        if args.split is None:
-            raise ValueError("Split must be provided for 'all' argument")
         split_dir = os.path.join(DATA_DIR, args.split)
         dyst_names_lst = [
             folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
@@ -131,7 +130,6 @@ if __name__ == "__main__":
 
     print(f"dyst names: {dyst_names_lst}")
 
-    # optionally make plot labels aware of the samples subset (e.g the samples that succeeded or failed ethe tests)
     samples_subset_dict = None  # default to plotting all samples sequentially
     if args.metadata_path is not None and args.samples_subset is not None:
         metadata = json.load(open(args.metadata_path, "r"))

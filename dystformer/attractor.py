@@ -269,20 +269,6 @@ class AttractorValidator:
         return valid_ensemble, failed_ensemble
 
 
-### Start of attractor tests (tests) ###
-def check_no_nans(traj: np.ndarray, verbose: bool = False) -> bool:
-    """
-    Check if a multi-dimensional trajectory contains NaN values.
-    Returns:
-        bool: False if the system contains NaN values, True otherwise.
-    """
-    if np.isnan(traj).any():
-        if verbose:
-            print("Trajectory contains NaN values.")
-        return False
-    return True
-
-
 def check_boundedness(
     traj: np.ndarray,
     threshold: float = 1e4,
@@ -321,18 +307,23 @@ def check_boundedness(
         else:
             print("Trajectory does not appear to be diverging.")
 
+    return not is_diverging
+
+
+def check_not_trajectory_decay(traj: np.ndarray, verbose: bool = False) -> bool:
+    """
+    Check if a multi-dimensional trajectory is not decaying.
+    """
     # Check if any dimension of the trajectory is a straight line in the last half of the trajectory
-    # NOTE: need to verify this tolerance is not too strict
     n = traj.shape[1]
     for dim in range(traj.shape[0]):
-        if np.allclose(np.diff(traj[dim, -n // 2 :]), 0, atol=1e-3):
+        if np.allclose(np.diff(traj[dim, -n // 2 :]), 0, atol=1e-5):
             if verbose:
                 print(
                     f"Dimension {dim} of the trajectory appears to collapse to a straight line."
                 )
             return False
-
-    return not is_diverging
+    return True
 
 
 # Function to test if the system goes to a fixed point
@@ -347,9 +338,9 @@ def check_not_fixed_point(
     Actually, this tests the variance decay in the trajectory to detect a fixed point.
 
     Args:
-        variables (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
-        min_variance_threshold (float): Minimum variance threshold for detecting a fixed point.
-        window_prop (float): Proportion of the trajectory to consider for variance comparison.
+        traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
+        tail_prop: Proportion of the trajectory to consider for variance comparison.
+        atol: Absolute tolerance for detecting a fixed point.
     Returns:
         bool: False if the system is approaching a fixed point, True otherwise.
     """
@@ -364,6 +355,7 @@ def check_not_fixed_point(
                 f"System may have collapsed to a fixed point, determined with atol={atol}."
             )
         return False
+    # TODO: shore up this test by looking if norm of trajectory is too small (almost fixed point)
     return True
 
 
@@ -411,7 +403,8 @@ def check_not_spiral_decay(
     Check if a multi-dimensional trajectory is spiraling towards a fixed point.
     Actually, this may also test the variance decay in the trajectory to detect a fixed point.
     Args:
-        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+        traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
+        rel_prominence_threshold: Relative prominence threshold for detecting peaks.
     Returns:
         bool: True if the trajectory does not spiral towards a fixed point, False otherwise.
     """

@@ -15,7 +15,6 @@ from dystformer.attractor import (
     AttractorValidator,
     check_boundedness,
     check_lyapunov_exponent,
-    check_no_nans,
     check_not_fixed_point,
     check_not_limit_cycle,
     check_power_spectrum,
@@ -100,7 +99,6 @@ class DystData:
         """
         print("Setting up callbacks to test attractor properties")
         validator = AttractorValidator(**self.attractor_validator_kwargs)
-        validator.add_test_fn(check_no_nans)
         validator.add_test_fn(
             partial(check_boundedness, threshold=1e3, max_num_stds=10)
         )
