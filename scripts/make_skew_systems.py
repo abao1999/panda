@@ -74,7 +74,7 @@ def main(cfg):
         attractor_validator_kwargs={
             "verbose": 0,
             "transient_time_frac": 0.05,  # don't need long transient time because ic should be on attractor
-            "plot_save_dir": "tests/plots",
+            "plot_save_dir": None,  # "tests/plots",
         },
         debug_mode=cfg.dyst_data.debug_mode,
         couple_phase_space=cfg.skew.couple_phase_space,
@@ -106,21 +106,3 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
     main()
-
-    # # Configure the logger
-    # logger = logging.getLogger("dystformer.skew_system")
-    # logger.setLevel(logging.DEBUG)  # Set the logging level
-
-    # # Create a file handler
-    # # log_path = os.path.join(cfg.hydra.run.dir, "skew_system.log")
-    # file_handler = logging.FileHandler("skew_system.log")
-    # file_handler.setLevel(logging.DEBUG)
-
-    # # Create a logging format
-    # formatter = logging.Formatter(
-    #     "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    # )
-    # file_handler.setFormatter(formatter)
-
-    # # Add the file handler to the logger
-    # logger.addHandler(file_handler)

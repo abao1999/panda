@@ -59,7 +59,7 @@ def main(cfg):
         attractor_validator_kwargs={
             "verbose": 0,
             "transient_time_frac": 0.05,
-            "plot_save_dir": "tests/plots",
+            "plot_save_dir": None,  # "tests/plots"
         },
         debug_mode=cfg.dyst_data.debug_mode,
     )

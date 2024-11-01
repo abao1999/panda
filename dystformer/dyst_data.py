@@ -17,6 +17,7 @@ from dystformer.attractor import (
     check_lyapunov_exponent,
     check_not_fixed_point,
     check_not_limit_cycle,
+    check_not_trajectory_decay,
     check_power_spectrum,
 )
 from dystformer.sampling import (
@@ -103,7 +104,9 @@ class DystData:
             partial(check_boundedness, threshold=1e3, max_num_stds=10)
         )
         validator.add_test_fn(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
-
+        validator.add_test_fn(
+            partial(check_not_trajectory_decay, atol=1e-3, tail_prop=0.5)
+        )
         # for STRICT MODE (strict criteria for detecting limit cycles), try:
         # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
         validator.add_test_fn(

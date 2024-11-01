@@ -6,7 +6,7 @@ import argparse
 import os
 from functools import partial
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 from gluonts.dataset.common import FileDataset
@@ -31,6 +31,7 @@ def make_ensemble(
     dyst_names_lst: List[str],
     split: str,
     one_dim_target: bool = False,
+    samples_subset: Optional[List[int]] = None,
     verbose: bool = False,
 ) -> Dict[str, np.ndarray]:
     ensemble = {}
@@ -56,14 +57,23 @@ def make_ensemble(
 
         dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
         print(dyst_coords_samples.shape)
+        if samples_subset is not None:
+            dyst_coords_samples = dyst_coords_samples[samples_subset, :]
         ensemble[dyst_name] = dyst_coords_samples
     return ensemble
 
 
-def plot_ensemble(ensemble: Dict[str, np.ndarray], save_dir: str):
+def plot_ensemble(
+    ensemble: Dict[str, np.ndarray],
+    save_dir: str,
+    samples_subset: Optional[List[int]] = None,
+):
     for dyst_name, dyst_coords_samples in ensemble.items():
         plot_trajs_multivariate(
-            dyst_coords_samples, save_dir=save_dir, plot_name=dyst_name
+            dyst_coords_samples,
+            save_dir=save_dir,
+            plot_name=dyst_name,
+            samples_subset=samples_subset,
         )
 
 
@@ -82,6 +92,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_dir", help="Directory to save plots", type=str, default="tests/figs"
     )
+    parser.add_argument(
+        "--samples_subset",
+        help="Indices of samples to use from each trajectory",
+        type=str,
+        default=None,
+    )
     args = parser.parse_args()
 
     if args.split is None:
@@ -96,16 +112,26 @@ if __name__ == "__main__":
 
     print(f"dyst_names_lst: {dyst_names_lst}")
 
+    if args.samples_subset is not None:
+        samples_subset = [int(i) for i in args.samples_subset.split(",")]
+        print(f"Using sample subset: {samples_subset}")
+    else:
+        samples_subset = None
+
     ### Build attractor validator ###
     validator = AttractorValidator(
         verbose=0, transient_time_frac=0.05, plot_save_dir=None
     )
     validator.add_test_fn(partial(check_boundedness, threshold=1e3, max_num_stds=10))
+    validator.add_test_fn(partial(check_not_trajectory_decay, atol=1e-3, tail_prop=0.5))
     validator.add_test_fn(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
-    validator.add_test_fn(check_not_trajectory_decay)
     ### Make ensemble ###
     ensemble = make_ensemble(
-        dyst_names_lst, args.split, one_dim_target=args.one_dim_target, verbose=True
+        dyst_names_lst,
+        args.split,
+        one_dim_target=args.one_dim_target,
+        samples_subset=samples_subset,
+        verbose=True,
     )
 
     ### Filter ensemble ###
@@ -113,4 +139,4 @@ if __name__ == "__main__":
     print(len(failed_ensemble))
 
     ### Plot ensemble ###
-    plot_ensemble(ensemble, save_dir=args.save_dir)
+    plot_ensemble(ensemble, save_dir=args.save_dir, samples_subset=samples_subset)

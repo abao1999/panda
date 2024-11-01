@@ -310,22 +310,6 @@ def check_boundedness(
     return not is_diverging
 
 
-def check_not_trajectory_decay(traj: np.ndarray, verbose: bool = False) -> bool:
-    """
-    Check if a multi-dimensional trajectory is not decaying.
-    """
-    # Check if any dimension of the trajectory is a straight line in the last half of the trajectory
-    n = traj.shape[1]
-    for dim in range(traj.shape[0]):
-        if np.allclose(np.diff(traj[dim, -n // 2 :]), 0, atol=1e-5):
-            if verbose:
-                print(
-                    f"Dimension {dim} of the trajectory appears to collapse to a straight line."
-                )
-            return False
-    return True
-
-
 # Function to test if the system goes to a fixed point
 def check_not_fixed_point(
     traj: np.ndarray,
@@ -355,10 +339,34 @@ def check_not_fixed_point(
                 f"System may have collapsed to a fixed point, determined with atol={atol}."
             )
         return False
-    # TODO: shore up this test by looking if norm of trajectory is too small (almost fixed point)
+
+    #
+
     return True
 
 
+def check_not_trajectory_decay(
+    traj: np.ndarray, tail_prop: float = 0.5, atol: float = 1e-3, verbose: bool = False
+) -> bool:
+    """
+    Check if a multi-dimensional trajectory is not decaying.
+    """
+    # Check if any dimension of the trajectory is a straight line in the last half of the trajectory
+    n = traj.shape[1]
+    tail = int(tail_prop * n)
+    for dim in range(traj.shape[0]):
+        diffs = np.diff(traj[dim, -tail:])
+        print(f"dim {dim} diffs: {diffs}")
+        if np.allclose(diffs, 0, atol=atol):
+            if verbose:
+                print(
+                    f"Dimension {dim} of the trajectory appears to collapse to a straight line."
+                )
+            return False
+    return True
+
+
+# NOTE: this is too brittle to use currently
 def check_not_variance_decay(
     traj: np.ndarray,
     tail_prop: float = 0.05,
@@ -394,6 +402,7 @@ def check_not_variance_decay(
     return True
 
 
+# NOTE: this is too brittle to use currently
 def check_not_spiral_decay(
     traj: np.ndarray,
     rel_prominence_threshold: Optional[float] = None,
