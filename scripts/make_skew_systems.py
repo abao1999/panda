@@ -32,9 +32,9 @@ def main(cfg):
         system_names = train_systems
 
     # events for solve_ivp
-    time_limit_event = TimeLimitEvent(max_duration=cfg.dyst_data.max_duration)
-    instability_event = InstabilityEvent(threshold=cfg.dyst_data.instability_threshold)
-    time_step_event = TimeStepEvent(min_step=1e-16)
+    time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
+    instability_event = InstabilityEvent(threshold=cfg.events.instability_threshold)
+    time_step_event = TimeStepEvent(min_step=cfg.events.min_step)
     events = [time_limit_event, instability_event, time_step_event]
 
     param_sampler = SignedGaussianParamSampler(
@@ -49,11 +49,16 @@ def main(cfg):
         events=events,
         verbose=cfg.dyst_data.verbose,
     )
-    logger.info(f"IC sampler: {ic_sampler}")
-    logger.info(f"Param sampler: {param_sampler}")
+
+    logger.info(f"Dyst data config: {cfg.dyst_data}")
+    logger.info(f"Events config: {cfg.events}")
+    logger.info(f"Validator config: {cfg.validator}")
+    logger.info(f"Skew config: {cfg.skew}")
     logger.info(
         f"Generating {cfg.skew.n_combos} skew system combinations from {len(system_names)} systems with random seed {cfg.dyst_data.rseed}"
     )
+    logger.info(f"IC sampler: {ic_sampler}")
+    logger.info(f"Param sampler: {param_sampler}")
 
     split_prefix = (
         cfg.dyst_data.split_prefix + "_" if cfg.dyst_data.split_prefix else ""
@@ -70,13 +75,13 @@ def main(cfg):
         events=events,
         verbose=cfg.dyst_data.verbose,
         split_coords=cfg.dyst_data.split_coords,
-        apply_attractor_tests=cfg.dyst_data.enable_attractor_tests,
+        apply_attractor_tests=cfg.validator.enable,
         attractor_validator_kwargs={
-            "verbose": 0,
-            "transient_time_frac": 0.05,  # don't need long transient time because ic should be on attractor
-            "plot_save_dir": None,  # "tests/plots",
+            "verbose": cfg.validator.verbose,
+            "transient_time_frac": cfg.validator.transient_time_frac,  # don't need long transient time because ic should be on attractor
+            "plot_save_dir": cfg.validator.plot_save_dir,
         },
-        debug_mode=cfg.dyst_data.debug_mode,
+        save_failed_trajs=cfg.validator.save_failed_trajs,
         couple_phase_space=cfg.skew.couple_phase_space,
         couple_flows=cfg.skew.couple_flows,
     )

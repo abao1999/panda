@@ -1,3 +1,4 @@
+import logging
 import time
 import warnings
 from dataclasses import dataclass, field
@@ -7,10 +8,6 @@ import numpy as np
 from dysts.base import BaseDyn
 from dysts.sampling import BaseSampler
 from numpy.typing import NDArray
-
-Array = NDArray[np.float64]
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +86,8 @@ class GaussianParamSampler(BaseSampler):
     verbose: bool = False  # for testing purposes
 
     def __call__(
-        self, name: str, param: Array, system: Optional[BaseDyn] = None
-    ) -> Array | float:
+        self, name: str, param: NDArray, system: Optional[BaseDyn] = None
+    ) -> NDArray | float:
         # scale each parameter relatively
         shape = 1 if np.isscalar(param) else param.shape
 
@@ -137,8 +134,8 @@ class SignedGaussianParamSampler(BaseSampler):
     verbose: bool = False
 
     def __call__(
-        self, name: str, param: Array, system: Optional[BaseDyn] = None
-    ) -> Array | float:
+        self, name: str, param: NDArray, system: Optional[BaseDyn] = None
+    ) -> NDArray | float:
         # scale each parameter relatively
         shape = 1 if np.isscalar(param) else param.shape
 
@@ -159,6 +156,7 @@ class SignedGaussianParamSampler(BaseSampler):
             perturbation = np.sign(param) * np.abs(perturbation)
 
         # add a signed perturbation with sign matching the og parameter
+        param = np.array(param)
         perturbed_param = param + perturbation
 
         if self.verbose:
@@ -192,7 +190,7 @@ class OnAttractorInitCondSampler(BaseSampler):
 
     reference_traj_length: int = 4096
     reference_traj_transient: float = 0.2
-    trajectory_cache: Dict[str, Array] = field(default_factory=dict)
+    trajectory_cache: Dict[str, NDArray] = field(default_factory=dict)
     verbose: bool = False
     events: Optional[List[Callable]] = None
     recompute_standardization: bool = False
@@ -207,7 +205,7 @@ class OnAttractorInitCondSampler(BaseSampler):
     def clear_cache(self):
         self.trajectory_cache.clear()
 
-    def __call__(self, ic: Array, system: BaseDyn) -> Array:
+    def __call__(self, ic: NDArray, system: BaseDyn) -> NDArray:
         if system.name is None:
             raise ValueError("System must have a name")
 
@@ -255,15 +253,15 @@ class GaussianInitialConditionSampler(BaseSampler):
     scale: float = 1e-4
     verbose: bool = False  # for testing purposes
 
-    def __call__(self, ic: Array, system: BaseDyn) -> Array:
+    def __call__(self, ic: NDArray, system: BaseDyn) -> NDArray:
         """
         Sample a new initial condition from a multivariate isotropic Gaussian.
 
         Args:
-            ic (Array): The current initial condition.
+            ic (NDArray): The current initial condition.
 
         Returns:
-            Array: A resampled version of the initial condition.
+            NDArray: A resampled version of the initial condition.
         """
         # Scale the covariance relative to each dimension
         scaled_cov = np.diag(np.square(ic * self.scale))

@@ -11,15 +11,23 @@ dyst_data:
   num_ics: 1
   num_param_perturbations: 4
   param_scale: 0.5
-  max_duration: 480
-  instability_threshold: 1e4
   split_coords: false
-  enable_attractor_tests: true
-  debug_mode: false
   standardize: false
   verbose: false
   multiprocessing: true
+  debug_dyst: null
 
+validator:
+  enable: true
+  verbose: 0
+  transient_time_frac: 0.05
+  plot_save_dir: null
+  save_failed_trajs: false
+
+events:
+  max_duration: 480
+  instability_threshold: 1e4
+  min_step: 1e-16
 
 skew:
   n_combos: 10

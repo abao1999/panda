@@ -3,6 +3,7 @@ from .data_utils import (
     convert_to_arrow,
     filter_dict,
     get_system_filepaths,
+    make_ensemble_from_arrow_dir,
     pad_array,
     process_trajs,
     sample_index_pairs,

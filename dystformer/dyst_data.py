@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import warnings
 from collections import defaultdict
@@ -29,6 +30,8 @@ from dystformer.utils import (
     process_trajs,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class DystData:
@@ -45,7 +48,7 @@ class DystData:
         apply_attractor_tests: whether to apply attractor tests
         attractor_validator_kwargs: kwargs for the attractor validator
         verbose: whether to print verbose output
-        debug_mode: flag to save failed trajectory ensembles for debugging
+        save_failed_trajs: flag to save failed trajectory ensembles for debugging
     """
 
     rseed: int = 999
@@ -62,7 +65,7 @@ class DystData:
     apply_attractor_tests: bool = False
     attractor_validator_kwargs: Dict[str, Any] = field(default_factory=dict)
     verbose: bool = True
-    debug_mode: bool = False
+    save_failed_trajs: bool = False
 
     def __post_init__(self):
         if self.events is None:
@@ -113,8 +116,10 @@ class DystData:
             partial(
                 check_not_limit_cycle,
                 tolerance=1e-3,
+                min_prop_recurrences=0.1,
                 min_counts_per_rtime=100,
-                min_block_length=20,
+                min_block_length=50,
+                enforce_endpoint_recurrence=True,
             )
         )
         validator.add_test_fn(
@@ -209,7 +214,7 @@ class DystData:
                 self.param_sampler.set_rng(param_rng)
 
             if self.ic_sampler is not None:
-                self.ic_sampler.clear_cache()
+                self.ic_sampler.clear_cache()  # type: ignore
 
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j
@@ -229,7 +234,7 @@ class DystData:
                     events=self.events,
                     **kwargs,
                 )
-                ensemble, excluded_keys = filter_dict(ensemble)
+                ensemble, excluded_keys = filter_dict(ensemble)  # type: ignore
                 ensembles.append(ensemble)
 
                 for callback in postprocessing_callbacks:
@@ -253,11 +258,11 @@ class DystData:
         if save_dir is not None:
             save_dyst_dir = os.path.join(save_dir, split)
             os.makedirs(save_dyst_dir, exist_ok=True)
-            if self.debug_mode:
+            logger.info(f"valid attractors will be saved to {save_dyst_dir}")
+            if self.save_failed_trajs:
                 failed_dyst_dir = os.path.join(save_dir, split_failures)
                 os.makedirs(failed_dyst_dir, exist_ok=True)
-                print(f"valid attractors will be saved to {save_dyst_dir}")
-                print(f"failed attractors will be saved to {failed_dyst_dir}")
+                logger.info(f"failed attractors will be saved to {failed_dyst_dir}")
             else:
                 failed_dyst_dir = None
         else:
@@ -330,7 +335,7 @@ class DystData:
         Save a summary of valid attractor counts and failed checks to a json file.
         """
         os.makedirs(os.path.dirname(save_json_path), exist_ok=True)
-        print(f"Saving summary to {save_json_path}")
+        logger.info(f"Saving summary to {save_json_path}")
 
         if self.attractor_validator is None:
             summary_dict = {"failed_integrations": self.failed_integrations}

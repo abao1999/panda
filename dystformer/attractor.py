@@ -356,7 +356,6 @@ def check_not_trajectory_decay(
     tail = int(tail_prop * n)
     for dim in range(traj.shape[0]):
         diffs = np.diff(traj[dim, -tail:])
-        print(f"dim {dim} diffs: {diffs}")
         if np.allclose(diffs, 0, atol=atol):
             if verbose:
                 print(

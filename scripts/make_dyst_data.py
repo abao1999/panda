@@ -2,6 +2,7 @@
 Script to generate and save trajectory ensembles for a given set of dynamical systems.
 """
 
+import logging
 import os
 
 import hydra
@@ -13,6 +14,7 @@ from dystformer.sampling import (
     OnAttractorInitCondSampler,
     SignedGaussianParamSampler,
     TimeLimitEvent,
+    TimeStepEvent,
 )
 from dystformer.utils import plot_trajs_multivariate, split_systems
 
@@ -26,9 +28,10 @@ def main(cfg):
         sys_class=cfg.dyst_data.sys_class,
     )
     # events for solve_ivp
-    time_limit_event = TimeLimitEvent(max_duration=cfg.dyst_data.max_duration)
-    instability_event = InstabilityEvent(threshold=cfg.dyst_data.instability_threshold)
-    events = [time_limit_event, instability_event]
+    time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
+    instability_event = InstabilityEvent(threshold=cfg.events.instability_threshold)
+    time_step_event = TimeStepEvent(min_step=cfg.events.min_step)
+    events = [time_limit_event, instability_event, time_step_event]
 
     param_sampler = SignedGaussianParamSampler(
         random_seed=cfg.dyst_data.rseed,
@@ -44,6 +47,19 @@ def main(cfg):
         random_seed=cfg.dyst_data.rseed,
     )
 
+    logger.info(f"Dyst data config: {cfg.dyst_data}")
+    logger.info(f"Events config: {cfg.events}")
+    logger.info(f"Validator config: {cfg.validator}")
+    logger.info(
+        f"Generating {cfg.dyst_data.num_ics} initial conditions and {cfg.dyst_data.num_param_perturbations} parameter perturbations"
+    )
+    logger.info(
+        f"{len(train_systems)} train systems and {len(test_systems)} test systems with random seed {cfg.dyst_data.rseed}"
+    )
+    logger.info(f"IC sampler: {ic_sampler}")
+    logger.info(f"Param sampler: {param_sampler}")
+    logger.info(f"Events: {events}")
+
     dyst_data_generator = DystData(
         rseed=cfg.dyst_data.rseed,
         num_periods=cfg.dyst_data.num_periods,
@@ -55,13 +71,13 @@ def main(cfg):
         events=events,
         verbose=cfg.dyst_data.verbose,
         split_coords=cfg.dyst_data.split_coords,
-        apply_attractor_tests=cfg.dyst_data.enable_attractor_tests,
+        apply_attractor_tests=cfg.validator.enable,
         attractor_validator_kwargs={
-            "verbose": 0,
-            "transient_time_frac": 0.05,
-            "plot_save_dir": None,  # "tests/plots"
+            "verbose": cfg.validator.verbose,
+            "transient_time_frac": cfg.validator.transient_time_frac,
+            "plot_save_dir": cfg.validator.plot_save_dir,
         },
-        debug_mode=cfg.dyst_data.debug_mode,
+        save_failed_trajs=cfg.validator.save_failed_trajs,
     )
 
     if cfg.dyst_data.debug_dyst:
@@ -116,4 +132,7 @@ def main(cfg):
 
 
 if __name__ == "__main__":
+    logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
     main()

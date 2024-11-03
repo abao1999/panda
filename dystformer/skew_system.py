@@ -96,8 +96,8 @@ class SkewSystem:
             return np.ones(self.k)
 
         # compute amplitude of driver and response systems
-        amp_driver = np.mean(np.abs(sol_driver), axis=0)
-        amp_response = np.mean(np.abs(sol_response), axis=0)
+        amp_driver = np.mean(np.abs(sol_driver), axis=0)  # type: ignore
+        amp_response = np.mean(np.abs(sol_response), axis=0)  # type: ignore
 
         # compute coupling strength vector as ratio of amplitudes
         kappa = amp_response[: self.k] / amp_driver[: self.k]
@@ -474,7 +474,7 @@ class SkewData(DystData):
                 self.param_sampler.set_rng(param_rng)
 
             if self.ic_sampler is not None:
-                self.ic_sampler.clear_cache()
+                self.ic_sampler.clear_cache()  # type: ignore
 
             for j in trange(self.num_ics):
                 sample_idx = i * self.num_ics + j
@@ -492,8 +492,8 @@ class SkewData(DystData):
                 ensemble = skew_ensemble_generator.multiprocess_generate_ensemble(
                     num_periods=self.num_periods,
                     num_points=self.num_points,
-                    ic_transform=self.ic_sampler if sample_idx > 0 else None,
-                    param_transform=self.param_sampler if i > 0 else None,
+                    ic_transform=self.ic_sampler if sample_idx > 0 else None,  # type: ignore
+                    param_transform=self.param_sampler if i > 0 else None,  # type: ignore
                     ic_rng=param_rng,
                     **kwargs,
                 )

@@ -8,6 +8,7 @@ import numpy as np
 from dysts.systems import get_attractor_list
 from gluonts.dataset import Dataset
 from gluonts.dataset.arrow import ArrowWriter
+from gluonts.dataset.common import FileDataset
 
 
 def filter_dict(
@@ -173,6 +174,49 @@ def get_system_filepaths(
         list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0])
     )
     return filepaths
+
+
+def make_ensemble_from_arrow_dir(
+    base_dir: str,
+    split: str,
+    dyst_names_lst: Optional[List[str]] = None,
+    samples_subset: Optional[List[int]] = None,
+    one_dim_target: bool = False,
+    verbose: bool = False,
+) -> Dict[str, np.ndarray]:
+    ensemble = {}
+    if dyst_names_lst is None:
+        data_dir = os.path.join(base_dir, split)
+        dyst_names_lst = [
+            folder.name for folder in Path(data_dir).iterdir() if folder.is_dir()
+        ]
+    print(f"making ensemble from {split} split, with systems: {dyst_names_lst}")
+    for dyst_name in dyst_names_lst:
+        filepaths = get_system_filepaths(dyst_name, base_dir, split)
+        if verbose:
+            print(f"{dyst_name} filepaths: ", filepaths)
+        dyst_coords_samples = []
+        for filepath in filepaths:
+            # create dataset by reading directly from filepath into FileDataset
+            gts_dataset = FileDataset(
+                path=Path(filepath),
+                freq="h",
+                one_dim_target=one_dim_target,
+            )
+            # extract the coordinates
+            dyst_coords, metadata = stack_and_extract_metadata(gts_dataset)
+            dyst_coords_samples.append(dyst_coords)
+            if verbose:
+                print("data shape: ", dyst_coords.shape)
+                print("metadata: ", metadata)
+                print("IC: ", dyst_coords[:, 0])
+
+        dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
+        print(dyst_coords_samples.shape)
+        if samples_subset is not None:
+            dyst_coords_samples = dyst_coords_samples[samples_subset, :]
+        ensemble[dyst_name] = dyst_coords_samples
+    return ensemble
 
 
 ### Functions to make basic affine maps ###
