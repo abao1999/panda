@@ -15,10 +15,6 @@ from transformers import (
 )
 
 import wandb
-from dystformer.augmentations import (
-    RandomAffineTransform,
-    RandomConvexCombinationTransform,
-)
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
@@ -67,14 +63,15 @@ def main(cfg):
     transformers.set_seed(seed=cfg.train.seed)
 
     # get train data paths
-    train_data_dir = os.path.expandvars(cfg.train_data_dir)
-    # train_data_paths = [
-    #     os.path.join(train_data_dir, "Lorenz/0_T-2048.arrow"),
-    #     os.path.join(train_data_dir, "ThomasLabyrinth/0_T-2048.arrow"),
-    # ]
-    train_data_paths = list(
-        filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
-    )
+    train_data_dir_lst = cfg.train_data_dirs
+    train_data_paths = []
+    for train_data_dir in train_data_dir_lst:
+        train_data_dir = os.path.expandvars(train_data_dir)
+        train_data_paths.extend(
+            filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
+        )
+
+    print("train_data_paths: ", train_data_paths)
 
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
@@ -82,7 +79,7 @@ def main(cfg):
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
-        f"Loading and filtering {len(train_data_paths)} datasets for training",
+        f"Loaded and filtered {len(train_data_paths)} datasets for training from directories: {train_data_dir_lst}",
         logger,
     )
 
@@ -148,10 +145,11 @@ def main(cfg):
 
     log_on_main("Initializing model", logger)
 
-    augmentations = [
-        RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
-        RandomAffineTransform(out_dim=6, scale=1.0),
-    ]
+    # augmentations = [
+    #     RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
+    #     RandomAffineTransform(out_dim=6, scale=1.0),
+    # ]
+    augmentations = None
 
     shuffled_train_dataset = PatchTSTDataset(
         datasets=train_datasets,

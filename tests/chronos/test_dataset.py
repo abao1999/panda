@@ -33,10 +33,13 @@ def main(cfg):
     # Get list of files to use for training
     # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
     train_data_paths = []
-    if cfg.train_data_dir is not None:
-        train_data_paths = list(
-            filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))
-        )
+    if cfg.train_data_dirs is not None:
+        for train_data_dir in cfg.train_data_dirs:
+            train_data_paths.extend(
+                list(
+                    filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
+                )
+            )
 
     log_on_main(f"train_data_paths: {train_data_paths}", logger)
     log_on_main(

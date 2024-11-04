@@ -9,7 +9,6 @@ from pathlib import Path
 import hydra
 import torch
 import transformers
-import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
@@ -17,6 +16,7 @@ from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
 import dystformer.augmentations as augmentations
+import wandb
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.tokenizer import ChronosConfig
 from dystformer.utils import (
@@ -70,12 +70,17 @@ def main(cfg):
     assert cfg.chronos.model_type in ["seq2seq", "causal"]
 
     # Get list of files to use for training
-    # add all files in train_data_dir to train_data_paths, a list of arrow data filepaths
+    # add all files in train_data_dirs to train_data_paths, a list of arrow data filepaths
     train_data_paths = []
-    if cfg.train_data_dir is not None:
-        train_data_paths = list(
-            filter(lambda file: file.is_file(), Path(cfg.train_data_dir).rglob("*"))
-        )
+    if cfg.train_data_dirs is not None:
+        for train_data_dirs in cfg.train_data_dirs:
+            train_data_paths.extend(
+                list(
+                    filter(
+                        lambda file: file.is_file(), Path(train_data_dirs).rglob("*")
+                    )
+                )
+            )
     log_on_main(f"train_data_paths: {train_data_paths}", logger)
 
     # add any additional arrow data filepaths specified to our training set
@@ -109,7 +114,7 @@ def main(cfg):
         )
         for data_path in train_data_paths
     ]
-    
+
     # apply augmentations on the fly
     # TODO: understand the fine-tuning details more. Do we want to aggregate the samples together, on the fly?
     # TODO: also will probably need to re-weight probabilities to take into account the type of augmentation

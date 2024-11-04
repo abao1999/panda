@@ -1,5 +1,7 @@
 # directory containing files used for training data
-train_data_dir: "/stor/work/AMDG_Gilpin_Summer2024/data/chronos_train/"
+train_data_dirs:
+  - "/stor/work/AMDG_Gilpin_Summer2024/data/signed_perts_train/"
+  - "/stor/work/AMDG_Gilpin_Summer2024/data/big_flow_skew_systems/"
 # additional files to add to training data set
 extra_train_data_paths: null
 probability: null

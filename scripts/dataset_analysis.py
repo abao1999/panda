@@ -38,7 +38,7 @@ def compute_lyapunov_exponents(
         f"Computing Lyapunov exponents for {dyst_name} samples with shape {all_traj.shape}"
     )
     for traj in all_traj:
-        spectrum = [max_lyapunov_exponent_rosenstein(traj.T)]
+        spectrum = [max_lyapunov_exponent_rosenstein(traj.T, trajectory_len=200)]
         lyapunov_exponents.extend(spectrum)
     return np.array(lyapunov_exponents)
 
@@ -152,11 +152,11 @@ if __name__ == "__main__":
         save_dir=args.save_dir,
     )
 
-    plot_distribution_from_npy(
-        npy_path=os.path.join(args.save_dir, "max_lyapunov_exponents_skew_flow.npy"),
-        plot_title="Max Lyapunov Exponents",
-        save_dir=args.save_dir,
-    )
+    # plot_distribution_from_npy(
+    #     npy_path=os.path.join(args.save_dir, "max_lyapunov_exponents.npy"),
+    #     plot_title="Max Lyapunov Exponents",
+    #     save_dir=args.save_dir,
+    # )
 
     # plot_all_distributions(
     #     npy_paths={

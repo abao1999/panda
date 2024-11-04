@@ -7,7 +7,7 @@ python scripts/chronos/train.py \
         train.max_steps=100_000 \
         train.save_steps=10_000 \
         train.log_steps=100 \
-        train_data_dir=$WORK/data/chronos_train \
+        train_data_dirs=$WORK/data/chronos_train \
 
 # On multiple GPUs (example with 6 GPUs)
 # torchrun --nproc-per-node=3 scripts/chronos/train.py \
@@ -17,6 +17,6 @@ python scripts/chronos/train.py \
 #         train.max_steps=100_000 \
 #         train.save_steps=10_000 \
 #         train.log_steps=100 \
-#         train_data_dir=$WORK/data/chronos_train \
+#         train_data_dirs=$WORK/data/chronos_train \
 
 # accelerate launch scripts/training/train.py

@@ -17,7 +17,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         scripts/patchtst/train.py \
         shuffle_buffer_length=100_000 \
         patchtst.context_length=512 \
-        patchtst.prediction_length=64 \
+        patchtst.prediction_length=256 \
         patchtst.patch_length=16 \
         patchtst.patch_stride=16 \
         patchtst.num_hidden_layers=8 \
