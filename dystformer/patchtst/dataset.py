@@ -121,18 +121,18 @@ class PatchTSTDataset(IterableDataset):
         entry = {f: entry[f] for f in ["start", "target"]}
         entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
 
+        if mode == "train" and self.augmentations is not None:
+            augmentation_idx = np.random.choice(
+                len(self.augmentations), p=self.augmentation_probabilities
+            )
+            entry["target"] = self.augmentations[augmentation_idx](entry["target"])
+
         if mode == "train" and isinstance(self.fixed_dim, int):
             total_dims = entry["target"].shape[0]
             sampled_dims = np.random.choice(
                 total_dims, size=self.fixed_dim, replace=False
             )
             entry["target"] = entry["target"][sampled_dims, :]
-
-        if mode == "train" and self.augmentations is not None:
-            augmentation_idx = np.random.choice(
-                len(self.augmentations), p=self.augmentation_probabilities
-            )
-            entry["target"] = self.augmentations[augmentation_idx](entry["target"])
 
         return entry
 
