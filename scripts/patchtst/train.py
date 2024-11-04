@@ -15,6 +15,10 @@ from transformers import (
 )
 
 import wandb
+from dystformer.augmentations import (
+    RandomAffineTransform,
+    RandomConvexCombinationTransform,
+)
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
@@ -145,11 +149,12 @@ def main(cfg):
 
     log_on_main("Initializing model", logger)
 
-    # augmentations = [
-    #     RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
-    #     RandomAffineTransform(out_dim=6, scale=1.0),
-    # ]
-    augmentations = None
+    augmentations = [
+        RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
+        RandomAffineTransform(out_dim=6, scale=1.0),
+    ]
+
+    log_on_main(f"Using augmentations: {augmentations}", logger)
 
     shuffled_train_dataset = PatchTSTDataset(
         datasets=train_datasets,

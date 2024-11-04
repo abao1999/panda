@@ -74,13 +74,10 @@ TODO: write up current PatchTST docs
 ## Development Goals
 Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
 
-+ [HIGH | EASY] make a big dataset and submit a mlm pretrain + prediction finetune run using augmentations skew systems, non-standardized
-+ [HIGH | EASY] add attractor tests to take care of almost fixed point and straight lines - just do zero order thing
 + [HIGH | MEDIUM] implement the progressive quantization scheme (partioning phase space)
 + [HIGH | HARD] compute periods for systems (with param perturbations) to be used to align timescales of training data (blocky trajectories no good). See random phase surrogate method, make faster.
 + [HIGH | MEDIUM] correct the standardization error for skew systems, couple flows.
-+ [MEDIUM | EASY] check min, max of instance normalized training timeseries to determine the high 
-and low for the quantile transform
++ [MEDIUM | EASY] check min, max of instance normalized training timeseries to determine the high and low for the quantile transform
 + [MEDIUM | HARD] get torch compile working (rope is slow)
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
