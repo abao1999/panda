@@ -28,5 +28,6 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         train.max_steps=300_000 \
         train.save_steps=100_000 \
         train.log_steps=1_000 \
-        train.torch_compile=false \
+        train.warmup_ratio=0.1 \
+        train.torch_compile=true \
         "$@"
