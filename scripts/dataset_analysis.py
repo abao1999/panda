@@ -4,11 +4,11 @@ Analyze a dataset of pre-computed trajectories, loading from either Arrow files 
 
 import argparse
 import os
+from itertools import chain
 
 # Using itertools.chain
-from itertools import chain
 from multiprocessing import Pool
-from typing import Callable, Dict
+from typing import Callable, Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -43,6 +43,26 @@ def compute_lyapunov_exponents(
     return np.array(lyapunov_exponents)
 
 
+def compute_quantile_limits(
+    dyst_name: str,
+    all_traj: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute the high and low values for the instance normalized trajectories
+    """
+    high_vals = []
+    low_vals = []
+    for traj in all_traj:
+        standard_traj = (traj - np.mean(traj, axis=-1)[:, None]) / np.std(
+            traj, axis=-1
+        )[:, None]
+        high = np.max(standard_traj)
+        low = np.min(standard_traj)
+        high_vals.append(high)
+        low_vals.append(low)
+    return np.array(high_vals), np.array(low_vals)
+
+
 def compute_quantities_multiprocessed(
     ensemble: Dict[str, np.ndarray],
     compute_fn: Callable,
@@ -55,17 +75,10 @@ def compute_quantities_multiprocessed(
     return {k: v for k, v in zip(list(ensemble.keys()), results)}
 
 
-def plot_distribution_from_ensemble(
-    ensemble: Dict[str, np.ndarray], plot_title: str, save_dir: str
+def plot_distribution(
+    vals: np.ndarray, plot_title: str, save_name: str, save_dir: str
 ) -> None:
-    vals = list(chain(*ensemble.values()))
-    plot_name = plot_title.lower().replace(" ", "_")
-
-    np_save_path = os.path.join(save_dir, f"{plot_name}.npy")
-    np.save(np_save_path, vals)
-    print(f"Saved npy file to {np_save_path}")
-
-    plot_save_path = os.path.join(save_dir, f"{plot_name}.png")
+    plot_save_path = os.path.join(save_dir, f"{save_name}.png")
     plt.hist(
         vals,
         bins=100,
@@ -75,25 +88,6 @@ def plot_distribution_from_ensemble(
     plt.title(plot_title)
     plt.ylabel("Density")
     # plt.yscale("log")
-    plt.grid(True)
-    plt.savefig(plot_save_path, dpi=300)
-    plt.close()
-    print(f"Saved plot to {plot_save_path}")
-
-
-def plot_distribution_from_npy(npy_path: str, plot_title: str, save_dir: str) -> None:
-    vals = np.load(npy_path)
-    plot_name = plot_title.lower().replace(" ", "_")
-    plot_save_path = os.path.join(save_dir, f"{plot_name}.png")
-    plt.hist(
-        vals,
-        bins=100,
-        density=True,
-        color="tab:blue",
-    )
-    plt.title(plot_title)
-    plt.ylabel("Density")
-    plt.yscale("log")
     plt.grid(True)
     plt.savefig(plot_save_path, dpi=300)
     plt.close()
@@ -117,7 +111,7 @@ def plot_all_distributions(
         vals = np.load(npy_path)
         plt.hist(
             vals,
-            bins=bins,
+            bins=bins,  # type: ignore
             density=True,
             alpha=0.5,
             color=plt.get_cmap("tab10")(i),
@@ -133,28 +127,131 @@ def plot_all_distributions(
     print(f"Saved plot to {plot_save_path}")
 
 
+def plot_all_distributions_scatter(
+    npy_paths: Dict[str, str], plot_title: str, save_name: str, save_dir: str
+) -> None:
+    plot_save_path = os.path.join(save_dir, f"{save_name}.png")
+    all_vals = []
+    for data_split, npy_path in npy_paths.items():
+        vals = np.load(npy_path)
+        if vals.shape[-1] != 2:
+            raise ValueError(f"Expected 2D data, got {vals.shape}")
+        all_vals.append(vals)
+
+    for i, (data_split, npy_path) in enumerate(npy_paths.items()):
+        vals = np.load(npy_path)
+        print(vals.shape)
+        plt.scatter(
+            vals[:, 0],
+            vals[:, 1],
+            alpha=0.2,
+            color=plt.get_cmap("tab10")(i),
+            label=data_split,
+        )
+    plt.title(plot_title)
+    plt.xlabel("min")
+    plt.ylabel("max")
+    plt.gca().invert_xaxis() if vals[:, 0].min() < 0 else None
+    plt.gca().invert_yaxis() if vals[:, 1].min() < 0 else None
+    plt.legend()
+    plt.savefig(plot_save_path, dpi=300)
+    plt.close()
+    print(f"Saved plot to {plot_save_path}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", type=str, default="debug")
     parser.add_argument("--save_dir", type=str, default="plots")
+    parser.add_argument("--suffix_name", type=str, default="")
+
     args = parser.parse_args()
 
     os.makedirs(args.save_dir, exist_ok=True)
 
-    ensemble = make_ensemble_from_arrow_dir(DATA_DIR, args.split, one_dim_target=False)
-    print(ensemble.keys())
-    lyapunov_exponents = compute_quantities_multiprocessed(
-        ensemble, compute_fn=compute_lyapunov_exponents
-    )
-    plot_distribution_from_ensemble(
-        lyapunov_exponents,
-        plot_title="Max Lyapunov Exponents",
+    plot_all_distributions_scatter(
+        npy_paths={
+            "train": os.path.join(args.save_dir, "quantile_limits_train.npy"),
+            "skew flow": os.path.join(args.save_dir, "quantile_limits_skew_flow.npy"),
+        },
+        plot_title="Quantile Limits",
+        save_name="quantile_limits_scatter",
         save_dir=args.save_dir,
     )
 
-    # plot_distribution_from_npy(
-    #     npy_path=os.path.join(args.save_dir, "max_lyapunov_exponents.npy"),
-    #     plot_title="Max Lyapunov Exponents",
+    plot_all_distributions(
+        npy_paths={
+            "high": os.path.join(args.save_dir, "quantile_limits_train_high.npy"),
+            "low": os.path.join(args.save_dir, "quantile_limits_train_low.npy"),
+        },
+        plot_title="Quantile Limits",
+        save_name="quantile_limits_train",
+        save_dir=args.save_dir,
+    )
+
+    plot_all_distributions(
+        npy_paths={
+            "high": os.path.join(args.save_dir, "quantile_limits_skew_flow_high.npy"),
+            "low": os.path.join(args.save_dir, "quantile_limits_skew_flow_low.npy"),
+        },
+        plot_title="Quantile Limits",
+        save_name="quantile_limits_skew_flow",
+        save_dir=args.save_dir,
+    )
+    exit()
+
+    suffix_name = f"_{args.suffix_name}" if args.suffix_name else ""
+    # save_name = f"max_lyapunov_exponents{suffix_name}"
+    save_name = f"quantile_limits{suffix_name}"
+
+    # make ensemble from saved trajectories in Arrow files
+    ensemble = make_ensemble_from_arrow_dir(DATA_DIR, args.split, one_dim_target=False)
+    print(ensemble.keys())
+
+    # compute quantity of interest
+    ## Max Lyapunov Exponents
+    # lyapunov_exponents = compute_quantities_multiprocessed(
+    #     ensemble, compute_fn=compute_lyapunov_exponents
+    # )
+    # le_vals = np.array(list(chain(*ensemble.values())))
+
+    ## Quantile Limits
+    quantile_limits = compute_quantities_multiprocessed(
+        ensemble, compute_fn=compute_quantile_limits
+    )
+    print(quantile_limits.keys())
+    print(quantile_limits.values())
+
+    high_vals = np.array(list(chain(*[v[0] for v in quantile_limits.values()])))
+    low_vals = np.array(list(chain(*[v[1] for v in quantile_limits.values()])))
+    np.save(os.path.join(args.save_dir, f"{save_name}_high.npy"), high_vals)
+    np.save(os.path.join(args.save_dir, f"{save_name}_low.npy"), low_vals)
+    low_high_vals = np.dstack((low_vals, high_vals)).squeeze()
+    np.save(os.path.join(args.save_dir, f"{save_name}.npy"), low_high_vals)
+
+    plot_all_distributions_scatter(
+        npy_paths={
+            suffix_name.replace("_", " "): os.path.join(
+                args.save_dir, f"{save_name}.npy"
+            ),
+        },
+        plot_title="Quantile Limits",
+        save_name=f"{save_name}_scatter",
+        save_dir=args.save_dir,
+    )
+
+    # save npy file of computed values
+    # np_save_path = os.path.join(args.save_dir, f"{save_name}.npy")
+    # print(f"Saving npy file to {np_save_path}")
+    # np.save(os.path.join(args.save_dir, f"{save_name}.npy"), le_vals)
+
+    # plot_all_distributions(
+    #     npy_paths={
+    #         "high": os.path.join(args.save_dir, f"{save_name}_high.npy"),
+    #         "low": os.path.join(args.save_dir, f"{save_name}_low.npy"),
+    #     },
+    #     plot_title="Quantile Limits",
+    #     save_name=save_name,
     #     save_dir=args.save_dir,
     # )
 
@@ -165,9 +262,6 @@ if __name__ == "__main__":
     #         "skew flow": os.path.join(
     #             args.save_dir, "max_lyapunov_exponents_skew_flow.npy"
     #         ),
-    #         # "skew_phase": os.path.join(
-    #         #     args.save_dir, "max_lyapunov_exponents_skew_phase.npy"
-    #         # ),
     #     },
     #     plot_title="Max Lyapunov Exponents",
     #     save_name="all_max_lyapunov_exponents",
