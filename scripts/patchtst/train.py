@@ -75,11 +75,8 @@ def main(cfg):
             filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
         )
 
-    print("train_data_paths: ", train_data_paths)
-
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
-    print("output_dir: ", output_dir)
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
@@ -98,35 +95,6 @@ def main(cfg):
         )
         for data_path in train_data_paths
     ]
-
-    # # system-scale augmentations
-    # log_on_main("Applying system-scale augmentations", logger)
-    # for augmentation_cls_name in cfg.augmentations.system:
-    #     augmentation_cls = getattr(augmentations, augmentation_cls_name)
-    #     log_on_main(
-    #         f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
-    #     )
-    #     kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-    #     augmentation_fn = partial(augmentation_cls, **kwargs)
-    #     train_datasets.extend(
-    #         [augmentation_fn(ds) for ds in train_datasets[: len(train_data_paths)]]
-    #     )
-
-    # # ensemble-scale augmentations
-    # log_on_main("Applying ensemble-scale augmentations", logger)
-    # for augmentation_cls_name in cfg.augmentations.ensemble:
-    #     augmentation_cls = getattr(augmentations, augmentation_cls_name)
-    #     log_on_main(
-    #         f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
-    #     )
-    #     kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-    #     augmentation_fn = partial(augmentation_cls, **kwargs)
-    #     train_datasets.extend(
-    #         [
-    #             augmentation_fn(train_datasets[i], train_datasets[j])
-    #             for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
-    #         ]
-    #     )
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -205,6 +173,7 @@ def main(cfg):
         max_steps=cfg.train.max_steps,
         gradient_accumulation_steps=cfg.train.gradient_accumulation_steps,
         dataloader_num_workers=dataloader_num_workers,
+        dataloader_prefetch_factor=cfg.train.dataloader_prefetch_factor,
         tf32=use_tf32,  # remove this if not using Ampere GPUs (e.g., A100)
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,

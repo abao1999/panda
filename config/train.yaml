@@ -7,9 +7,10 @@ train:
   log_steps: 100
 
   per_device_train_batch_size: 8
-  gradient_accumulation_steps: 4
+  gradient_accumulation_steps: 1
   max_grad_norm: 1.0
-  dataloader_num_workers: 4
+  dataloader_num_workers: 16
+  dataloader_prefetch_factor: 4
 
   tf32: false # NOTE: tf32 requires Ampere or a newer GPU arch, cuda>=11 and torch>=1.7
   torch_compile: true
