@@ -24,10 +24,13 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.num_attention_heads=8 \
         patchtst.d_model=512 \
         patchtst.norm_type=rmsnorm \
+        patchtst.channel_attention=true \
+        patchtst.mode=pretrain \
         train.per_device_train_batch_size=256 \
         train.max_steps=300_000 \
         train.save_steps=100_000 \
         train.log_steps=1_000 \
         train.warmup_ratio=0.1 \
         train.torch_compile=true \
+        fixed_dim=3 \
         "$@"

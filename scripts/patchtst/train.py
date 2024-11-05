@@ -96,6 +96,8 @@ def main(cfg):
         for data_path in train_data_paths
     ]
 
+    log_on_main(f"number of train_datasets: {len(train_datasets)}", logger)
+
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
         probability = cfg.probability
