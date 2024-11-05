@@ -40,6 +40,30 @@ class PatchTSTEmbedding(nn.Module):
         return embeddings
 
 
+class PatchTSTQuantizer(nn.Module):
+    def __init__(self, high: float, low: float):
+        super().__init__()
+        self.high = high
+        self.low = low
+
+    def forward(self, timeseries: torch.Tensor, num_bins: int = 2) -> torch.Tensor:
+        """
+        Quantize the timeseries
+
+        Parameters:
+            timeseries (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
+                Patch input for embedding
+            num_bins (int, *optional*, defaults to 2):
+                Number of bins to quantize into
+
+        Returns:
+            `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
+        """
+        bins = torch.linspace(self.low, self.high, num_bins + 1)
+        bin_indices = torch.bucketize(timeseries, bins)
+        return bins[bin_indices]
+
+
 class PatchTSTDynamicsEmbedding(nn.Module):
     """
     Embeds patch inputs non-parametrically with a Takens embedding augmented by random Fourier features
@@ -660,6 +684,10 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
             self.masking = nn.Identity()
         self.encoder = PatchTSTEncoder(config, num_patches=num_patches)
 
+        self.quantizer = PatchTSTQuantizer(
+            high=config.quantizer_high, low=config.quantizer_low
+        )
+
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -671,6 +699,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        num_bins: Optional[int] = None,
     ) -> Union[Tuple, PatchTSTModelOutput]:
         r"""
         Parameters:
@@ -713,11 +742,19 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         if past_observed_mask is None:
             past_observed_mask = torch.ones_like(past_values)
 
-        # x: tensor [bs x sequence_length x num_input_channels]
+        # timeseries: tensor [bs x sequence_length x num_input_channels]
         scaled_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
 
+        # quantized timeseries: tensor [bs x sequence_length x num_input_channels]
+        if num_bins is not None:
+            quantized_past_values = self.quantizer(
+                scaled_past_values, num_bins=num_bins
+            )
+        else:
+            quantized_past_values = scaled_past_values
+
         # patched_values: [bs x num_input_channels x num_patches x patch_length] for pretrain
-        patched_values = self.patchifier(scaled_past_values)
+        patched_values = self.patchifier(quantized_past_values)
         if self.do_mask_input:
             masked_values, mask = self.masking(patched_values)
         else:

@@ -43,6 +43,9 @@ patchtst:
   output_range: null
   num_parallel_samples: 100
 
+  quantizer_high: 15.0
+  quantizer_low: -15.0
+
   # rope positional embeddings
   max_wavelength: 5000
   rope_percent: 0.8
