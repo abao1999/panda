@@ -105,7 +105,7 @@ class DystData:
         print("Setting up callbacks to test attractor properties")
         validator = AttractorValidator(**self.attractor_validator_kwargs)
         validator.add_test_fn(
-            partial(check_boundedness, threshold=1e3, max_num_stds=10, save_plot=True)
+            partial(check_boundedness, threshold=1e3, max_num_stds=10, save_plot=False)
         )
         validator.add_test_fn(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
         validator.add_test_fn(

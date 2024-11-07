@@ -435,6 +435,7 @@ class SkewData(DystData):
 
     def __post_init__(self):
         super().__post_init__()
+        self.rng = np.random.default_rng(self.rseed)
 
     def sample_skew_pairs(
         self,
@@ -444,10 +445,9 @@ class SkewData(DystData):
         """
         Sample a list of unique skew-product dynamical system pairs
         """
-        rng = np.random.default_rng(self.rseed)
         system_names = list(set(system_names))
         n_systems = len(system_names)
-        random_pairs = sample_index_pairs(n_systems, n_combos, rng=rng)
+        random_pairs = sample_index_pairs(n_systems, n_combos, rng=self.rng)
         skew_pairs = [(system_names[i], system_names[j]) for i, j in random_pairs]
         skew_pair_names = [f"{driver}_{response}" for driver, response in skew_pairs]
         return skew_pair_names
@@ -466,9 +466,7 @@ class SkewData(DystData):
             postprocessing_callbacks: List of functions that perform postprocessing on the ensemble
         """
         ensembles = []
-        pp_rng_stream = np.random.default_rng(self.rseed).spawn(
-            self.num_param_perturbations
-        )
+        pp_rng_stream = self.rng.spawn(self.num_param_perturbations)
         for i, param_rng in zip(range(self.num_param_perturbations), pp_rng_stream):
             if self.param_sampler is not None:
                 self.param_sampler.set_rng(param_rng)

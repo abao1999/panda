@@ -38,8 +38,6 @@ class AttractorValidator:
         self.valid_dyst_counts = defaultdict(int)  # Dict[str, int]
         self.failed_samples = defaultdict(list)  # Dict[str, List[int]]
         self.valid_samples = defaultdict(list)  # Dict[str, List[int]]
-        if self.plot_save_dir is not None:
-            os.makedirs(self.plot_save_dir, exist_ok=True)
 
     def reset(self):
         """
@@ -82,9 +80,10 @@ class AttractorValidator:
         func_params = list(inspect.signature(original_func).parameters.keys())
         can_plot = all(param in func_params for param in ["plot_save_dir", "plot_name"])
         if can_plot and self.plot_save_dir is not None:
+            plot_save_dir = os.path.join(self.plot_save_dir, dyst_name)
             test_fn = functools.partial(
                 test_fn,
-                plot_save_dir=os.path.join(self.plot_save_dir, dyst_name),
+                plot_save_dir=plot_save_dir,
                 plot_name=f"{dyst_name}_sample_{sample_idx}",
             )
         # call test_fn on trajectory excluding transient time (burn-in time)
@@ -287,29 +286,26 @@ def check_boundedness(
         return False
 
     # Calculate the Euclidean distance from the first point in the trajectory at each time point
-    distance_norms = np.linalg.norm(traj - traj[:, 0, None], axis=0)
-    whitened_distance_norms = standardize_traj(distance_norms)
+    distance_norms = np.linalg.norm(whitened_traj - whitened_traj[:, 0, None], axis=0)
 
     if save_plot and plot_save_dir is not None and plot_name is not None:
+        os.makedirs(plot_save_dir, exist_ok=True)
         plt.figure(figsize=(10, 6))
         plt.hist(
-            whitened_distance_norms,
+            distance_norms,
             bins=100,
             alpha=0.7,
-            color="blue",
+            color="tab:blue",
             edgecolor="black",
         )
-        plt.title("Whitened Distance Norms")
-        plt.xlabel("Whitened Distance Norms")
-        plt.ylabel("Frequency")
+        plt.title("Distance Norms of Whitened Trajectory")
+        plt.xlabel(r"Distance Norm $||x(t) - x(0)||$")
+        plt.ylabel("Counts")
         plt.grid(True)
-        plt.savefig(
-            os.path.join(plot_save_dir, f"{plot_name}_whitened_distance_norms.png")
-        )
+        plt.savefig(os.path.join(plot_save_dir, f"{plot_name}_distance_norms.png"))
         plt.close()
 
-    # Check if the trajectory is diverging TODO: mean + std
-    is_diverging = np.max(whitened_distance_norms) > max_num_stds
+    is_diverging = np.max(distance_norms) > 2 * max_num_stds
 
     return not is_diverging
 
@@ -576,6 +572,7 @@ def check_not_limit_cycle(
     # Plot the recurrence times as histogram and 3D trajectory
     # NOTE: at this point, this test has detected a limit cycle (return False)
     if save_plot and plot_save_dir is not None and plot_name is not None:
+        os.makedirs(plot_save_dir, exist_ok=True)
         dyst_name = plot_name.split("_")[0]
         plot_name = f"{plot_name}_recurrence_times_FAILED"
 
@@ -719,6 +716,7 @@ def check_power_spectrum_1d(
 
     # Only plot if the test failed
     if save_plot and plot_save_dir is not None and plot_name is not None:
+        os.makedirs(plot_save_dir, exist_ok=True)
         plot_name = f"{plot_name}_power_spectrum"
         if not status:
             plot_name = f"{plot_name}_FAILED"
