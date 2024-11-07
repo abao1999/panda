@@ -19,6 +19,7 @@ from dystformer.attractor import (
     check_not_fixed_point,
     check_not_limit_cycle,
     check_not_trajectory_decay,
+    check_not_transient,
     check_power_spectrum,
 )
 from dystformer.sampling import (
@@ -104,11 +105,14 @@ class DystData:
         print("Setting up callbacks to test attractor properties")
         validator = AttractorValidator(**self.attractor_validator_kwargs)
         validator.add_test_fn(
-            partial(check_boundedness, threshold=1e3, max_num_stds=10)
+            partial(check_boundedness, threshold=1e3, max_num_stds=10, save_plot=True)
         )
         validator.add_test_fn(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
         validator.add_test_fn(
-            partial(check_not_trajectory_decay, atol=1e-3, tail_prop=0.5)
+            partial(check_not_transient, max_transient_prop=0.2, atol=1e-3)
+        )
+        validator.add_test_fn(
+            partial(check_not_trajectory_decay, tail_prop=0.5, atol=1e-3)
         )
         # for STRICT MODE (strict criteria for detecting limit cycles), try:
         # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
@@ -120,6 +124,7 @@ class DystData:
                 min_counts_per_rtime=100,
                 min_block_length=50,
                 enforce_endpoint_recurrence=True,
+                save_plot=False,
             )
         )
         validator.add_test_fn(
@@ -127,6 +132,7 @@ class DystData:
                 check_power_spectrum,
                 rel_peak_height_threshold=1e-5,
                 rel_prominence_threshold=None,
+                save_plot=False,
             )
         )
         validator.add_test_fn(check_lyapunov_exponent)

@@ -18,7 +18,6 @@ from scipy.fft import fft, fftfreq
 from scipy.signal import find_peaks
 from scipy.spatial.distance import cdist
 from sklearn.decomposition import PCA
-from statsmodels.tsa.stattools import adfuller, kpss
 
 
 @dataclass
@@ -26,12 +25,12 @@ class AttractorValidator:
     """
     Framework to add tests, which are executed sequentially to determine if generated trajectories are valid attractors.
     Upon first failure, the trajectory sample is added to the failed ensemble.
-    Custom tests can be added by adding functions that take a trajectory and return a boolean (True if the trajectory passes the test, False otherwise).
+    To add custom tests, define functions that take a trajectory and return a boolean (True if the trajectory passes the test, False otherwise).
     """
 
-    verbose: int = 1
     transient_time_frac: float = 0.05  # should be low, should be on attractor
     plot_save_dir: Optional[str] = None
+    verbose: bool = False
 
     def __post_init__(self):
         self.tests = []  # List[Callable]
@@ -76,28 +75,21 @@ class AttractorValidator:
         Returns:
             bool: True if the test passed, False otherwise
         """
-        test_fn = functools.partial(test_fn, verbose=self.verbose >= 2)
         original_func = (
             test_fn.func if isinstance(test_fn, functools.partial) else test_fn
         )
         func_name = original_func.__name__
         func_params = list(inspect.signature(original_func).parameters.keys())
-        if (
-            all(param in func_params for param in ["plot_save_dir", "plot_name"])
-            and self.plot_save_dir is not None
-        ):
+        can_plot = all(param in func_params for param in ["plot_save_dir", "plot_name"])
+        if can_plot and self.plot_save_dir is not None:
             test_fn = functools.partial(
                 test_fn,
-                plot_save_dir=self.plot_save_dir,
+                plot_save_dir=os.path.join(self.plot_save_dir, dyst_name),
                 plot_name=f"{dyst_name}_sample_{sample_idx}",
             )
         # call test_fn on trajectory excluding transient time (burn-in time)
         transient_time = int(traj_sample.shape[1] * self.transient_time_frac)
         status = test_fn(traj_sample[:, transient_time:])
-        if self.verbose >= 1:
-            print(
-                f"{func_name}: {'PASSED' if status else 'FAILED'} for {dyst_name} sample {sample_idx}"
-            )
         return status, func_name
 
     def _filter_dyst(
@@ -119,10 +111,6 @@ class AttractorValidator:
         failed_attractor_trajs = []
         for i, traj_sample in enumerate(all_traj):
             sample_idx = first_sample_idx + i
-            if self.verbose >= 1:
-                print(
-                    f"Checking {dyst_name} sample {sample_idx}, shape {traj_sample.shape}"
-                )
             # Execute all tests
             status = True
             for test_fn in self.tests:
@@ -179,7 +167,7 @@ class AttractorValidator:
                 print(f"No valid attractor trajectories found for {dyst_name}")
                 continue
 
-            if self.verbose >= 1:
+            if self.verbose:
                 print(
                     f"Found {len(valid_attractor_trajs)} valid attractor trajectories for {dyst_name}"
                 )
@@ -272,8 +260,10 @@ class AttractorValidator:
 def check_boundedness(
     traj: np.ndarray,
     threshold: float = 1e4,
-    max_num_stds: float = 1e2,
-    verbose: bool = False,
+    max_num_stds: float = 10,
+    save_plot: bool = False,
+    plot_save_dir: Optional[str] = None,
+    plot_name: Optional[str] = None,
 ) -> bool:
     """
     Check if a multi-dimensional trajectory is bounded (not diverging).
@@ -286,26 +276,40 @@ def check_boundedness(
         bool: False if the system is diverging, True otherwise.
     """
     if np.any(np.abs(traj) > threshold):
-        if verbose:
-            print("Trajectory appears to be diverging.")
         return False
 
-    # Initial point (reference point)
-    initial_point = traj[:, 0, None]
+    def standardize_traj(traj: np.ndarray) -> np.ndarray:
+        return (traj - np.mean(traj, axis=-1)[:, None]) / np.std(traj, axis=-1)[:, None]
+
+    # Whiten trajectory (i.e. normalize to have zero mean and unit variance)
+    whitened_traj = standardize_traj(traj)
+    if np.max(np.abs(whitened_traj)) > max_num_stds:
+        return False
 
     # Calculate the Euclidean distance from the first point in the trajectory at each time point
-    distances = np.linalg.norm(traj - initial_point, axis=0)
+    distance_norms = np.linalg.norm(traj - traj[:, 0, None], axis=0)
+    whitened_distance_norms = standardize_traj(distance_norms)
 
-    # Check if the trajectory is diverging
-    is_diverging = np.max(distances) > max_num_stds * np.std(distances)
+    if save_plot and plot_save_dir is not None and plot_name is not None:
+        plt.figure(figsize=(10, 6))
+        plt.hist(
+            whitened_distance_norms,
+            bins=100,
+            alpha=0.7,
+            color="blue",
+            edgecolor="black",
+        )
+        plt.title("Whitened Distance Norms")
+        plt.xlabel("Whitened Distance Norms")
+        plt.ylabel("Frequency")
+        plt.grid(True)
+        plt.savefig(
+            os.path.join(plot_save_dir, f"{plot_name}_whitened_distance_norms.png")
+        )
+        plt.close()
 
-    if verbose:
-        print(f"Maximum distance from initial point: {np.max(distances)}")
-        print(f"Standard deviation of distances: {np.std(distances)}")
-        if is_diverging:
-            print("Trajectory appears to be diverging.")
-        else:
-            print("Trajectory does not appear to be diverging.")
+    # Check if the trajectory is diverging TODO: mean + std
+    is_diverging = np.max(whitened_distance_norms) > max_num_stds
 
     return not is_diverging
 
@@ -315,7 +319,6 @@ def check_not_fixed_point(
     traj: np.ndarray,
     tail_prop: float = 0.05,
     atol: float = 1e-3,
-    verbose: bool = False,
 ) -> bool:
     """
     Check if the system trajectory converges to a fixed point.
@@ -334,70 +337,54 @@ def check_not_fixed_point(
     distances = np.linalg.norm(np.diff(traj[:, -tail:], axis=1), axis=0)
 
     if np.allclose(distances, 0, atol=atol):
-        if verbose:
-            print(
-                f"System may have collapsed to a fixed point, determined with atol={atol}."
-            )
         return False
-
-    #
 
     return True
 
 
 def check_not_trajectory_decay(
-    traj: np.ndarray, tail_prop: float = 0.5, atol: float = 1e-3, verbose: bool = False
+    traj: np.ndarray, tail_prop: float = 0.5, atol: float = 1e-3
 ) -> bool:
     """
     Check if a multi-dimensional trajectory is not decaying.
+    Args:
+        traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
+        tail_prop: Proportion of the trajectory to consider for variance comparison.
+        atol: Absolute tolerance for detecting a fixed point.
+    Returns:
+        bool: False if the system is approaching a fixed point, True otherwise.
     """
-    # Check if any dimension of the trajectory is a straight line in the last half of the trajectory
+    # Check if any dimension of the trajectory is a straight line in the last tail_prop of the trajectory
     n = traj.shape[1]
     tail = int(tail_prop * n)
     for dim in range(traj.shape[0]):
         diffs = np.diff(traj[dim, -tail:])
         if np.allclose(diffs, 0, atol=atol):
-            if verbose:
-                print(
-                    f"Dimension {dim} of the trajectory appears to collapse to a straight line."
-                )
             return False
     return True
 
 
-# NOTE: this is too brittle to use currently
-def check_not_variance_decay(
-    traj: np.ndarray,
-    tail_prop: float = 0.05,
-    min_variance_threshold: float = 1e-3,
-    verbose: bool = False,
+def check_not_transient(
+    traj: np.ndarray, max_transient_prop: float = 0.2, atol: float = 1e-3
 ) -> bool:
     """
-    Check if a multi-dimensional trajectory is approaching a fixed point.
-    Actually, this tests the variance decay in the trajectory to detect a fixed point.
-
+    Check if a multi-dimensional trajectory takes a long time to reach the attractor.
     Args:
-        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
-        tail_prop (float): Proportion of the trajectory to consider for variance comparison.
-        min_variance_threshold (float): Minimum variance threshold for detecting a fixed point.
+        traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
+        max_transient_prop: first max_transient_prop of the trajectory to consider for checking for transient.
+            NOTE: transient is defined loosely here as straight line to hit the attractor.
+                We thus search for the presence of straight lines
+        atol: Absolute tolerance for detecting a fixed point.
     Returns:
-        bool: False if the system has monotonically decaying variance, True otherwise.
+        bool: False if the system is approaching a fixed point, True otherwise.
     """
-    if tail_prop < 0 or tail_prop > 1:
-        raise ValueError("tail_prop must be between 0 and 1.")
+    # Check if any dimension of the trajectory is a straight line in the first max_transient_prop of the trajectory
     n = traj.shape[1]
-    last_n = int(tail_prop * n)
-
-    # Check if the last_n points have near zero variance
-    final_segment = traj[:, -last_n:]  # Last n points
-    final_variance = np.var(final_segment, axis=1)
-    near_zero_variance = np.any(final_variance < min_variance_threshold)
-    if near_zero_variance:
-        if verbose:
-            print(
-                "The system trajectory appears to have a coordinate with variance decayed to near zero."
-            )
-        return False
+    transient = int(max_transient_prop * n)
+    for dim in range(traj.shape[0]):
+        diffs = np.diff(traj[dim, :transient])
+        if np.allclose(diffs, 0, atol=atol):
+            return False
     return True
 
 
@@ -405,7 +392,6 @@ def check_not_variance_decay(
 def check_not_spiral_decay(
     traj: np.ndarray,
     rel_prominence_threshold: Optional[float] = None,
-    verbose: bool = False,
 ) -> bool:
     """
     Check if a multi-dimensional trajectory is spiraling towards a fixed point.
@@ -424,22 +410,16 @@ def check_not_spiral_decay(
     min_peaks_indices = [
         find_peaks(-t, prominence=rel_prominence_threshold)[0] for t in traj
     ]
-    if verbose:
-        print("Number of peaks: ", len(max_peak_indices))
-        print("Number of peaks: ", len(min_peaks_indices))
 
     # If no peaks are found, just pass this test lazily
     if len(max_peak_indices) == 0 or len(min_peaks_indices) == 0:
-        if verbose:
-            print("No peaks found. Passing lazily")
         return True
 
     # Check if peak indices are empty before interpolation
     if any(len(indices) == 0 for indices in max_peak_indices) or any(
         len(indices) == 0 for indices in min_peaks_indices
     ):
-        if verbose:
-            print("One or more peak indices are empty. Passing interpolation.")
+        # One or more peak indices are empty. Passing interpolation
         return True
 
     # Interpolation for envelope
@@ -479,7 +459,7 @@ def check_not_limit_cycle(
     min_block_length: int = 1,
     min_recurrence_time: int = 1,
     enforce_endpoint_recurrence: bool = False,
-    verbose: bool = False,
+    save_plot: bool = False,
     plot_save_dir: Optional[str] = None,
     plot_name: Optional[str] = None,
 ) -> bool:
@@ -527,8 +507,6 @@ def check_not_limit_cycle(
 
     n_recurrences = len(recurrence_indices[0])
     if n_recurrences == 0:
-        if verbose:
-            print("No recurrences found. Passing limit cycle test.")
         return True
 
     if enforce_endpoint_recurrence:
@@ -538,8 +516,6 @@ def check_not_limit_cycle(
             (n - 1) - max(indices) <= eps or min(indices) - 0 <= eps
             for indices in recurrence_indices
         ):
-            if verbose:
-                print("Neither endpoint seems to be a recurrence.")
             return True
 
     # get recurrence times
@@ -549,8 +525,7 @@ def check_not_limit_cycle(
     # Heuristic 1: Check if there are enough recurrences to consider a limit cycle
     n_recurrences = len(recurrence_times)
     if n_recurrences < int(min_prop_recurrences * n):
-        if verbose:
-            print("Not enough recurrences to consider a limit cycle.")
+        # Not enough recurrences to consider a limit cycle.
         return True
 
     # Heuristic 2: Check if there are enough valid recurrence times
@@ -559,8 +534,7 @@ def check_not_limit_cycle(
         1 for count in rtimes_counts.values() if count >= min_counts_per_rtime
     )
     if n_valid_rtimes < 1:
-        if verbose:
-            print("Not enough valid recurrence times to consider a limit cycle.")
+        # Not enough valid recurrence times to consider a limit cycle
         return True
 
     # Heuristic 3: Check if the valid recurrence times are formed of blocks of consecutive timepoints
@@ -601,7 +575,7 @@ def check_not_limit_cycle(
 
     # Plot the recurrence times as histogram and 3D trajectory
     # NOTE: at this point, this test has detected a limit cycle (return False)
-    if plot_save_dir is not None and plot_name is not None:
+    if save_plot and plot_save_dir is not None and plot_name is not None:
         dyst_name = plot_name.split("_")[0]
         plot_name = f"{plot_name}_recurrence_times_FAILED"
 
@@ -664,7 +638,6 @@ def check_not_limit_cycle(
 
 def check_lyapunov_exponent(
     traj: np.ndarray,
-    verbose: bool = False,
 ) -> bool:
     """
     Check if the Lyapunov exponent of the trajectory is greater than 1.
@@ -674,11 +647,8 @@ def check_lyapunov_exponent(
         bool: False if the Lyapunov exponent is less than 1, True otherwise.
     """
     lyapunov_exponent = max_lyapunov_exponent_rosenstein(traj.T)
-    if verbose:
-        print(f"Max Lyapunov exponent: {lyapunov_exponent}")
     if lyapunov_exponent < 0:
-        if verbose:
-            print("The trajectory does not exhibit chaotic behavior.")
+        # The trajectory does not exhibit chaotic behavior.
         return False
     return True
 
@@ -687,9 +657,9 @@ def check_power_spectrum_1d(
     signal,
     rel_peak_height_threshold: float = 1e-5,
     rel_prominence_threshold: Optional[float] = 1e-5,  # None,
+    save_plot: bool = False,
     plot_save_dir: Optional[str] = None,
     plot_name: Optional[str] = None,
-    verbose: bool = False,
 ) -> bool:
     """
     Analyzes the power spectrum of a 1D signal to find significant peaks and plots the spectrum on a log scale.
@@ -697,8 +667,6 @@ def check_power_spectrum_1d(
         signal (array-like): The input 1D signal.
         peak_height_threshold (float): Minimum relative height of a peak to be considered significant.
         prominence_threshold (float): Minimum prominence of a peak to be considered significant.
-        plot_save_dir (str): Directory to save the plot.
-        plot_name (str): Name of the plot.
     """
     if signal.ndim != 1:
         raise ValueError("signal must be a 1D array")
@@ -734,38 +702,23 @@ def check_power_spectrum_1d(
 
     n_significant_peaks = len(peak_frequencies)
 
-    if verbose:
-        # Print the significant peaks
-        print("Number of significant peaks:", n_significant_peaks)
-        print(f"Significant Peaks Frequencies: {peak_frequencies}")
-        print(f"Significant Peaks Powers: {peak_powers}")
-
     status = True
     # Heuristic Interpretation of the Power Spectrum
     if n_significant_peaks < 3:
-        if verbose:
-            print(
-                "The power spectrum suggests a fixed point or a simple periodic attractor (few peaks)."
-            )
+        # The power spectrum suggests a fixed point or a simple periodic attractor (few peaks)
         status = False
     elif n_significant_peaks > 10:
-        if verbose:
-            print(
-                "The power spectrum suggests a chaotic attractor (many peaks with broad distribution)."
-            )
+        # The power spectrum suggests a chaotic attractor (many peaks with broad distribution)
         status = True
     else:
-        if verbose:
-            print(
-                "The system appears to have a quasi-periodic or more complex attractor (intermediate peaks)."
-            )
+        # The system appears to have a quasi-periodic or more complex attractor (intermediate peaks)
         status = True  # this test is intentionally loose
 
     if status:
         return True
 
     # Only plot if the test failed
-    if verbose and plot_save_dir is not None and plot_name is not None:
+    if save_plot and plot_save_dir is not None and plot_name is not None:
         plot_name = f"{plot_name}_power_spectrum"
         if not status:
             plot_name = f"{plot_name}_FAILED"
@@ -796,16 +749,14 @@ def check_power_spectrum(
     traj: np.ndarray,
     rel_peak_height_threshold: float = 1e-5,
     rel_prominence_threshold: Optional[float] = None,
+    save_plot: bool = False,
     plot_save_dir: Optional[str] = None,
     plot_name: Optional[str] = None,
-    verbose: bool = False,
 ) -> bool:
     """
     Check if a multi-dimensional trajectory has a power spectrum that is significant.
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
-        plot_save_dir (str): Directory to save the plot.
-        verbose (bool): Whether to print verbose output.
     Returns:
         bool: True if the power spectrum is significant, False otherwise.
     """
@@ -816,60 +767,12 @@ def check_power_spectrum(
             x,
             rel_peak_height_threshold=rel_peak_height_threshold,
             rel_prominence_threshold=rel_prominence_threshold,
+            save_plot=save_plot,
             plot_save_dir=plot_save_dir,
             plot_name=plot_name,
-            verbose=verbose,
         )
         # NOTE: some systems have a periodic driver in the last dimension, which will make this test fail
         # in that case, we can use the Lyapunov exponent test to check for chaos
         if not status:
-            if verbose:
-                print(f"Power spectrum test failed for dimension {d}")
-            return check_lyapunov_exponent(traj, verbose=verbose)
-    return True
-
-
-def check_stationarity(
-    traj: np.ndarray,
-    verbose: bool = False,
-) -> bool:
-    """
-    ADF tests for presence of a unit root, with null hypothesis that time_series is non-stationary.
-    KPSS tests for stationarity around a constant (or deterministic trend), with null hypothesis that time_series is stationary.
-    NOTE: may only be sensible for long enough time horizon.
-
-    Args:
-        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
-    Returns:
-        bool: True if the trajectory is stationary, False otherwise.
-    """
-    # assuming first dimension is the state dimension, shape is (dim, T)
-    num_dims = traj.shape[0]
-
-    # If not using recurrence test, test for stationarity using stationarity tests
-    for d in range(num_dims):
-        if verbose:
-            print(f"Checking stationarity for dimension {d}")
-        coord = traj[d, :]
-
-        # Use statsmodels ADF and KPSS tests
-        result_adf = adfuller(coord, autolag="AIC")
-        result_kpss = kpss(coord, regression="c")
-        # Interpret p-values for ADF
-        status_adf = 1 if result_adf[1] < 0.05 else 0
-        status_kpss = 0 if result_kpss[1] < 0.05 else 1
-
-        # Aggregate conclusion
-        if status_adf and status_kpss:
-            if verbose:
-                print("Strong evidence for stationarity")
-        elif not status_adf and not status_kpss:
-            if verbose:
-                print("Strong evidence for non-stationarity")
-            return False
-        else:
-            if verbose:
-                print("Mixed results, inconclusive")
-                print("ADF: ", status_adf)
-                print("KPSS: ", status_kpss)
+            return check_lyapunov_exponent(traj)
     return True
