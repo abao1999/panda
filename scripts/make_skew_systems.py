@@ -45,7 +45,7 @@ def main(cfg):
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=cfg.dyst_data.reference_traj_length,
         reference_traj_transient=cfg.dyst_data.reference_traj_transient,
-        recompute_standardization=True,  # Important!
+        recompute_standardization=cfg.dyst_data.standardize,  # Important (if standardize=True)
         events=events,
         verbose=cfg.dyst_data.verbose,
     )

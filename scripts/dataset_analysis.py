@@ -169,36 +169,36 @@ if __name__ == "__main__":
 
     os.makedirs(args.save_dir, exist_ok=True)
 
-    plot_all_distributions_scatter(
-        npy_paths={
-            "train": os.path.join(args.save_dir, "quantile_limits_train.npy"),
-            "skew flow": os.path.join(args.save_dir, "quantile_limits_skew_flow.npy"),
-        },
-        plot_title="Quantile Limits",
-        save_name="quantile_limits_scatter",
-        save_dir=args.save_dir,
-    )
+    # plot_all_distributions_scatter(
+    #     npy_paths={
+    #         "train": os.path.join(args.save_dir, "quantile_limits_train.npy"),
+    #         "skew flow": os.path.join(args.save_dir, "quantile_limits_skew_flow.npy"),
+    #     },
+    #     plot_title="Quantile Limits",
+    #     save_name="quantile_limits_scatter",
+    #     save_dir=args.save_dir,
+    # )
 
-    plot_all_distributions(
-        npy_paths={
-            "high": os.path.join(args.save_dir, "quantile_limits_train_high.npy"),
-            "low": os.path.join(args.save_dir, "quantile_limits_train_low.npy"),
-        },
-        plot_title="Quantile Limits",
-        save_name="quantile_limits_train",
-        save_dir=args.save_dir,
-    )
+    # plot_all_distributions(
+    #     npy_paths={
+    #         "high": os.path.join(args.save_dir, "quantile_limits_train_high.npy"),
+    #         "low": os.path.join(args.save_dir, "quantile_limits_train_low.npy"),
+    #     },
+    #     plot_title="Quantile Limits",
+    #     save_name="quantile_limits_train",
+    #     save_dir=args.save_dir,
+    # )
 
-    plot_all_distributions(
-        npy_paths={
-            "high": os.path.join(args.save_dir, "quantile_limits_skew_flow_high.npy"),
-            "low": os.path.join(args.save_dir, "quantile_limits_skew_flow_low.npy"),
-        },
-        plot_title="Quantile Limits",
-        save_name="quantile_limits_skew_flow",
-        save_dir=args.save_dir,
-    )
-    exit()
+    # plot_all_distributions(
+    #     npy_paths={
+    #         "high": os.path.join(args.save_dir, "quantile_limits_skew_flow_high.npy"),
+    #         "low": os.path.join(args.save_dir, "quantile_limits_skew_flow_low.npy"),
+    #     },
+    #     plot_title="Quantile Limits",
+    #     save_name="quantile_limits_skew_flow",
+    #     save_dir=args.save_dir,
+    # )
+    # exit()
 
     suffix_name = f"_{args.suffix_name}" if args.suffix_name else ""
     # save_name = f"max_lyapunov_exponents{suffix_name}"

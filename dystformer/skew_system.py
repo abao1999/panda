@@ -214,33 +214,21 @@ class SkewSystem:
                 "Standardization not yet fully implemented and tested for skew systems"
             )
 
-        # TODO: is the right standardization? i.e. can we just consider the driver and response systems separately?
-        mu_driver = self.driver.mean if standardize else np.zeros(self.n_driver)
-        std_driver = self.driver.std if standardize else np.ones(self.n_driver)
-        mu_response = self.response.mean if standardize else np.zeros(self.n_response)
-        std_response = self.response.std if standardize else np.ones(self.n_response)
-
-        mu = np.concatenate([mu_driver, mu_response])
-        std = np.concatenate([std_driver, std_response])
-
-        def standard_rhs(t, X):
-            # TODO: divide by zero error
-            return self(t, X * std + mu) / std
-
+        skew_rhs = self._get_skew_rhs()
         # This is the Fourier timescale
         tlim = num_periods * self.period
         tpts = np.linspace(0, tlim, num_points)
 
-        if not np.isfinite(standard_rhs(0, combined_ics)).all():
+        if not np.isfinite(skew_rhs(0, combined_ics)).all():
             warnings.warn(
                 f"Initial state of {self.driver.name} and {self.response.name} is invalid!"
             )
             return (None, None)
 
         sol = solve_ivp(
-            standard_rhs,
+            skew_rhs,
             [0, tlim],
-            (combined_ics - mu) / std,
+            combined_ics,
             t_eval=tpts,
             first_step=self.dt,
             method=method,
