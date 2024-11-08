@@ -1,39 +1,40 @@
-from dataclasses import field
-from typing import Dict, Optional
-
 import hydra
-from dysts.flows import DynSys, Lorenz, ThomasLabyrinth
+import matplotlib.pyplot as plt
+from dysts.flows import Lorenz, Rossler
 
-
-class SkewSystem(DynSys):
-    def __init__(
-        self,
-        driver: DynSys,
-        response: DynSys,
-        dt: float = 0.01,
-        period: Optional[float] = None,
-        maximum_lyapunov_estimated: Optional[float] = None,
-        **kwargs,
-    ):
-        super().__init__(
-            metadata={**driver.metadata, **response.metadata},
-            param_list=4,
-            dt=dt,
-            period=period,
-            maximum_lyapunov_estimated=maximum_lyapunov_estimated,
-            **kwargs,
-        )
-        self.coupling_map: Dict[int, int] = field(default_factory=additive_coupling_map)
-
-    def rhs(self, t, X):
-        pass
+from dystformer.skew_system import SkewProduct
 
 
 def test_skew_system():
-    sys = SkewSystem(
-        driver=Lorenz(),
-        response=ThomasLabyrinth(),
+    sys = SkewProduct(
+        driver=Rossler(),
+        response=Lorenz(),
     )
+    traj = sys.make_trajectory(
+        8192,
+        dt=min(sys.driver.metadata["dt"], sys.response.metadata["dt"]),
+        pts_per_period=128,
+        resample=True,
+        standardize=False,
+    )
+    driver_traj = traj[:, : sys.driver_dim]
+    response_traj = traj[:, sys.driver_dim :]
+    print(driver_traj.shape, response_traj.shape)
+
+    fig, (ax1, ax2) = plt.subplots(
+        1, 2, figsize=(12, 5), subplot_kw={"projection": "3d"}
+    )
+
+    # Plot driver trajectory
+    ax1.plot(driver_traj[:, 0], driver_traj[:, 1], driver_traj[:, 2])
+    ax1.set_title("Driver (Lorenz)")
+
+    # Plot response trajectory
+    ax2.plot(response_traj[:, 0], response_traj[:, 1], response_traj[:, 2])
+    ax2.set_title("Response (Rossler)")
+
+    plt.tight_layout()
+    plt.savefig("tests/figs/skew_system.png")
 
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)

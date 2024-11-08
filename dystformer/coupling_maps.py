@@ -17,12 +17,33 @@ class AdditiveCouplingMap:
     driver_dim: int
     response_dim: int
 
+    driver_scale: float = 10
+    response_scale: float = 1
+
     @property
     def dim(self) -> int:
         return min(self.driver_dim, self.response_dim)
 
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
-        return driver[: self.dim] + response[: self.dim]
+        return self.driver_scale * np.tanh(
+            driver[: self.dim]
+        ) + self.response_scale * np.tanh(response[: self.dim])
+
+    def jac(
+        self, driver: np.ndarray, response: np.ndarray, wrt: str = "driver"
+    ) -> np.ndarray:
+        if wrt == "driver":
+            d_tanh = self.driver_scale * (
+                1 - np.tanh(self.driver_scale * driver[: self.dim]) ** 2
+            )
+            return np.eye(self.driver_dim)[: self.dim] * d_tanh
+        elif wrt == "response":
+            d_tanh = self.response_scale * (
+                1 - np.tanh(self.response_scale * response[: self.dim]) ** 2
+            )
+            return np.eye(self.response_dim)[: self.dim] * d_tanh
+        else:
+            raise ValueError(f"Invalid wrt argument: {wrt}")
 
 
 @dataclass
@@ -44,7 +65,7 @@ class RandomLinearCouplingMap:
             self.rng = np.random.default_rng(self.random_seed)
             self.coupling_matrix = self.rng.normal(
                 size=(self.dim, self.driver_dim + self.response_dim)
-            )
+            ) / (self.driver_dim + self.response_dim)
         else:
             assert self.coupling_matrix.shape == (
                 self.dim,
@@ -57,3 +78,11 @@ class RandomLinearCouplingMap:
 
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
         return self.coupling_matrix @ np.hstack([driver, response])
+
+    def jac(self, driver: np.ndarray, response: np.ndarray, wrt: str = "driver"):
+        if wrt == "driver":
+            return self.coupling_matrix[:, : self.driver_dim]
+        elif wrt == "response":
+            return self.coupling_matrix[:, self.driver_dim :]
+        else:
+            raise ValueError(f"Invalid wrt argument: {wrt}")
