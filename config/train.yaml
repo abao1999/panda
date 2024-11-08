@@ -1,6 +1,6 @@
 train:
   seed: 99
-
+  ddp_backend: nccl
   # train, checkpoint, log steps
   max_steps: 100_000
   save_steps: 10_000

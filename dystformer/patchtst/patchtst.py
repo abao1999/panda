@@ -46,7 +46,9 @@ class PatchTSTQuantizer(nn.Module):
         self.high = high
         self.low = low
 
-    def forward(self, timeseries: torch.Tensor, num_bins: int = 2) -> torch.Tensor:
+    def forward(
+        self, timeseries: torch.Tensor, num_bins: int = 2, device: str = "cuda"
+    ) -> torch.Tensor:
         """
         Quantize the timeseries
 
@@ -59,7 +61,7 @@ class PatchTSTQuantizer(nn.Module):
         Returns:
             `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
         """
-        bins = torch.linspace(self.low, self.high, num_bins + 1)
+        bins = torch.linspace(self.low, self.high, num_bins + 1, device=device)
         bin_indices = torch.bucketize(timeseries, bins)
         return bins[bin_indices]
 
@@ -673,7 +675,11 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         super().__init__(config)
 
         self.scaler = PatchTSTScaler(config)
+        self.quantizer = PatchTSTQuantizer(
+            high=config.quantizer_high, low=config.quantizer_low
+        )
         self.patchifier = PatchTSTPatchify(config)
+
         self.do_mask_input = config.do_mask_input
         # get num_patches information from PatchTSTPatchify
         num_patches = self.patchifier.num_patches
@@ -683,10 +689,6 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         else:
             self.masking = nn.Identity()
         self.encoder = PatchTSTEncoder(config, num_patches=num_patches)
-
-        self.quantizer = PatchTSTQuantizer(
-            high=config.quantizer_high, low=config.quantizer_low
-        )
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -742,13 +744,15 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         if past_observed_mask is None:
             past_observed_mask = torch.ones_like(past_values)
 
+        # 1. Apply scaler to instance-normalize the data
         # timeseries: tensor [bs x sequence_length x num_input_channels]
         scaled_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
 
+        # 2. Apply quantizer to partition phase space
         # quantized timeseries: tensor [bs x sequence_length x num_input_channels]
         if num_bins is not None:
             quantized_past_values = self.quantizer(
-                scaled_past_values, num_bins=num_bins
+                scaled_past_values, num_bins=num_bins, device=scaled_past_values.device
             )
         else:
             quantized_past_values = scaled_past_values
@@ -846,6 +850,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        num_bins: Optional[int] = None,
     ) -> Union[Tuple, PatchTSTForPretrainingOutput]:
         r"""
         Parameters:
@@ -862,6 +867,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             output_attentions (`bool`, *optional*):
                 Whether or not to return the output attention of all layers
             return_dict (`bool`, *optional*): Whether or not to return a `ModelOutput` instead of a plain tuple.
+            num_bins (`int`, *optional*): Number of bins to use for adaptive quantization.
 
         Returns:
             `PatchTSTForPretrainingOutput` or tuple of `torch.Tensor` (if `return_dict`=False or
@@ -881,6 +887,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
             return_dict=True,
+            num_bins=num_bins,
         )
 
         x_hat = model_output.last_hidden_state

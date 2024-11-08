@@ -19,6 +19,7 @@ from dystformer.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
 )
+from dystformer.patchtst.callbacks import AdaptiveNumBinsCallback
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
@@ -31,6 +32,40 @@ from dystformer.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class CustomTrainer(Trainer):
+    def __init__(self, model: PatchTST, args: TrainingArguments, **kwargs):
+        super().__init__(model, args, **kwargs)
+
+    def compute_loss(
+        self, model, inputs, return_outputs=False, num_items_in_batch=None
+    ):
+        """
+        How the loss is computed by Trainer. By default, all models return the loss in the first element.
+        """
+        # Retrieve num_bins from the callback's state
+        if hasattr(self.state, "custom_state"):
+            num_bins = self.state.custom_state.get("num_bins", None)  # type: ignore
+            # Forward pass with num_bins
+            outputs = model(**inputs, num_bins=num_bins)
+        else:
+            outputs = model(**inputs, num_bins=None)
+
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if isinstance(outputs, dict) and "loss" not in outputs:
+            raise ValueError(
+                "The model did not return a loss from the inputs, only the following keys: "
+                f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+            )
+        # We don't use .loss here since the model may return tuples instead of ModelOutput.
+        loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+        return (loss, outputs) if return_outputs else loss
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -149,7 +184,7 @@ def main(cfg):
         dict(cfg.patchtst),
         mode=cfg.patchtst.mode,
         pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
-    )
+    )  # .to("cuda")
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_on_main(f"Total trainable parameters: {trainable_params:,}", logger)
@@ -188,11 +223,27 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    trainer = Trainer(
+    # add adaptive quantization callback
+    adaptive_quantization_callback = AdaptiveNumBinsCallback(
+        initial_bins=cfg.patchtst.quantizer_initial_bins,
+        max_bins=cfg.patchtst.quantizer_max_bins,
+        step_interval=cfg.patchtst.quantizer_step_interval,
+        bin_delta=cfg.patchtst.quantizer_bin_delta,
+        logger=logger,
+    )
+
+    trainer = CustomTrainer(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
+        callbacks=[adaptive_quantization_callback],
     )
+
+    # trainer = Trainer(
+    #     model=model,
+    #     args=training_args,
+    #     train_dataset=shuffled_train_dataset,
+    # )
 
     log_on_main("Training", logger)
     trainer.train()  # Transformers trainer will save model checkpoints automatically
