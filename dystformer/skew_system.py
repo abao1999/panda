@@ -296,33 +296,21 @@ class SkewSystem:
                 "Standardization not yet fully implemented and tested for skew systems"
             )
 
-        # TODO: is the right standardization? i.e. can we just consider the driver and response systems separately?
-        mu_driver = self.driver.mean if standardize else np.zeros(self.n_driver)
-        std_driver = self.driver.std if standardize else np.ones(self.n_driver)
-        mu_response = self.response.mean if standardize else np.zeros(self.n_response)
-        std_response = self.response.std if standardize else np.ones(self.n_response)
-
-        mu = np.concatenate([mu_driver, mu_response])
-        std = np.concatenate([std_driver, std_response])
-
-        def standard_rhs(t, X):
-            # TODO: divide by zero error
-            return self(t, X * std + mu) / std
-
+        skew_rhs = self._get_skew_rhs()
         # This is the Fourier timescale
         tlim = num_periods * self.period
         tpts = np.linspace(0, tlim, num_points)
 
-        if not np.isfinite(standard_rhs(0, combined_ics)).all():
+        if not np.isfinite(skew_rhs(0, combined_ics)).all():
             warnings.warn(
                 f"Initial state of {self.driver.name} and {self.response.name} is invalid!"
             )
             return (None, None)
 
         sol = solve_ivp(
-            standard_rhs,
+            skew_rhs,
             [0, tlim],
-            (combined_ics - mu) / std,
+            combined_ics,
             t_eval=tpts,
             first_step=self.dt,
             method=method,
@@ -517,6 +505,7 @@ class SkewData(DystData):
 
     def __post_init__(self):
         super().__post_init__()
+        self.rng = np.random.default_rng(self.rseed)
 
     def sample_skew_pairs(
         self,
@@ -526,10 +515,9 @@ class SkewData(DystData):
         """
         Sample a list of unique skew-product dynamical system pairs
         """
-        rng = np.random.default_rng(self.rseed)
         system_names = list(set(system_names))
         n_systems = len(system_names)
-        random_pairs = sample_index_pairs(n_systems, n_combos, rng=rng)
+        random_pairs = sample_index_pairs(n_systems, n_combos, rng=self.rng)
         skew_pairs = [(system_names[i], system_names[j]) for i, j in random_pairs]
         skew_pair_names = [f"{driver}_{response}" for driver, response in skew_pairs]
         return skew_pair_names
@@ -548,9 +536,7 @@ class SkewData(DystData):
             postprocessing_callbacks: List of functions that perform postprocessing on the ensemble
         """
         ensembles = []
-        pp_rng_stream = np.random.default_rng(self.rseed).spawn(
-            self.num_param_perturbations
-        )
+        pp_rng_stream = self.rng.spawn(self.num_param_perturbations)
         for i, param_rng in zip(range(self.num_param_perturbations), pp_rng_stream):
             if self.param_sampler is not None:
                 self.param_sampler.set_rng(param_rng)

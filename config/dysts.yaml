@@ -19,7 +19,7 @@ dyst_data:
 
 validator:
   enable: true
-  verbose: 0
+  verbose: false
   transient_time_frac: 0.05
   plot_save_dir: null
   save_failed_trajs: false
