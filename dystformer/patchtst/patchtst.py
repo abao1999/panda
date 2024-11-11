@@ -413,7 +413,14 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
 
         self.channel_attention = config.channel_attention
         # Multi-Head attention
-        self.self_attn = PatchTSTRopeAttention(
+        self.temporal_self_attn = PatchTSTRopeAttention(
+            embed_dim=config.d_model,
+            num_heads=config.num_attention_heads,
+            dropout=config.attention_dropout,
+            max_wavelength=config.max_wavelength,
+            rope_percent=config.rope_percent,
+        )
+        self.channel_self_attn = PatchTSTRopeAttention(
             embed_dim=config.d_model,
             num_heads=config.num_attention_heads,
             dropout=config.attention_dropout,
@@ -496,7 +503,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
 
         if self.pre_norm:
             ## Norm and Multi-Head attention and Add residual connection
-            attn_output, attn_weights, _ = self.self_attn(
+            attn_output, attn_weights, _ = self.temporal_self_attn(
                 hidden_states=self.norm_sublayer1(hidden_state),
                 output_attentions=output_attentions,
             )
@@ -504,7 +511,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             hidden_state = hidden_state + self.dropout_path1(attn_output)
         else:
             ## Multi-Head attention and Add residual connection and Norm - Standard Transformer from BERT
-            attn_output, attn_weights, _ = self.self_attn(
+            attn_output, attn_weights, _ = self.temporal_self_attn(
                 hidden_states=hidden_state, output_attentions=output_attentions
             )
             # hidden_states: [(bs*num_channels) x sequence_length x d_model]
@@ -527,7 +534,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             )
             if self.pre_norm:
                 ## Norm and Multi-Head attention and Add residual connection
-                attn_output, channel_attn_weights, _ = self.self_attn(
+                attn_output, channel_attn_weights, _ = self.channel_self_attn(
                     hidden_states=self.norm_sublayer2(hidden_state),
                     output_attentions=output_attentions,
                 )
@@ -535,7 +542,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
                 hidden_state = hidden_state + self.dropout_path2(attn_output)
             else:
                 ## Multi-Head attention and Add residual connection and Norm
-                attn_output, channel_attn_weights, _ = self.self_attn(
+                attn_output, channel_attn_weights, _ = self.channel_self_attn(
                     hidden_states=hidden_state, output_attentions=output_attentions
                 )
                 # hidden_states: [(bs*sequence_length) x num_channels x d_model]

@@ -14,6 +14,7 @@ from dysts.base import DynSys, staticjit
 from scipy.integrate import solve_ivp
 from tqdm import trange
 
+from dystformer.coupling_maps import AdditiveCouplingMap
 from dystformer.dyst_data import DystData
 from dystformer.sampling import InstabilityEvent, TimeLimitEvent
 from dystformer.utils import (
@@ -23,6 +24,87 @@ from dystformer.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class SkewProduct(DynSys):
+    def __init__(
+        self,
+        driver: DynSys,
+        response: DynSys,
+        coupling_map: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
+        **kwargs,
+    ):
+        super().__init__(
+            metadata_path=None,
+            parameters={},  # dummy: parameters are handled in the overwritten methods below
+            metadata={
+                "name": f"{driver.name}_{response.name}",
+                "dimension": driver.dimension + response.dimension,
+            },
+            **kwargs,
+        )
+        self.driver = driver
+        self.response = response
+
+        self.driver_dim, self.response_dim = driver.dimension, response.dimension
+
+        assert hasattr(driver, "ic") and hasattr(
+            response, "ic"
+        ), "Driver and response must have default initial conditions"
+        self.ic = np.concatenate([self.driver.ic, self.response.ic])
+
+        self.mean = np.concatenate([self.driver.mean, self.response.mean])
+        self.std = np.concatenate([self.driver.std, self.response.std])
+
+        # default to additively forcing the response with the driver
+        if coupling_map is None:
+            self.coupling_map = AdditiveCouplingMap(self.driver_dim, self.response_dim)
+        else:
+            self.coupling_map = coupling_map
+
+    def transform_ic(self, ic_transform: Callable):
+        self.driver.transform_ic(ic_transform)
+        self.response.transform_ic(ic_transform)
+        self.ic = np.concatenate([self.driver.ic, self.response.ic])
+
+    def transform_params(self, param_transform: Callable):
+        self.driver.transform_params(param_transform)
+        self.response.transform_params(param_transform)
+
+    def has_jacobian(self):
+        return self.driver.has_jacobian() and self.response.has_jacobian()
+
+    def rhs(self, X, t):
+        driver, response = X[: self.driver_dim], X[self.driver_dim :]
+        driver_rhs = np.asarray(self.driver.rhs(driver, t))
+        response_rhs = np.asarray(self.response.rhs(response, t))
+        coupled_rhs = self.coupling_map(driver_rhs, response_rhs)
+        print(
+            f"driver_rhs: {np.linalg.norm(driver_rhs)}, response_rhs: {np.linalg.norm(response_rhs)}, coupled_rhs: {np.linalg.norm(coupled_rhs)}"
+        )
+        return np.concatenate([driver_rhs, coupled_rhs])
+
+    def jac(self, X, t):
+        driver, response = X[: self.driver_dim], X[self.driver_dim :]
+
+        driver_jac = np.asarray(self.driver.jac(driver, t))
+        coupling_jac_driver = self.coupling_map.jac(driver, response, wrt="driver")
+
+        response_jac = np.asarray(self.response.jac(response, t))
+        coupling_jac_response = self.coupling_map.jac(driver, response, wrt="response")
+
+        return np.block(
+            [
+                [driver_jac, np.zeros((self.driver_dim, self.response_dim))],
+                [
+                    coupling_jac_driver @ driver_jac,
+                    coupling_jac_response @ response_jac,
+                ],
+            ]
+        )
+
+    def __call__(self, X, t):
+        return self.rhs(X, t)
 
 
 @dataclass
