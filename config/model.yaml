@@ -53,12 +53,13 @@ patchtst:
   pretrained_encoder_path: null
 
   # quantizer
+  use_quantizer: false
   quantizer_type: "uniform" # not currently used
   quantizer_high: 15.0
   quantizer_low: -15.0
   quantizer_step_interval: 10_000
-  quantizer_bin_delta: 10
-  quantizer_initial_bins: 10
+  quantizer_num_bins_growth_factor: 2
+  quantizer_initial_bins: 100
   quantizer_max_bins: 10_000
 
 

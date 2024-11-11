@@ -5,8 +5,6 @@ Analyze a dataset of pre-computed trajectories, loading from either Arrow files 
 import argparse
 import os
 from itertools import chain
-
-# Using itertools.chain
 from multiprocessing import Pool
 from typing import Callable, Dict, List, Tuple
 
@@ -26,7 +24,6 @@ def compute_lyapunov_exponents(
 ) -> np.ndarray:
     """
     Compute the Lyapunov exponents for a specified system.
-    TODO: currently only computes the max Lyapunov exponent, but could be extended to compute the full spectrum
     Args:
         dyst_name: Name of the dynamical system.
         all_traj: All trajectories for the specified system.
@@ -49,6 +46,11 @@ def compute_quantile_limits(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute the high and low values for the instance normalized trajectories
+    Args:
+        dyst_name: Name of the dynamical system (not used)
+        all_traj: All trajectories for the specified system
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: Tuple of the high and low values for the trajectories
     """
     high_vals = []
     low_vals = []
@@ -63,13 +65,39 @@ def compute_quantile_limits(
     return np.array(high_vals), np.array(low_vals)
 
 
+def compute_quantities_multiprocessed(
+    ensemble: Dict[str, np.ndarray],
+    compute_fn: Callable,
+) -> Dict[str, np.ndarray]:
+    """
+    Compute the quantities for the ensemble of trajectories in parallel (multiprocessed)
+    Args:
+        ensemble: Ensemble of trajectories
+        compute_fn: Function to compute the quantity
+    Returns:
+        Dict[str, np.ndarray]: Dictionary of the computed quantities for each system. Key is system name, value is the computed quantity
+    """
+    with Pool() as pool:
+        results = pool.starmap(
+            compute_fn,
+            [(dyst_name, all_traj) for dyst_name, all_traj in ensemble.items()],
+        )
+    return {k: v for k, v in zip(list(ensemble.keys()), results)}
+
+
 def filter_quantile_limits(
     dyst_name: str,
     all_traj: np.ndarray,
     max_abs_val: float = 15,
-) -> List[np.int8]:
+) -> List[int]:
     """
-    Compute the high and low values for the instance normalized trajectories
+    Filter the trajectories for the given system based on the quantile limits
+    Args:
+        dyst_name: Name of the dynamical system (not used)
+        all_traj: All trajectories for the specified system
+        max_abs_val: Maximum absolute value for the whitened trajectory
+    Returns:
+        List[int]: List of the invalid trajectory sample indices
     """
     samples_to_remove = []
     for sample_idx, traj in enumerate(all_traj):
@@ -81,22 +109,18 @@ def filter_quantile_limits(
     return samples_to_remove
 
 
-def compute_quantities_multiprocessed(
-    ensemble: Dict[str, np.ndarray],
-    compute_fn: Callable,
-) -> Dict[str, np.ndarray]:
-    with Pool() as pool:
-        results = pool.starmap(
-            compute_fn,
-            [(dyst_name, all_traj) for dyst_name, all_traj in ensemble.items()],
-        )
-    return {k: v for k, v in zip(list(ensemble.keys()), results)}
-
-
 def filter_saved_trajectories_multiprocessed(
     ensemble: Dict[str, np.ndarray],
     filter_fn: Callable,
 ) -> Dict[str, np.ndarray]:
+    """
+    Filter the saved trajectories for the ensemble in parallel (multiprocessed). Simply saves rejected samples into dict
+    Args:
+        ensemble: Ensemble of trajectories
+        filter_fn: Function to return a list of the invalid trajectory sample indices for each system
+    Returns:
+        Dict[str, List[int]]: Dictionary of rejected samples for each system. Key is system name, value is list of rejected sample indices
+    """
     with Pool() as pool:
         results = pool.starmap(
             filter_fn,
