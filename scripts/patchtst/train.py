@@ -16,6 +16,7 @@ from transformers import (
 
 import wandb
 from dystformer.augmentations import (
+    FixedDimensionDelayEmbeddingTransform,
     RandomAffineTransform,
     RandomConvexCombinationTransform,
 )
@@ -158,6 +159,9 @@ def main(cfg):
         RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
         RandomAffineTransform(out_dim=6, scale=1.0),
     ]
+    transforms = [
+        FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
+    ]
 
     log_on_main(f"Using augmentations: {augmentations}", logger)
 
@@ -169,6 +173,7 @@ def main(cfg):
         mode="train",
         fixed_dim=cfg.fixed_dim,
         augmentations=augmentations,
+        transforms=transforms,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     if (
