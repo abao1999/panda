@@ -1,7 +1,6 @@
 from .data_utils import (
     construct_basic_affine_map,
     convert_to_arrow,
-    filter_dict,
     get_system_filepaths,
     make_ensemble_from_arrow_dir,
     pad_array,

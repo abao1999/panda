@@ -83,7 +83,7 @@ def main(cfg):
     if cfg.dyst_data.debug_dyst:
         # Run save_dyst_ensemble on a single system in debug mode
         ensembles = dyst_data_generator._generate_ensembles(
-            dysts_names=[cfg.dyst_data.debug_dyst]
+            systems=[cfg.dyst_data.debug_dyst]
         )
         samples = np.array(
             [
@@ -104,7 +104,7 @@ def main(cfg):
         )
 
         dyst_data_generator.save_dyst_ensemble(
-            dysts_names=train_systems,
+            systems=train_systems,
             split=f"{split_prefix}train",
             split_failures=f"{split_prefix}failed_attractors_train",
             samples_process_interval=1,
@@ -117,7 +117,7 @@ def main(cfg):
         )
 
         dyst_data_generator.save_dyst_ensemble(
-            dysts_names=test_systems,
+            systems=test_systems,
             split=f"{split_prefix}test",
             split_failures=f"{split_prefix}failed_attractors_test",
             samples_process_interval=1,

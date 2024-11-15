@@ -5,9 +5,10 @@ import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from dysts.base import BaseDyn
 from dysts.sampling import BaseSampler
 from dysts.systems import make_trajectory_ensemble
 from tqdm import trange
@@ -26,10 +27,7 @@ from dystformer.sampling import (
     InstabilityEvent,
     TimeLimitEvent,
 )
-from dystformer.utils import (
-    filter_dict,
-    process_trajs,
-)
+from dystformer.utils import process_trajs
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +138,7 @@ class DystData:
 
     def save_dyst_ensemble(
         self,
-        dysts_names: List[str],
+        systems: Union[List[str], List[BaseDyn]],
         split: str = "train",
         split_failures: str = "failed_attractors",
         samples_process_interval: int = 1,
@@ -150,8 +148,9 @@ class DystData:
         reset_attractor_validator: bool = False,
         **kwargs,
     ) -> None:
+        sys_names = [sys if isinstance(sys, str) else sys.name for sys in systems]
         print(
-            f"Making {split} split with {len(dysts_names)} dynamical systems: \n {dysts_names}"
+            f"Making {split} split with {len(systems)} dynamical systems: \n {sys_names}"
         )
 
         if self.attractor_validator is not None and reset_attractor_validator:
@@ -197,7 +196,7 @@ class DystData:
                     self.failed_integrations[dyst_name].append(sample_idx)
 
         _ = self._generate_ensembles(
-            dysts_names,
+            systems,
             [handle_failed_integrations_callback, process_and_save_callback()],
             standardize=standardize,
             use_multiprocessing=use_multiprocessing,
@@ -206,7 +205,7 @@ class DystData:
 
     def _generate_ensembles(
         self,
-        dysts_names: List[str],
+        systems: Union[List[str], List[BaseDyn]],
         postprocessing_callbacks: List[Callable] = [],
         **kwargs,
     ) -> List[Dict[str, np.ndarray]]:
@@ -231,7 +230,7 @@ class DystData:
                 print("Making ensemble for sample ", sample_idx)
                 ensemble = make_trajectory_ensemble(
                     self.num_points,
-                    subset=dysts_names,
+                    subset=systems,
                     ic_transform=self.ic_sampler if sample_idx > 0 else None,
                     param_transform=self.param_sampler if i > 0 else None,
                     ic_rng=param_rng,
@@ -240,7 +239,17 @@ class DystData:
                     events=self.events,
                     **kwargs,
                 )
-                ensemble, excluded_keys = filter_dict(ensemble)  # type: ignore
+
+                excluded_keys = [
+                    key
+                    for key, value in ensemble.items()
+                    if value is None or np.isnan(value).any()
+                ]
+                ensemble = {
+                    key: value
+                    for key, value in ensemble.items()
+                    if key not in excluded_keys
+                }
                 ensembles.append(ensemble)
 
                 for callback in postprocessing_callbacks:

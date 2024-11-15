@@ -46,8 +46,8 @@ class InstabilityEvent:
 
     def __call__(self, t, y):
         if np.any(np.abs(y) > self.threshold) or np.any(np.isnan(y)):
-            return 0  # Trigger the event
-        return 1  # Continue the integration
+            return 0
+        return 1
 
 
 @dataclass
@@ -142,7 +142,7 @@ class SignedGaussianParamSampler(BaseSampler):
         # avoid shape errors
         flat_param = np.array(param, dtype=np.float32).flatten()
         scale = np.abs(flat_param) * self.scale
-        cov = np.diag(np.square(scale + self.eps))
+        cov = np.diag(np.square(scale) + self.eps)
         perturbation = self.rng.multivariate_normal(
             mean=np.zeros_like(flat_param), cov=cov
         ).reshape(shape)

@@ -4,9 +4,14 @@ Search for valid skew-product dynamical sytems and generate trajectory datasets
 
 import logging
 import os
+from itertools import permutations
 
+import dysts.flows as flows
 import hydra
+import numpy as np
+from dysts.systems import DynSys, get_attractor_list
 
+from dystformer.dyst_data import DystData
 from dystformer.sampling import (
     InstabilityEvent,
     OnAttractorInitCondSampler,
@@ -14,22 +19,39 @@ from dystformer.sampling import (
     TimeLimitEvent,
     TimeStepEvent,
 )
-from dystformer.skew_system import SkewData
-from dystformer.utils import split_systems
+from dystformer.skew_system import SkewProduct
+from dystformer.utils import plot_trajs_multivariate
+
+
+def init_skew_system(drive_name: str, response_name: str) -> DynSys:
+    driver = getattr(flows, drive_name)()
+    response = getattr(flows, response_name)()
+    return SkewProduct(driver=driver, response=response)
 
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
-    # generate split of dynamical systems
-    test_systems, train_systems = split_systems(
-        cfg.dyst_data.test_split,
-        seed=cfg.dyst_data.rseed,
-        sys_class=cfg.dyst_data.sys_class,
-    )
-    if cfg.skew.use_all_systems:
-        system_names = train_systems + test_systems
-    else:
-        system_names = train_systems
+    systems = get_attractor_list(sys_class="continuous_no_delay")
+    system_pairs = list(permutations(systems, 2))
+
+    # Randomly sample 3 system pairs
+    n_combos = 3
+    rng = np.random.default_rng(cfg.dyst_data.rseed)
+    system_pairs = rng.choice(system_pairs, size=n_combos, replace=False)
+    logger.info(f"Generated {len(system_pairs)} system pairs")
+
+    np.random.seed(cfg.dyst_data.rseed)
+    np.random.shuffle(system_pairs)
+    split_idx = int(len(system_pairs) * (1 - cfg.dyst_data.test_split))
+    train_pairs = system_pairs[:split_idx]
+    test_pairs = system_pairs[split_idx:]
+
+    train_systems = [
+        init_skew_system(driver, response) for driver, response in train_pairs
+    ]
+    test_systems = [
+        init_skew_system(driver, response) for driver, response in test_pairs
+    ]
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
@@ -50,21 +72,51 @@ def main(cfg):
         verbose=cfg.dyst_data.verbose,
     )
 
-    logger.info(f"Dyst data config: {cfg.dyst_data}")
-    logger.info(f"Events config: {cfg.events}")
-    logger.info(f"Validator config: {cfg.validator}")
-    logger.info(f"Skew config: {cfg.skew}")
-    logger.info(
-        f"Generating {cfg.skew.n_combos} skew system combinations from {len(system_names)} systems with random seed {cfg.dyst_data.rseed}"
-    )
-    logger.info(f"IC sampler: {ic_sampler}")
-    logger.info(f"Param sampler: {param_sampler}")
-
     split_prefix = (
         cfg.dyst_data.split_prefix + "_" if cfg.dyst_data.split_prefix else ""
     )
 
-    skew_data_generator = SkewData(
+    # skew_data_generator = SkewData(
+    #     rseed=cfg.dyst_data.rseed,
+    #     num_periods=cfg.dyst_data.num_periods,
+    #     num_points=cfg.dyst_data.num_points,
+    #     num_ics=cfg.dyst_data.num_ics,
+    #     num_param_perturbations=cfg.dyst_data.num_param_perturbations,
+    #     param_sampler=param_sampler,
+    #     ic_sampler=ic_sampler,
+    #     events=events,
+    #     verbose=cfg.dyst_data.verbose,
+    #     split_coords=cfg.dyst_data.split_coords,
+    #     apply_attractor_tests=cfg.validator.enable,
+    #     attractor_validator_kwargs={
+    #         "verbose": cfg.validator.verbose,
+    #         "transient_time_frac": cfg.validator.transient_time_frac,  # don't need long transient time because ic should be on attractor
+    #         "plot_save_dir": cfg.validator.plot_save_dir,
+    #     },
+    #     save_failed_trajs=cfg.validator.save_failed_trajs,
+    #     couple_phase_space=cfg.skew.couple_phase_space,
+    #     couple_flows=cfg.skew.couple_flows,
+    # )
+
+    # skew_pair_names = skew_data_generator.sample_skew_pairs(
+    #     system_names, cfg.skew.n_combos
+    # )
+
+    # print(f"Skew pair names: {skew_pair_names}")
+
+    # skew_data_generator.save_dyst_ensemble(
+    #     dysts_names=skew_pair_names,
+    #     split=f"{split_prefix}skew_systems",
+    #     split_failures=f"{split_prefix}failed_skew_systems",
+    #     samples_process_interval=1,
+    #     save_dir=cfg.dyst_data.data_dir,
+    #     standardize=cfg.dyst_data.standardize,
+    # )
+
+    # skew_data_generator.save_summary(
+    #     os.path.join("outputs", f"{split_prefix}skew_system_checks.json"),
+    # )
+    dyst_data_generator = DystData(
         rseed=cfg.dyst_data.rseed,
         num_periods=cfg.dyst_data.num_periods,
         num_points=cfg.dyst_data.num_points,
@@ -78,32 +130,61 @@ def main(cfg):
         apply_attractor_tests=cfg.validator.enable,
         attractor_validator_kwargs={
             "verbose": cfg.validator.verbose,
-            "transient_time_frac": cfg.validator.transient_time_frac,  # don't need long transient time because ic should be on attractor
+            "transient_time_frac": cfg.validator.transient_time_frac,
             "plot_save_dir": cfg.validator.plot_save_dir,
         },
         save_failed_trajs=cfg.validator.save_failed_trajs,
-        couple_phase_space=cfg.skew.couple_phase_space,
-        couple_flows=cfg.skew.couple_flows,
     )
 
-    skew_pair_names = skew_data_generator.sample_skew_pairs(
-        system_names, cfg.skew.n_combos
-    )
+    if cfg.dyst_data.debug_dyst:  # TODO: adapt this to skew systems
+        # Run save_dyst_ensemble on a single system in debug mode
+        ensembles = dyst_data_generator._generate_ensembles(
+            systems=[cfg.dyst_data.debug_dyst]
+        )
+        samples = np.array(
+            [
+                ensemble[cfg.dyst_data.debug_dyst]
+                for ensemble in ensembles
+                if len(ensemble) > 0
+            ]
+        ).transpose(0, 2, 1)
+        plot_trajs_multivariate(
+            samples,
+            save_dir="figures",
+            plot_name=f"{cfg.dyst_data.debug_dyst}_debug",
+        )
 
-    print(f"Skew pair names: {skew_pair_names}")
+    else:
+        split_prefix = (
+            cfg.dyst_data.split_prefix + "_" if cfg.dyst_data.split_prefix else ""
+        )
 
-    skew_data_generator.save_dyst_ensemble(
-        dysts_names=skew_pair_names,
-        split=f"{split_prefix}skew_systems",
-        split_failures=f"{split_prefix}failed_skew_systems",
-        samples_process_interval=1,
-        save_dir=cfg.dyst_data.data_dir,
-        standardize=cfg.dyst_data.standardize,
-    )
+        dyst_data_generator.save_dyst_ensemble(
+            systems=train_systems,
+            split=f"{split_prefix}train",
+            split_failures=f"{split_prefix}failed_attractors_train",
+            samples_process_interval=1,
+            save_dir=cfg.dyst_data.data_dir,
+            standardize=cfg.dyst_data.standardize,
+            use_multiprocessing=cfg.dyst_data.multiprocessing,
+        )
+        dyst_data_generator.save_summary(
+            os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
+        )
 
-    skew_data_generator.save_summary(
-        os.path.join("outputs", f"{split_prefix}skew_system_checks.json"),
-    )
+        dyst_data_generator.save_dyst_ensemble(
+            systems=test_systems,
+            split=f"{split_prefix}test",
+            split_failures=f"{split_prefix}failed_attractors_test",
+            samples_process_interval=1,
+            save_dir=cfg.dyst_data.data_dir,
+            standardize=cfg.dyst_data.standardize,
+            reset_attractor_validator=True,  # save validator results separately for test
+            use_multiprocessing=cfg.dyst_data.multiprocessing,
+        )
+        dyst_data_generator.save_summary(
+            os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
+        )
 
 
 if __name__ == "__main__":

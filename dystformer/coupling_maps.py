@@ -3,7 +3,7 @@ Coupling maps for skew systems.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -17,31 +17,30 @@ class AdditiveCouplingMap:
     driver_dim: int
     response_dim: int
 
-    driver_scale: float = 10
+    driver_scale: float = 1
     response_scale: float = 1
 
     @property
     def dim(self) -> int:
         return min(self.driver_dim, self.response_dim)
 
+    def transform_params(self, param_transform: Callable):
+        self.driver_scale = param_transform("driver_scale", self.driver_scale)
+        self.response_scale = param_transform("response_scale", self.response_scale)
+
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
-        return self.driver_scale * np.tanh(
-            driver[: self.dim]
-        ) + self.response_scale * np.tanh(response[: self.dim])
+        return (
+            self.driver_scale * driver[: self.dim]
+            + self.response_scale * response[: self.dim]
+        )
 
     def jac(
         self, driver: np.ndarray, response: np.ndarray, wrt: str = "driver"
     ) -> np.ndarray:
         if wrt == "driver":
-            d_tanh = self.driver_scale * (
-                1 - np.tanh(self.driver_scale * driver[: self.dim]) ** 2
-            )
-            return np.eye(self.driver_dim)[: self.dim] * d_tanh
+            return np.eye(self.driver_dim)[: self.dim]
         elif wrt == "response":
-            d_tanh = self.response_scale * (
-                1 - np.tanh(self.response_scale * response[: self.dim]) ** 2
-            )
-            return np.eye(self.response_dim)[: self.dim] * d_tanh
+            return np.eye(self.response_dim)[: self.dim]
         else:
             raise ValueError(f"Invalid wrt argument: {wrt}")
 

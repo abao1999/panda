@@ -11,25 +11,6 @@ from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
 
 
-def filter_dict(
-    d: Dict[Any, Optional[np.ndarray]],
-) -> Tuple[Dict[Any, np.ndarray], List[Any]]:
-    """
-    Filter a dictionary by removing key-value pairs where the value is None.
-
-    Args:
-        d (Dict[Any, Optional[np.ndarray]]): The input dictionary to filter.
-
-    Returns:
-        Tuple[Dict[Any, np.ndarray], List[Any]]: A tuple containing:
-            - The filtered dict with None values removed.
-            - A list of keys that were excluded (i.e., had None values).
-    """
-    excluded_keys = [key for key, value in d.items() if value is None]
-    filtered_dict = {key: value for key, value in d.items() if value is not None}
-    return filtered_dict, excluded_keys
-
-
 def split_systems(
     prop: float,
     seed: int,

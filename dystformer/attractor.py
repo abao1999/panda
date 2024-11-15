@@ -277,11 +277,9 @@ def check_boundedness(
     if np.any(np.abs(traj) > threshold):
         return False
 
-    def standardize_traj(traj: np.ndarray) -> np.ndarray:
-        return (traj - np.mean(traj, axis=-1)[:, None]) / np.std(traj, axis=-1)[:, None]
-
     # Whiten trajectory (i.e. normalize to have zero mean and unit variance)
-    whitened_traj = standardize_traj(traj)
+
+    whitened_traj = (traj - traj.mean(axis=1)[:, None]) / traj.std(axis=1)[:, None]
     if np.max(np.abs(whitened_traj)) > max_num_stds:
         return False
 

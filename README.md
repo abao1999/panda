@@ -72,8 +72,9 @@ To evalute the performance of a fine-tuned model, run `python scripts/patchtst/e
 TODO: write up current PatchTST docs
 
 ## Development Goals
-Please grade each item with the convention [Priority | Difficulty], where priority can be high, medium, or low, and difficulty can be high, medium, or low.
+---
 
++ [HIGH | EASY] add stationarity test for sample systems
 + [HIGH | MEDIUM] implement the progressive quantization scheme (partioning phase space)
 + [HIGH | HARD] compute periods for systems (with param perturbations) to be used to align timescales of training data (blocky trajectories no good). See random phase surrogate method, make faster.
 + [HIGH | MEDIUM] correct the standardization error for skew systems, couple flows.
