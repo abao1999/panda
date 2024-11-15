@@ -66,77 +66,6 @@ class PatchTSTQuantizer(nn.Module):
         return bins[bin_indices]
 
 
-class PatchTSTDynamicsEmbedding(nn.Module):
-    """
-    Embeds patch inputs non-parametrically with a Takens embedding augmented by random Fourier features
-    """
-
-    def __init__(self, config: PatchTSTConfig):
-        super().__init__()
-        self.delay = config.delay
-        assert self.delay >= 1 and isinstance(
-            self.delay, int
-        ), "Delay must be a positive integer"
-        self.d_model = config.d_model
-        self.scale = torch.sqrt(torch.tensor(2.0 / self.d_model))
-        self.register_buffer(
-            # TODO: the shapes need to match the delay embedding
-            "random_matrix",
-            torch.randn(
-                self.delay
-                * (config.patch_length - self.delay + 1),  # delay embedding shape
-                self.d_model // 2,
-            ),
-        )
-
-    def delay_embed(self, patch_input: torch.Tensor) -> torch.Tensor:
-        """
-        Embed via Takens by interleaving the delay embeddings
-
-        TODO: do this
-        """
-
-        # shape: (batch_size, num_channels, delay, num_patches, patch_length)
-        delay_embeddings = torch.stack(
-            [
-                patch_input[:, i, ...].roll(d, -1)
-                for i in range(patch_input.shape[1])
-                for d in range(self.delay)
-            ],
-            dim=1,
-        ).view(*patch_input.shape[:2], -1, *patch_input.shape[2:])
-        # remove the rolling artifacts
-        delay_embeddings = delay_embeddings[..., self.delay - 1 :]
-
-        # interleave delayed coordinates into the patch_length dimension
-        delay_embeddings = delay_embeddings.permute(0, 1, 3, 4, 2).flatten(-2, -1)
-
-        return delay_embeddings
-
-    def forward(self, patch_input: torch.Tensor) -> torch.Tensor:
-        """
-        Apply random Fourier features embedding to the patch input.
-
-        Parameters:
-            patch_input (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
-                Patch input for embedding
-
-        Returns:
-            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
-        """
-
-        # shape: (batch_size, num_channels, delay * (patch_length - delay + 1), num_patches)
-        delayed_input = self.delay_embed(patch_input)
-
-        # embedded: (batch_size, num_channels, num_patches, d_model)
-        projection = torch.matmul(delayed_input, self.random_matrix)
-        cos_features = torch.cos(projection)
-        sin_features = torch.sin(projection)
-        embedded = self.scale * torch.cat([cos_features, sin_features], dim=-1)
-
-        return embedded
-
-
 class PatchTSTRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
         """
@@ -602,11 +531,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         self.gradient_checkpointing = False
 
         # Input embedding: projection of feature vectors onto a d-dim vector space
-        # self.embedder = PatchTSTEmbedding(config)
-        self.embedder = PatchTSTDynamicsEmbedding(config)
-
-        # Positional encoding
-        # self.positional_encoder = PatchTSTPositionalEncoding(config, num_patches)
+        self.embedder = PatchTSTEmbedding(config)
 
         # Encoder
         self.layers = nn.ModuleList(
@@ -785,14 +710,8 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         # timeseries: tensor [bs x sequence_length x num_input_channels]
         scaled_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
 
-        # # 2. Apply quantizer to partition phase space
-        # # quantized timeseries: tensor [bs x sequence_length x num_input_channels]
-        # if num_bins is not None:
-        #     quantized_past_values = self.quantizer(
-        #         scaled_past_values, num_bins=num_bins, device=scaled_past_values.device
-        #     )
-        # else:
-        #     quantized_past_values = scaled_past_values
+        # 2. Apply noiser to add noise to the data
+        # noised_past_values: tensor [bs x sequence_length x num_input_channels]
         noised_past_values = self.noiser(scaled_past_values, noise_scale)
 
         # patched_values: [bs x num_input_channels x num_patches x patch_length] for pretrain

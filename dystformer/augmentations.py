@@ -10,6 +10,23 @@ from numpy.typing import NDArray
 
 
 @dataclass
+class RandomDimSelectionTransform:
+    """Randomly select a subset of dimensions from a timeseries"""
+
+    num_dims: int
+    random_seed: Optional[int] = 0
+
+    def __post_init__(self) -> None:
+        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
+
+    def __call__(self, timeseries: NDArray, axis: int = 0) -> NDArray:
+        selected_dims = self.rng.choice(
+            timeseries.shape[axis], self.num_dims, replace=False
+        )
+        return np.take(timeseries, selected_dims, axis=axis)
+
+
+@dataclass
 class RandomDelayEmbeddingsTransform:
     """Delay embeddings of a randomly selected dimension of a timeseries
 
@@ -35,6 +52,46 @@ class RandomDelayEmbeddingsTransform:
         )[:, num_dims - 1 :]  # cut off rolling artifacts
 
         return delay_embeddings
+
+
+@dataclass
+class FixedDimensionDelayEmbeddingTransform:
+    """Delays embeds a timeseries to a fixed embedding dimension
+
+    NOTE: if the embedding dimension is non permissible (e.g. more delays than timepoints), an error is raised
+
+    :param embedding_dim: embedding dimension for the delay embeddings
+    :param channel_dim: dimension corresponding to channels
+    :param time_dim: dimension corresponding to timepoints
+    """
+
+    embedding_dim: int
+
+    def __call__(self, timeseries: NDArray) -> NDArray:
+        """
+        :param timeseries: (num_channels, num_timepoints) timeseries to delay embed
+        """
+        assert (
+            timeseries.shape[1] > self.embedding_dim
+        ), "Embedding dimension is too large"
+        num_channels = timeseries.shape[0]
+        per_dim_embed_dim = (self.embedding_dim - num_channels) // num_channels
+        remaining_dims = (self.embedding_dim - num_channels) % num_channels
+
+        # Distribute remaining dimensions evenly
+        extra_dims = [1 if i < remaining_dims else 0 for i in range(num_channels)]
+
+        delay_embeddings = [
+            np.stack(
+                [
+                    np.roll(timeseries[i], shift)
+                    for shift in range(1, 1 + per_dim_embed_dim + extra)
+                ]
+            )[:, 1 + per_dim_embed_dim :]
+            for i, extra in enumerate(extra_dims)
+        ]
+
+        return np.vstack([timeseries[:, per_dim_embed_dim:], *delay_embeddings])
 
 
 @dataclass

@@ -99,6 +99,7 @@ class PatchTSTDataset(IterableDataset):
     num_test_instances: int = 1
     window_style: str = "sampled"
     window_stride: int = 1
+    transforms: Optional[List[Callable]] = None
     augmentations: Optional[List[Callable]] = None
     augmentation_probabilities: Optional[List[float]] = None
 
@@ -106,13 +107,16 @@ class PatchTSTDataset(IterableDataset):
         assert len(self.probabilities) == len(self.datasets)
         assert self.mode in ("train", "validation", "test")
 
-        if self.augmentations is not None:
-            if self.augmentation_probabilities is None:
-                self.augmentation_probabilities = [1.0 / len(self.augmentations)] * len(
-                    self.augmentations
-                )
-            assert len(self.augmentations) == len(self.augmentation_probabilities)
-            assert sum(self.augmentation_probabilities) <= 1.0
+        if self.augmentations is None:
+            return
+
+        if self.augmentation_probabilities is None:
+            self.augmentation_probabilities = [1.0 / len(self.augmentations)] * len(
+                self.augmentations
+            )
+
+        assert len(self.augmentations) == len(self.augmentation_probabilities)
+        assert sum(self.augmentation_probabilities) == 1.0
 
     def shuffle(self, shuffle_buffer_length: int = 100):
         return PseudoShuffledIterableDataset(self, shuffle_buffer_length)
@@ -127,12 +131,8 @@ class PatchTSTDataset(IterableDataset):
             )
             entry["target"] = self.augmentations[augmentation_idx](entry["target"])
 
-        if mode == "train" and isinstance(self.fixed_dim, int):
-            total_dims = entry["target"].shape[0]
-            sampled_dims = np.random.choice(
-                total_dims, size=self.fixed_dim, replace=False
-            )
-            entry["target"] = entry["target"][sampled_dims, :]
+        for transform in self.transforms or []:
+            entry["target"] = transform(entry["target"])
 
         return entry
 
