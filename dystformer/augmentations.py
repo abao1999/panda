@@ -73,7 +73,10 @@ class FixedDimensionDelayEmbeddingTransform:
         """
         assert (
             timeseries.shape[1] > self.embedding_dim
-        ), "Embedding dimension is too large"
+        ), "Embedding dimension cannot be larger than the number of timepoints"
+        assert (
+            self.embedding_dim > 2 * timeseries.shape[0]
+        ), f"Not enough embeddding dimensions. System dim: {timeseries.shape[0]}, Embedding dim: {self.embedding_dim}"
         num_channels = timeseries.shape[0]
         per_dim_embed_dim = (self.embedding_dim - num_channels) // num_channels
         remaining_dims = (self.embedding_dim - num_channels) % num_channels
@@ -91,7 +94,7 @@ class FixedDimensionDelayEmbeddingTransform:
             for i, extra in enumerate(extra_dims)
         ]
 
-        return np.vstack([timeseries[:, per_dim_embed_dim:], *delay_embeddings])
+        return np.vstack([timeseries[:, 1 + per_dim_embed_dim :], *delay_embeddings])
 
 
 @dataclass
