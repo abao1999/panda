@@ -39,8 +39,7 @@
 #         noiser.enabled=true \
 #         noiser.start=1.0 \
 #         noiser.end=0.01 \
-#         noiser.decay_rate=0.8 \
-#         noiser.tau=5_000 \
+#         noiser.decay_rate=5.0 \
 #         "$@"
 
 
@@ -69,11 +68,10 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         train.torch_compile=true \
         fixed_dim=3 \
         quantizer.enabled=false \
-        noiser.enabled=false \
+        noiser.enabled=true \
         noiser.start=1.0 \
         noiser.end=0.01 \
-        noiser.decay_rate=0.8 \
-        noiser.tau=100 \
+        noiser.decay_rate=5.0 \
         "$@"
 
 
@@ -105,6 +103,5 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
 #         noiser.enabled=true \
 #         noiser.start=1.0 \
 #         noiser.end=0.01 \
-#         noiser.decay_rate=0.8 \
-#         noiser.tau=100 \
+#         noiser.decay_rate=5.0 \
 #         "$@"

@@ -39,5 +39,4 @@ noiser:
   enabled: false
   start: 1.0
   end: 0.01
-  decay_rate: 0.8
-  tau: 5_000
+  decay_rate: 5.0

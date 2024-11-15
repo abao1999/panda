@@ -2,7 +2,6 @@ import logging
 import os
 from functools import partial
 from pathlib import Path
-from typing import List
 
 import hydra
 import torch
@@ -35,22 +34,30 @@ from dystformer.utils import (
 logger = logging.getLogger(__name__)
 
 
-class CustomTrainer(Trainer):
-    valid_state_vars = ["num_bins", "noise_scale"]
+class NoiseScaleScheduler:
+    def __init__(self, start: float, end: float, decay_rate: float):
+        self.start = start
+        self.end = end
+        self.decay_rate = decay_rate
 
+    def __call__(self, epoch: float) -> float | torch.Tensor:
+        decay_rate = torch.tensor(self.decay_rate)  # This is very important!
+        noise_scale = self.start * torch.exp(-decay_rate * epoch)
+        if noise_scale < self.end:
+            noise_scale = 0.0
+        return noise_scale
+
+
+class CustomTrainer(Trainer):
     def __init__(
         self,
         model: PatchTST,
-        adaptive_state_variable_names: List[str],
         args: TrainingArguments,
+        noise_scale_scheduler: NoiseScaleScheduler,
         **kwargs,
     ):
         super().__init__(model, args, **kwargs)
-        self.state_vars = adaptive_state_variable_names
-        if not all(state_var in self.valid_state_vars for state_var in self.state_vars):
-            raise ValueError(
-                f"Invalid combination of state variables: {self.state_vars}"
-            )
+        self.noise_scale_scheduler = noise_scale_scheduler
 
     def compute_loss(
         self,
@@ -61,10 +68,8 @@ class CustomTrainer(Trainer):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
         """
-        # global_step = self.state.global_step
         epoch = float(self.state.epoch)  # type: ignore
-        decay_rate = torch.tensor(5.0)  # Adjust this value to control the decay speed
-        noise_scale = 1 * torch.exp(-decay_rate * epoch)
+        noise_scale = self.noise_scale_scheduler(epoch)
         log_on_main(f"noise_scale: {noise_scale}", logger)
 
         outputs = model(**inputs, noise_scale=noise_scale)
@@ -247,24 +252,25 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    adaptive_state_variables = []
-    if cfg.quantizer.enabled:
-        adaptive_state_variables.append("num_bins")
-    if cfg.noiser.enabled:
-        adaptive_state_variables.append("noise_scale")
-
-    trainer = CustomTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=shuffled_train_dataset,
-        adaptive_state_variable_names=adaptive_state_variables,
+    noise_scale_scheduler = NoiseScaleScheduler(
+        start=cfg.noiser.start,
+        end=cfg.noiser.end,
+        decay_rate=cfg.noiser.decay_rate,
     )
-    # else:
-    #     trainer = Trainer(
-    #         model=model,
-    #         args=training_args,
-    #         train_dataset=shuffled_train_dataset,
-    #     )
+
+    if cfg.noiser.enabled:
+        trainer = CustomTrainer(
+            model=model,
+            args=training_args,
+            train_dataset=shuffled_train_dataset,
+            noise_scale_scheduler=noise_scale_scheduler,
+        )
+    else:
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=shuffled_train_dataset,
+        )
 
     log_on_main("Training", logger)
     trainer.train()  # Transformers trainer will save model checkpoints automatically
