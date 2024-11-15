@@ -9,7 +9,7 @@ class AdaptiveNumBinsCallback(TrainerCallback):
         initial_bins: int,
         max_bins: int,
         step_interval: int,
-        bin_delta: int,
+        num_bins_growth_factor: int,
         logger=None,
     ):
         """
@@ -22,7 +22,7 @@ class AdaptiveNumBinsCallback(TrainerCallback):
         self.num_bins = initial_bins
         self.max_bins = max_bins
         self.step_interval = step_interval
-        self.bin_delta = bin_delta
+        self.num_bins_growth_factor = num_bins_growth_factor
         self.logger = logger or logging.getLogger(__name__)
 
     def on_step_begin(
@@ -33,7 +33,7 @@ class AdaptiveNumBinsCallback(TrainerCallback):
 
         if (state.global_step + 1) % self.step_interval == 0:
             if self.num_bins < self.max_bins:
-                self.num_bins += self.bin_delta
+                self.num_bins *= self.num_bins_growth_factor
                 self.logger.info(
                     f"Adjusted num_bins to {self.num_bins} at step {state.global_step}"
                 )

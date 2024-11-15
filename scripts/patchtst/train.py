@@ -223,27 +223,28 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    # add adaptive quantization callback
-    adaptive_quantization_callback = AdaptiveNumBinsCallback(
-        initial_bins=cfg.patchtst.quantizer_initial_bins,
-        max_bins=cfg.patchtst.quantizer_max_bins,
-        step_interval=cfg.patchtst.quantizer_step_interval,
-        bin_delta=cfg.patchtst.quantizer_bin_delta,
-        logger=logger,
-    )
+    if cfg.patchtst.use_quantizer:
+        # add adaptive quantization callback
+        adaptive_quantization_callback = AdaptiveNumBinsCallback(
+            initial_bins=cfg.patchtst.quantizer_initial_bins,
+            max_bins=cfg.patchtst.quantizer_max_bins,
+            step_interval=cfg.patchtst.quantizer_step_interval,
+            num_bins_growth_factor=cfg.patchtst.quantizer_num_bins_growth_factor,
+            logger=logger,
+        )
 
-    trainer = CustomTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=shuffled_train_dataset,
-        callbacks=[adaptive_quantization_callback],
-    )
-
-    # trainer = Trainer(
-    #     model=model,
-    #     args=training_args,
-    #     train_dataset=shuffled_train_dataset,
-    # )
+        trainer = CustomTrainer(
+            model=model,
+            args=training_args,
+            train_dataset=shuffled_train_dataset,
+            callbacks=[adaptive_quantization_callback],
+        )
+    else:
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=shuffled_train_dataset,
+        )
 
     log_on_main("Training", logger)
     trainer.train()  # Transformers trainer will save model checkpoints automatically
