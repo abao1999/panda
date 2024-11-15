@@ -7,6 +7,7 @@ from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from transformers import Trainer, TrainingArguments, set_seed
 
+from dystformer.augmentations import FixedDimensionDelayEmbeddingTransform
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
@@ -59,7 +60,7 @@ def main(cfg):
     # set random seed
     set_seed(seed=cfg.train.seed)
 
-    train_data_dir = os.path.expandvars("$WORK/data/nonstandardized_train/")
+    train_data_dir = os.path.expandvars("$WORK/data/big_flow_skew_systems/")
     train_data_paths = list(
         filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
     )
@@ -91,8 +92,9 @@ def main(cfg):
         context_length=cfg.patchtst.context_length,
         prediction_length=cfg.patchtst.prediction_length,
         mode="train",
-        fixed_dim=cfg.fixed_dim,
-        delay_embed_prob=cfg.delay_embed_prob,
+        transforms=[
+            FixedDimensionDelayEmbeddingTransform(15),
+        ],
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     plot_distribution(
