@@ -17,9 +17,9 @@ from transformers import (
 
 import wandb
 from dystformer.augmentations import (
-    FixedDimensionDelayEmbeddingTransform,
     RandomAffineTransform,
     RandomConvexCombinationTransform,
+    RandomDimSelectionTransform,
 )
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
@@ -175,8 +175,11 @@ def main(cfg):
         RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
         RandomAffineTransform(out_dim=6, scale=1.0),
     ]
+    # transforms = [
+    #     FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
+    # ]
     transforms = [
-        FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
+        RandomDimSelectionTransform(num_dims=cfg.fixed_dim),
     ]
 
     log_on_main(f"Using augmentations: {augmentations}", logger)
