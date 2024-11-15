@@ -1,5 +1,6 @@
 """Exposed PatchTST model, taken from HuggingFace transformers"""
 
+from itertools import combinations_with_replacement
 from typing import Optional, Tuple, Union
 
 import torch
@@ -38,6 +39,52 @@ class PatchTSTEmbedding(nn.Module):
         """
         embeddings = self.input_embedding(patch_input)
         return embeddings
+
+
+class PatchTSTPolynomialEmbedding(nn.Module):
+    """Embed the channel dimension with a polynomial basis
+
+    NOTE: this embeds along the channel dimension unlike the PatchTSTEmbedding which embeds along the patch length dimension
+    """
+
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+        self.degree = config.polynomial_degree
+
+    def forward(self, timeseries: torch.Tensor):
+        """
+        Parameters:
+            timeseries (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
+                Timeseries to embed
+        """
+        indices = list(
+            combinations_with_replacement(range(timeseries.shape[2]), self.degree)
+        )
+        features = torch.stack(
+            [torch.prod(timeseries[:, :, idx], dim=-1) for idx in indices], dim=-1
+        )
+        return torch.cat([timeseries, features], dim=-1)
+
+
+class PatchTSTQuadraticEmbedding(nn.Module):
+    """Embed the channel dimension with a quadratic basis
+
+    NOTE: does the same thing as PatchTSTPolynomialEmbedding with degree=2,
+    but much more efficiently
+    """
+
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+
+    def forward(self, timeseries: torch.Tensor):
+        """
+        Parameters:
+            timeseries (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
+                Timeseries to embed
+        """
+        indices = torch.triu_indices(timeseries.shape[2], timeseries.shape[2])
+        features = timeseries[:, :, indices[0], :] * timeseries[:, :, indices[1], :]
+        return torch.cat([timeseries, features], dim=-1)
 
 
 class PatchTSTQuantizer(nn.Module):
