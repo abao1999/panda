@@ -21,10 +21,7 @@ from dystformer.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
 )
-from dystformer.patchtst.callbacks import (
-    AdaptiveNoiserCallback,
-    AdaptiveNumBinsCallback,
-)
+from dystformer.patchtst.callbacks import AdaptiveNumBinsCallback
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
@@ -65,16 +62,6 @@ class CustomTrainer(Trainer):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
         """
-        # # Retrieve state variable value from the callback's state
-        # if hasattr(self.state, "custom_state"):
-        #     state_vars_args = {}
-        #     for name in self.state_vars:
-        #         val = self.state.custom_state.get(name, None)  # type: ignore
-        #         state_vars_args[name] = val
-        #     # Forward pass with all adaptive state variables
-        #     outputs = model(**inputs, **state_vars_args)
-        # else:
-        #     outputs = model(**inputs)
         # global_step = self.state.global_step
         epoch = float(self.state.epoch)  # type: ignore
         decay_rate = torch.tensor(5.0)  # Adjust this value to control the decay speed
@@ -270,14 +257,9 @@ def main(cfg):
         adaptive_callbacks["num_bins"] = adaptive_quantization_callback
 
     if cfg.noiser.enabled:
-        adaptive_noiser_callback = AdaptiveNoiserCallback(
-            start=cfg.noiser.start,
-            end=cfg.noiser.end,
-            decay_rate=cfg.noiser.decay_rate,
-            tau=cfg.noiser.tau,
-            logger=logger,
+        adaptive_callbacks["noise_scale"] = (
+            None  # callback is very slow, do not mutate trainer state!
         )
-        adaptive_callbacks["noise_scale"] = adaptive_noiser_callback
 
     log_on_main(f"Using adaptive callbacks: {adaptive_callbacks}", logger)
     trainer = CustomTrainer(
@@ -285,7 +267,6 @@ def main(cfg):
         args=training_args,
         train_dataset=shuffled_train_dataset,
         adaptive_state_variable_names=list(adaptive_callbacks.keys()),
-        # callbacks=list(adaptive_callbacks.values()),
     )
     # else:
     #     trainer = Trainer(
