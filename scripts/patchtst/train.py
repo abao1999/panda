@@ -21,7 +21,6 @@ from dystformer.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
 )
-from dystformer.patchtst.callbacks import AdaptiveNumBinsCallback
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
@@ -245,28 +244,17 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    adaptive_callbacks = {}
+    adaptive_state_variables = []
     if cfg.quantizer.enabled:
-        adaptive_quantization_callback = AdaptiveNumBinsCallback(
-            initial_bins=cfg.quantizer.initial_bins,
-            max_bins=cfg.quantizer.max_bins,
-            step_interval=cfg.quantizer.step_interval,
-            num_bins_growth_factor=cfg.quantizer.num_bins_growth_factor,
-            logger=logger,
-        )
-        adaptive_callbacks["num_bins"] = adaptive_quantization_callback
-
+        adaptive_state_variables.append("num_bins")
     if cfg.noiser.enabled:
-        adaptive_callbacks["noise_scale"] = (
-            None  # callback is very slow, do not mutate trainer state!
-        )
+        adaptive_state_variables.append("noise_scale")
 
-    log_on_main(f"Using adaptive callbacks: {adaptive_callbacks}", logger)
     trainer = CustomTrainer(
         model=model,
         args=training_args,
         train_dataset=shuffled_train_dataset,
-        adaptive_state_variable_names=list(adaptive_callbacks.keys()),
+        adaptive_state_variable_names=adaptive_state_variables,
     )
     # else:
     #     trainer = Trainer(
