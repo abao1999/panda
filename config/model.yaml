@@ -47,8 +47,9 @@ patchtst:
   max_wavelength: 5000
   rope_percent: 0.8
 
-  # dynamics embedding
-  delay: 4
+  # channel embedding
+  channel_embedding: "quadratic"
+  polynomial_degree: 2
 
   pretrained_encoder_path: null
 

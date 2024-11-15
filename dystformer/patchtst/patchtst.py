@@ -73,7 +73,7 @@ class PatchTSTQuadraticEmbedding(nn.Module):
     but much more efficiently
     """
 
-    def __init__(self, config: PatchTSTConfig):
+    def __init__(self):
         super().__init__()
 
     def forward(self, timeseries: torch.Tensor):
@@ -688,6 +688,12 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         )
         self.patchifier = PatchTSTPatchify(config)
 
+        self.channel_embedding = (
+            PatchTSTQuadraticEmbedding()
+            if config.channel_embedding == "quadratic"
+            else PatchTSTPolynomialEmbedding(config)
+        )
+
         self.do_mask_input = config.do_mask_input
         # get num_patches information from PatchTSTPatchify
         num_patches = self.patchifier.num_patches
@@ -757,9 +763,13 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         # timeseries: tensor [bs x sequence_length x num_input_channels]
         scaled_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
 
-        # 2. Apply noiser to add noise to the data
+        # 2. Apply channel embedding to the data
+        # channel_embedded_past_values: tensor [bs x sequence_length x num_input_channels]
+        featurized_past_values = self.channel_embedding(scaled_past_values)
+
+        # 3. Apply noiser to add noise to the data
         # noised_past_values: tensor [bs x sequence_length x num_input_channels]
-        noised_past_values = self.noiser(scaled_past_values, noise_scale)
+        noised_past_values = self.noiser(featurized_past_values, noise_scale)
 
         # patched_values: [bs x num_input_channels x num_patches x patch_length] for pretrain
         patched_values = self.patchifier(noised_past_values)
