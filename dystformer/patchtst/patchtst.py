@@ -41,6 +41,7 @@ class PatchTSTEmbedding(nn.Module):
         return embeddings
 
 
+<<<<<<< HEAD
 class PatchTSTPolynomialEmbedding(nn.Module):
     """Embed the channel dimension with a polynomial basis
 
@@ -113,6 +114,8 @@ class PatchTSTQuantizer(nn.Module):
         return bins[bin_indices]
 
 
+=======
+>>>>>>> adc475108343a6c94e7911f0b164cd40e2ceceeb
 class PatchTSTRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
         """
@@ -675,14 +678,41 @@ class PatchTSTNoiser(nn.Module):
         )
 
 
+class PatchTSTQuantizer(nn.Module):
+    def __init__(self, high: float, low: float):
+        super().__init__()
+        self.high = high
+        self.low = low
+
+    def forward(
+        self, timeseries: torch.Tensor, num_bins: int = 2, device: str = "cuda"
+    ) -> torch.Tensor:
+        """
+        Quantize the timeseries
+
+        Parameters:
+            timeseries (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
+                Patch input for embedding
+            num_bins (int, *optional*, defaults to 2):
+                Number of bins to quantize into
+
+        Returns:
+            `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
+        """
+        bins = torch.linspace(self.low, self.high, num_bins + 1, device=device)
+        bins_avg = (bins[1:] + bins[:-1]) / 2
+        bin_indices = torch.bucketize(timeseries, bins)
+        return bins_avg[bin_indices - 1]
+
+
 class PatchTSTModel(PatchTSTPreTrainedModel):
     def __init__(self, config: PatchTSTConfig):
         super().__init__(config)
 
         self.scaler = PatchTSTScaler(config)
-        # self.quantizer = PatchTSTQuantizer(
-        #     high=config.quantizer_high, low=config.quantizer_low
-        # )
+        self.quantizer = PatchTSTQuantizer(
+            high=config.quantizer_high, low=config.quantizer_low
+        )
         self.noiser = PatchTSTNoiser(
             low=config.quantizer_low, high=config.quantizer_high
         )
@@ -715,7 +745,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        # num_bins: Optional[int] = None,
+        num_bins: Optional[int] = None,
         noise_scale: float = 0.0,
     ) -> Union[Tuple, PatchTSTModelOutput]:
         r"""
@@ -761,8 +791,18 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
 
         # 1. Apply scaler to instance-normalize the data
         # timeseries: tensor [bs x sequence_length x num_input_channels]
-        scaled_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
+        processed_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
 
+        # 2. (Optional) Apply quantizer to partition phase space
+        # quantized timeseries: tensor [bs x sequence_length x num_input_channels]
+        if num_bins is not None:
+            processed_past_values = self.quantizer(
+                processed_past_values,
+                num_bins=num_bins,
+                device=processed_past_values.device,
+            )
+
+<<<<<<< HEAD
         # 2. Apply channel embedding to the data
         # channel_embedded_past_values: tensor [bs x sequence_length x num_input_channels]
         featurized_past_values = self.channel_embedding(scaled_past_values)
@@ -770,9 +810,14 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         # 3. Apply noiser to add noise to the data
         # noised_past_values: tensor [bs x sequence_length x num_input_channels]
         noised_past_values = self.noiser(featurized_past_values, noise_scale)
+=======
+        # 3. (Optional) Apply noiser to add noise to the data
+        processed_past_values = self.noiser(processed_past_values, noise_scale)
+>>>>>>> adc475108343a6c94e7911f0b164cd40e2ceceeb
 
         # patched_values: [bs x num_input_channels x num_patches x patch_length] for pretrain
-        patched_values = self.patchifier(noised_past_values)
+        patched_values = self.patchifier(processed_past_values)
+
         if self.do_mask_input:
             masked_values, mask = self.masking(patched_values)
         else:
@@ -865,6 +910,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         output_attentions: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         num_bins: Optional[int] = None,
+        noise_scale: float = 0.0,
     ) -> Union[Tuple, PatchTSTForPretrainingOutput]:
         r"""
         Parameters:
@@ -902,6 +948,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             output_attentions=output_attentions,
             return_dict=True,
             num_bins=num_bins,
+            noise_scale=noise_scale,
         )
 
         x_hat = model_output.last_hidden_state

@@ -2,6 +2,7 @@ import logging
 import os
 from functools import partial
 from pathlib import Path
+from typing import List
 
 import hydra
 import torch
@@ -36,25 +37,41 @@ logger = logging.getLogger(__name__)
 
 
 class CustomTrainer(Trainer):
-    def __init__(self, model: PatchTST, args: TrainingArguments, **kwargs):
+    valid_state_vars = ["num_bins", "noise_scale"]
+
+    def __init__(
+        self,
+        model: PatchTST,
+        adaptive_state_variable_names: List[str],
+        args: TrainingArguments,
+        **kwargs,
+    ):
         super().__init__(model, args, **kwargs)
+        self.state_vars = adaptive_state_variable_names
+        if not all(state_var in self.valid_state_vars for state_var in self.state_vars):
+            raise ValueError(
+                f"Invalid combination of state variables: {self.state_vars}"
+            )
 
     def compute_loss(
-        self, model, inputs, return_outputs=False, num_items_in_batch=None
+        self,
+        model,
+        inputs,
+        return_outputs=False,
     ):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
         """
-        # Retrieve num_bins from the callback's state
-        if hasattr(self.state, "custom_state"):
-            num_bins = self.state.custom_state.get("num_bins", None)  # type: ignore
-            # Forward pass with num_bins
-            outputs = model(**inputs, num_bins=num_bins)
-        else:
-            outputs = model(**inputs, num_bins=None)
+        # global_step = self.state.global_step
+        epoch = float(self.state.epoch)  # type: ignore
+        decay_rate = torch.tensor(5.0)  # Adjust this value to control the decay speed
+        noise_scale = 1 * torch.exp(-decay_rate * epoch)
+        log_on_main(f"noise_scale: {noise_scale}", logger)
+
+        outputs = model(**inputs, noise_scale=noise_scale)
 
         # Save past state if it exists
-        # TODO: this needs to be fixed and made cleaner later.
+        # TODO: this needs to be fixed and made cleaner later (HF comment)
         if self.args.past_index >= 0:
             self._past = outputs[self.args.past_index]
 
@@ -228,28 +245,35 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    if cfg.patchtst.use_quantizer:
-        # add adaptive quantization callback
+    adaptive_callbacks = {}
+    if cfg.quantizer.enabled:
         adaptive_quantization_callback = AdaptiveNumBinsCallback(
-            initial_bins=cfg.patchtst.quantizer_initial_bins,
-            max_bins=cfg.patchtst.quantizer_max_bins,
-            step_interval=cfg.patchtst.quantizer_step_interval,
-            num_bins_growth_factor=cfg.patchtst.quantizer_num_bins_growth_factor,
+            initial_bins=cfg.quantizer.initial_bins,
+            max_bins=cfg.quantizer.max_bins,
+            step_interval=cfg.quantizer.step_interval,
+            num_bins_growth_factor=cfg.quantizer.num_bins_growth_factor,
             logger=logger,
         )
+        adaptive_callbacks["num_bins"] = adaptive_quantization_callback
 
-        trainer = CustomTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=shuffled_train_dataset,
-            callbacks=[adaptive_quantization_callback],
+    if cfg.noiser.enabled:
+        adaptive_callbacks["noise_scale"] = (
+            None  # callback is very slow, do not mutate trainer state!
         )
-    else:
-        trainer = Trainer(
-            model=model,
-            args=training_args,
-            train_dataset=shuffled_train_dataset,
-        )
+
+    log_on_main(f"Using adaptive callbacks: {adaptive_callbacks}", logger)
+    trainer = CustomTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=shuffled_train_dataset,
+        adaptive_state_variable_names=list(adaptive_callbacks.keys()),
+    )
+    # else:
+    #     trainer = Trainer(
+    #         model=model,
+    #         args=training_args,
+    #         train_dataset=shuffled_train_dataset,
+    #     )
 
     log_on_main("Training", logger)
     trainer.train()  # Transformers trainer will save model checkpoints automatically

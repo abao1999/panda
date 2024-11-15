@@ -23,6 +23,8 @@
 #         patchtst.num_hidden_layers=8 \
 #         patchtst.num_attention_heads=8 \
 #         patchtst.d_model=512 \
+#         patchtst.quantizer_high=15.0 \
+#         patchtst.quantizer_low=-15.0 \
 #         patchtst.norm_type=rmsnorm \
 #         patchtst.channel_attention=true \
 #         patchtst.mode=pretrain \
@@ -33,10 +35,16 @@
 #         train.warmup_ratio=0.1 \
 #         train.torch_compile=true \
 #         fixed_dim=3 \
+#         quantizer.enabled=false \
+#         noiser.enabled=true \
+#         noiser.start=1.0 \
+#         noiser.end=0.01 \
+#         noiser.decay_rate=0.8 \
+#         noiser.tau=5_000 \
 #         "$@"
 
+
 # On multiple GPUs (example with 4 GPUs)
-# With adaptive quantizer
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/patchtst/train.py \
@@ -48,16 +56,11 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.num_hidden_layers=8 \
         patchtst.num_attention_heads=8 \
         patchtst.d_model=512 \
+        patchtst.quantizer_high=15.0 \
+        patchtst.quantizer_low=-15.0 \
         patchtst.norm_type=rmsnorm \
         patchtst.channel_attention=true \
         patchtst.mode=pretrain \
-        patchtst.use_quantizer=true \
-        patchtst.quantizer_high=15.0 \
-        patchtst.quantizer_low=-15.0 \
-        patchtst.quantizer_initial_bins=100 \
-        patchtst.quantizer_max_bins=12_800 \
-        patchtst.quantizer_step_interval=10_000 \
-        patchtst.quantizer_num_bins_growth_factor=2 \
         train.per_device_train_batch_size=256 \
         train.max_steps=300_000 \
         train.save_steps=100_000 \
@@ -65,9 +68,17 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         train.warmup_ratio=0.1 \
         train.torch_compile=true \
         fixed_dim=3 \
+        quantizer.enabled=false \
+        noiser.enabled=false \
+        noiser.start=1.0 \
+        noiser.end=0.01 \
+        noiser.decay_rate=0.8 \
+        noiser.tau=100 \
         "$@"
 
+
 # # debug
+# # On multiple GPUs (example with 4 GPUs)
 # CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py \
 #         shuffle_buffer_length=100_000 \
 #         patchtst.context_length=512 \
@@ -77,16 +88,23 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
 #         patchtst.num_hidden_layers=8 \
 #         patchtst.num_attention_heads=8 \
 #         patchtst.d_model=512 \
+#         patchtst.quantizer_high=15.0 \
+#         patchtst.quantizer_low=-15.0 \
 #         patchtst.norm_type=rmsnorm \
 #         patchtst.channel_attention=true \
 #         patchtst.mode=pretrain \
-#         patchtst.use_quantizer=true \
-#         train.ddp_backend=null \
 #         train.per_device_train_batch_size=256 \
 #         train.max_steps=300_000 \
 #         train.save_steps=100_000 \
 #         train.log_steps=1_000 \
 #         train.warmup_ratio=0.1 \
 #         train.torch_compile=false \
+#         train.ddp_backend=null \
 #         fixed_dim=3 \
+#         quantizer.enabled=false \
+#         noiser.enabled=true \
+#         noiser.start=1.0 \
+#         noiser.end=0.01 \
+#         noiser.decay_rate=0.8 \
+#         noiser.tau=100 \
 #         "$@"

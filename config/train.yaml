@@ -26,3 +26,18 @@ train:
   # not currently used, but part of TrainingArguments
   ddp_find_unused_parameters: false
   remove_unused_columns: false
+
+
+quantizer:
+  enabled: false
+  step_interval: 10_000
+  num_bins_growth_factor: 2
+  initial_bins: 100
+  max_bins: 10_000
+
+noiser:
+  enabled: false
+  start: 1.0
+  end: 0.01
+  decay_rate: 0.8
+  tau: 5_000
