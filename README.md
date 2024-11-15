@@ -74,12 +74,8 @@ TODO: write up current PatchTST docs
 ## Development Goals
 ---
 
-<<<<<<< HEAD
 + [HIGH | EASY] add stationarity test for sample systems
-+ [HIGH | MEDIUM] implement the progressive quantization scheme (partioning phase space)
-=======
 + [HIGH | MEDIUM] test and refine the quantization scheme (partioning phase space)
->>>>>>> 2ad70d9e2764edb731b9455a88b056af97d15ad1
 + [HIGH | HARD] compute periods for systems (with param perturbations) to be used to align timescales of training data (blocky trajectories no good). See random phase surrogate method, make faster.
 + [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
