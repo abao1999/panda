@@ -328,6 +328,7 @@ def main(cfg):
             end=cfg.noiser.end,
             decay_rate=cfg.noiser.decay_rate,
             eps=cfg.noiser.eps,
+            epoch_stop=cfg.noiser.epoch_stop,
         )
 
         logging_callback = NoiseScaleLoggingCallback(
