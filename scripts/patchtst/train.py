@@ -20,6 +20,7 @@ from transformers import (
 
 import wandb
 from dystformer.augmentations import (
+    FixedDimensionDelayEmbeddingTransform,
     RandomAffineTransform,
     RandomConvexCombinationTransform,
     RandomDimSelectionTransform,
@@ -249,12 +250,15 @@ def main(cfg):
         RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
         RandomAffineTransform(out_dim=6, scale=1.0),
     ]
-    # transforms = [
-    #     FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
-    # ]
-    transforms = [
-        RandomDimSelectionTransform(num_dims=cfg.fixed_dim),
-    ]
+    if cfg.use_time_delay_embed:
+        # NOTE: set fixed_dim so that D*(D+3)/2 is close to power of two, for hardware efficiency
+        transforms = [
+            FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
+        ]
+    else:
+        transforms = [
+            RandomDimSelectionTransform(num_dims=cfg.fixed_dim),
+        ]
 
     log_on_main(f"Using augmentations: {augmentations}", logger)
 
@@ -296,6 +300,7 @@ def main(cfg):
         lr_scheduler_type=cfg.train.lr_scheduler_type,
         warmup_ratio=cfg.train.warmup_ratio,
         max_grad_norm=cfg.train.max_grad_norm,
+        weight_decay=cfg.train.weight_decay,
         optim=cfg.train.optim,
         logging_dir=f"wandb/tbruns/{run.name}_{run.id}/logs"
         if cfg.wandb.log

@@ -66,7 +66,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         train.log_steps=1_000 \
         train.warmup_ratio=0.1 \
         train.torch_compile=true \
-        fixed_dim=3 \
+        train.weight_decay=1e-4 \
         quantizer.enabled=false \
         noiser.enabled=true \
         noiser.schedule_name=cosine \
@@ -75,6 +75,8 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         noiser.eps=0.008 \
         noiser.epoch_stop=0.5 \
         noiser.log_steps=100 \
+        use_time_delay_embed=true \
+        fixed_dim=21 \
         "$@"
 
 
