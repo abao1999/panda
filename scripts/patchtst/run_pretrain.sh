@@ -69,9 +69,12 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         fixed_dim=3 \
         quantizer.enabled=false \
         noiser.enabled=true \
+        noiser.schedule_name=cosine \
         noiser.start=1.0 \
-        noiser.end=0.01 \
-        noiser.decay_rate=5.0 \
+        noiser.end=0.0 \
+        noiser.eps=0.008 \
+        noiser.epoch_stop=0.5 \
+        noiser.log_steps=100 \
         "$@"
 
 
