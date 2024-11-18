@@ -83,7 +83,7 @@ class PatchTSTQuadraticEmbedding(nn.Module):
                 Timeseries to embed
         """
         indices = torch.triu_indices(timeseries.shape[2], timeseries.shape[2])
-        features = timeseries[:, :, indices[0], :] * timeseries[:, :, indices[1], :]
+        features = timeseries[:, :, indices[0]] * timeseries[:, :, indices[1]]
         return torch.cat([timeseries, features], dim=-1)
 
 
@@ -680,6 +680,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
     def __init__(self, config: PatchTSTConfig):
         super().__init__(config)
 
+        self.channel_embedding = PatchTSTQuadraticEmbedding()
         self.scaler = PatchTSTScaler(config)
         self.quantizer = PatchTSTQuantizer(
             high=config.quantizer_high, low=config.quantizer_low
@@ -753,6 +754,10 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
 
         if past_observed_mask is None:
             past_observed_mask = torch.ones_like(past_values)
+
+        # 0. Apply channel embedding
+        # past_values: tensor [bs x sequence_length x num_input_channels]
+        past_values = self.channel_embedding(past_values)
 
         # 1. Apply scaler to instance-normalize the data
         # timeseries: tensor [bs x sequence_length x num_input_channels]

@@ -93,7 +93,7 @@ def main(cfg):
         prediction_length=cfg.patchtst.prediction_length,
         mode="train",
         transforms=[
-            FixedDimensionDelayEmbeddingTransform(15),
+            FixedDimensionDelayEmbeddingTransform(cfg.fixed_dim),
         ],
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
