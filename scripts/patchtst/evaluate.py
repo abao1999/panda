@@ -111,6 +111,7 @@ def evaluate_mlm_model(
     in `[0, 1]`:
     """
     assert model.mode == "pretrain", "Model must be in pretrain mode"
+    assert model.masking is not None, "Model must have a masking function"
     system_completions = {}
     system_metrics = {system: defaultdict(float) for system in systems}
 
@@ -122,15 +123,17 @@ def evaluate_mlm_model(
             past_values = [data["past_values"] for data in batch]
             past_batch = torch.from_numpy(np.stack(past_values)).to(model.device)
 
-            # TODO: PatchTSTModel self.masking and mask in PatchTSTModel forward returned in PatchTSTModelOutput
-            past_masked = None
+            masked_past_batch = model.masking(past_batch)  # TODO: check shape
 
-            # see patchtstforpretraining
+            # note past_observed_mask is None because we don't have any missing values in the training data
             completions = (
-                model(past_batch, past_observed_mask=None).transpose(1, 0).cpu().numpy()
+                model(masked_past_batch, past_observed_mask=None)
+                .transpose(1, 0)
+                .cpu()
+                .numpy()
             )
 
-            eval_metrics = compute_metrics(completions, past_masked, include=metrics)
+            eval_metrics = compute_metrics(completions, past_batch, include=metrics)  # type: ignore
 
             # compute running average of metrics over batches
             for metric, value in eval_metrics.items():
@@ -223,7 +226,7 @@ def evaluate_forecasting_model(
         # shape: (num_parallel_samples, num_windows*num_datasets, num_channels)
         labels = torch.cat(labels, dim=0).cpu().numpy()
 
-        system_metrics[system] = compute_metrics(predictions, labels, include=metrics)
+        system_metrics[system] = compute_metrics(predictions, labels, include=metrics)  # type: ignore
 
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
@@ -355,35 +358,50 @@ def main(cfg):
     }
 
     model = PatchTST.from_pretrained(
-        mode="predict",
+        mode=cfg.eval.mode,
         pretrain_path=cfg.eval.checkpoint_path,
         device=cfg.eval.device,
     )
     model.eval()
 
-    predictions, metrics = evaluate_forecasting_model(
-        model,
-        test_datasets,
-        batch_size=cfg.eval.batch_size,
-        prediction_length=cfg.eval.prediction_length,
-        limit_prediction_length=cfg.eval.limit_prediction_length,
-        metrics=["mse", "mae", "smape", "mape", "r2_score", "spearman", "pearson"],
-        return_predictions=True,
-        parallel_sample_reduction="mean",
-    )
-
-    # get the indices of each prediction window for each timeseries in each system
-    window_indices = rolling_prediction_window_indices(
-        test_data_dict,
-        cfg.eval.window_stride,
-        cfg.patchtst.context_length,
-        cfg.patchtst.prediction_length,
-    )
-
-    if predictions is not None:
-        save_evaluation_results(
-            metrics, cfg.eval, predictions=predictions, window_indices=window_indices
+    if cfg.eval.mode == "predict":
+        predictions, metrics = evaluate_forecasting_model(
+            model,
+            test_datasets,
+            batch_size=cfg.eval.batch_size,
+            prediction_length=cfg.eval.prediction_length,
+            limit_prediction_length=cfg.eval.limit_prediction_length,
+            metrics=["mse", "mae", "smape", "mape", "r2_score", "spearman", "pearson"],
+            return_predictions=True,
+            parallel_sample_reduction="mean",
         )
+
+        # get the indices of each prediction window for each timeseries in each system
+        window_indices = rolling_prediction_window_indices(
+            test_data_dict,
+            cfg.eval.window_stride,
+            cfg.patchtst.context_length,
+            cfg.patchtst.prediction_length,
+        )
+
+        if predictions is not None:
+            save_evaluation_results(
+                metrics,
+                cfg.eval,
+                predictions=predictions,
+                window_indices=window_indices,
+            )
+    elif cfg.eval.mode == "pretrain":
+        completions, metrics = evaluate_mlm_model(
+            model,
+            test_datasets,
+            batch_size=cfg.eval.batch_size,
+        )
+        # TODO: plot completions, or save to npy or arrow files
+        if completions is not None:
+            save_evaluation_results(metrics, cfg.eval, predictions=completions)
+    else:
+        raise ValueError(f"Invalid eval mode: {cfg.eval.mode}")
 
 
 if __name__ == "__main__":
