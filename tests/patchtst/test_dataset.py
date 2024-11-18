@@ -39,7 +39,7 @@ def plot_distribution(num_batches: int, batch_size: int, dataset, cfg):
         remove_unused_columns=cfg.train.remove_unused_columns,
     )
 
-    model = PatchTST(dict(cfg.patchtst), mode="predict")
+    model = PatchTST(dict(cfg.patchtst), mode="pretrain")
     trainer = Trainer(
         model=model,
         args=training_args,
