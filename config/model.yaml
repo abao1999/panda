@@ -48,6 +48,7 @@ patchtst:
   rope_percent: 0.8
 
   # channel embedding
+  use_channel_embedding: true
   channel_embedding: "quadratic"
   polynomial_degree: 2
 

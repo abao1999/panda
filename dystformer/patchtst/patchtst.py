@@ -691,12 +691,15 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
     def __init__(self, config: PatchTSTConfig):
         super().__init__(config)
 
-        if getattr(config, "channel_embedding", None) is None:
+        if not getattr(config, "use_channel_embedding", False):
             self.channel_embedding = nn.Identity()
-        elif config.channel_embedding == "quadratic":
-            self.channel_embedding = PatchTSTQuadraticEmbedding()
         else:
-            raise ValueError(f"Unknown channel embedding: {config.channel_embedding}")
+            if config.channel_embedding == "quadratic":
+                self.channel_embedding = PatchTSTQuadraticEmbedding()
+            else:
+                raise ValueError(
+                    f"Unknown channel embedding: {config.channel_embedding}"
+                )
         self.scaler = PatchTSTScaler(config)
         self.quantizer = PatchTSTQuantizer(
             high=config.quantizer_high, low=config.quantizer_low
