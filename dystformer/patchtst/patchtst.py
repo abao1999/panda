@@ -1171,15 +1171,16 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             y_hat_out = y_hat * model_output.scale + model_output.loc
 
         if future_values is not None:
+            future_values_channel_embed = self.model.channel_embedding(future_values)
             if self.distribution_output:
                 distribution = self.distribution_output.distribution(
                     y_hat, loc=model_output.loc, scale=model_output.scale
                 )
-                loss_val = nll(distribution, future_values)
+                loss_val = nll(distribution, future_values_channel_embed)
                 # take average of the loss
                 loss_val = weighted_average(loss_val)
             else:
-                loss_val = self.mse_loss(y_hat_out, future_values)
+                loss_val = self.mse_loss(y_hat_out, future_values_channel_embed)
                 # print(y_hat_out.shape, future_values.shape)
                 # print("loc", model_output.loc, "scale", model_output.scale)
                 # print(

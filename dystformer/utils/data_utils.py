@@ -78,7 +78,7 @@ def process_trajs(
         # get the last sample index from the directory, so we can continue saving samples filenames with the correct index
         max_existing_sample_idx = -1
 
-        if overwrite:
+        if not overwrite:
             for filename in os.listdir(system_folder):
                 if filename.endswith(".arrow"):
                     sample_idx = int(filename.split("_")[0])

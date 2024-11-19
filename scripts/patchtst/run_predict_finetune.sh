@@ -1,23 +1,11 @@
-# CUDA_VISIBLE_DEVICES=0 \
-# python scripts/patchtst/train.py \
-#         run_name=patchtst_lorenz_overfit \
-#         patchtst.context_length=512 \
-#         patchtst.prediction_length=64 \
-#         patchtst.num_input_channels=3 \
-#         shuffle_buffer_length=1000 \
-#         wandb.log=False \
-#         wandb.group_name=finetune_large \
-#         train.max_steps=20_000 \
-#         train.save_steps=10_000 \
-#         train.log_steps=100 \
-
 # On multiple GPUs (example with 4 GPUs)
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/patchtst/train.py \
         shuffle_buffer_length=100_000 \
+        patchtst.pretrained_encoder_path=/stor/work/AMDG_Gilpin_Summer2024/checkpoints/run-281/checkpoint-final \
         patchtst.context_length=512 \
-        patchtst.prediction_length=64 \
+        patchtst.prediction_length=128 \
         patchtst.patch_length=16 \
         patchtst.patch_stride=16 \
         patchtst.num_hidden_layers=8 \
@@ -29,7 +17,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.channel_attention=true \
         patchtst.use_channel_embedding=true \
         patchtst.channel_embedding=quadratic \
-        patchtst.mode=pretrain \
+        patchtst.mode=predict \
         train.per_device_train_batch_size=256 \
         train.max_steps=300_000 \
         train.save_steps=100_000 \
@@ -38,13 +26,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         train.torch_compile=true \
         train.weight_decay=1e-4 \
         quantizer.enabled=false \
-        noiser.enabled=true \
-        noiser.schedule_name=cosine \
-        noiser.start=1.0 \
-        noiser.end=0.0 \
-        noiser.eps=0.008 \
-        noiser.epoch_stop=0.5 \
-        noiser.log_steps=100 \
-        use_time_delay_embed=true \
-        fixed_dim=21 \
+        noiser.enabled=false \
+        use_time_delay_embed=false \
+        fixed_dim=3 \
         "$@"

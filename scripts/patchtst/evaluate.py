@@ -30,10 +30,13 @@ def evaluate_mlm_model(
     systems: Dict[str, PatchTSTDataset],
     batch_size: int,
     metrics: Optional[List[str]] = None,
+    undo_normalization: bool = False,
     return_completions: bool = False,
     return_processed_past_values: bool = False,
+    return_masked_past_values: bool = False,
     num_systems: Optional[int] = None,
 ) -> Tuple[
+    Optional[Dict[str, np.ndarray]],
     Optional[Dict[str, np.ndarray]],
     Optional[Dict[str, np.ndarray]],
     Dict[str, Dict[str, float]],
@@ -46,6 +49,7 @@ def evaluate_mlm_model(
     assert model.mode == "pretrain", "Model must be in pretrain mode"
     system_completions = {}
     system_processed_past_values = {}
+    system_masked_past_values = {}
     system_metrics = {system: defaultdict(float) for system in systems}
 
     for idx, system in tqdm(enumerate(systems), desc="Evaluating MLM pretrain model"):
@@ -56,10 +60,12 @@ def evaluate_mlm_model(
         log_on_main(f"Evaluating {system}", logger)
         all_completions = []
         all_processed_past_values = []
+        all_masked_past_values = []
         for i, batch in enumerate(batcher(dataset, batch_size=batch_size)):
             past_values = [data["past_values"] for data in batch]
 
-            past_batch = torch.from_numpy(np.stack(past_values)).to(model.device)
+            # past_batch = torch.from_numpy(np.stack(past_values)).to(model.device)
+            past_batch = torch.stack(past_values, dim=0).to(model.device)
 
             # note past_observed_mask is None because we don't have any missing values in the training data
             completions_output = model.model.generate_completions(
@@ -71,20 +77,30 @@ def evaluate_mlm_model(
                 .detach()
                 .cpu()
                 .numpy()
-                .transpose(0, 2, 1)
             )
             if completions_output.patched_past_values is None:
                 raise ValueError("Patched past values are None")
-            processed_past_values = (
-                completions_output.patched_past_values.view_as(past_batch)
-                .detach()
-                .cpu()
-                .numpy()
-                .transpose(0, 2, 1)
-            )
-            # loc = completions_output.loc.detach().cpu().numpy()
-            # scale = completions_output.scale.detach().cpu().numpy()
-            # mask = completions_output.mask.detach().cpu().numpy()
+
+            # NOTE: use this to get the patched values + flatten the last two dims
+            # processed_past_values = (
+            #     completions_output.patched_past_values.view_as(past_batch)
+            #     .detach()
+            #     .cpu()
+            #     .numpy()
+            # )
+            processed_past_values = past_batch.detach().cpu().numpy()
+            masked_past_values = None
+
+            if undo_normalization:
+                if completions_output.loc is None or completions_output.scale is None:
+                    raise ValueError("Loc or scale is None")
+                loc = completions_output.loc.detach().cpu().numpy()
+                scale = completions_output.scale.detach().cpu().numpy()
+                completions = completions * scale + loc
+                # processed_past_values = processed_past_values * scale + loc
+
+            completions = completions.transpose(0, 2, 1)
+            processed_past_values = processed_past_values.transpose(0, 2, 1)
 
             # eval_metrics = compute_metrics(completions, past_batch.cpu().numpy())
 
@@ -99,14 +115,20 @@ def evaluate_mlm_model(
                 all_completions.append(completions)
             if return_processed_past_values:
                 all_processed_past_values.append(processed_past_values)
+            if return_masked_past_values:
+                all_masked_past_values.append(masked_past_values)
 
         if return_completions:
             full_completion = np.concatenate(all_completions, axis=1)
+            system_completions[system] = full_completion
+        if return_processed_past_values:
             full_processed_past_values = np.concatenate(
                 all_processed_past_values, axis=1
             )
-            system_completions[system] = full_completion
             system_processed_past_values[system] = full_processed_past_values
+        if return_masked_past_values:
+            full_masked_past_values = np.concatenate(all_masked_past_values, axis=1)
+            system_masked_past_values[system] = full_masked_past_values
 
     # convert defaultdicts to regular dicts
     system_metrics = {
@@ -116,6 +138,7 @@ def evaluate_mlm_model(
     return (
         system_completions if return_completions else None,
         system_processed_past_values if return_processed_past_values else None,
+        system_masked_past_values if return_masked_past_values else None,
         system_metrics,
     )
 
@@ -296,13 +319,17 @@ def main(cfg):
             )
 
     elif cfg.eval.mode == "pretrain":
-        completions, processed_past_values, metrics = evaluate_mlm_model(
-            model,
-            test_datasets,
-            batch_size=cfg.eval.batch_size,
-            num_systems=10,
-            return_completions=True,
-            return_processed_past_values=True,
+        completions, processed_past_values, masked_past_values, metrics = (
+            evaluate_mlm_model(
+                model,
+                test_datasets,
+                batch_size=cfg.eval.batch_size,
+                num_systems=10,
+                undo_normalization=True,
+                return_completions=True,
+                return_processed_past_values=True,
+                return_masked_past_values=False,
+            )
         )
         # TODO: plot completions, or save to npy or arrow files
         if completions is not None:
@@ -316,6 +343,12 @@ def main(cfg):
                 metrics,
                 coords=processed_past_values,
                 coords_save_dir=cfg.eval.patch_input_save_dir,
+            )
+        if masked_past_values is not None:
+            save_eval_results(
+                metrics,
+                coords=masked_past_values,
+                coords_save_dir=cfg.eval.masked_input_save_dir,
             )
     else:
         raise ValueError(f"Invalid eval mode: {cfg.eval.mode}")
