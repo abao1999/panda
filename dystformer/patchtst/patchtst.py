@@ -754,7 +754,9 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
 
         # 0. Apply channel embedding
         # past_values: tensor [bs x sequence_length x num_input_channels]
-        past_values = self.channel_embedding(past_values)
+
+        # NOTE: activate this for training
+        # past_values = self.channel_embedding(past_values)
 
         if past_observed_mask is None:
             past_observed_mask = torch.ones_like(past_values)

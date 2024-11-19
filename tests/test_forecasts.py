@@ -13,7 +13,7 @@ from dystformer.utils import (
 
 WORK_DIR = os.getenv("WORK", "")
 DATA_DIR = os.path.join(WORK_DIR, "data")
-FORECAST_DATA_DIR = os.path.join(DATA_DIR, "forecasts/test")
+FORECAST_DATA_DIR = os.path.join(DATA_DIR, "forecasts/test_skew")
 
 
 if __name__ == "__main__":
@@ -22,7 +22,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dyst_name = args.dyst_name
-    gt_dyst_filepaths = get_system_filepaths(dyst_name, DATA_DIR, split="backup_test")
+    gt_dyst_filepaths = get_system_filepaths(
+        dyst_name, DATA_DIR, split="big_flow_skew_systems"
+    )
     num_samples_gt = len(gt_dyst_filepaths)
     print(f"Found {num_samples_gt} files for {dyst_name}")
 

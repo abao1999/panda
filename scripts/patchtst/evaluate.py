@@ -104,6 +104,7 @@ def evaluate_mlm_model(
     batch_size: int,
     metrics: Optional[List[str]] = None,
     return_completions: bool = False,
+    num_systems: Optional[int] = None,
 ) -> Tuple[Optional[Dict[str, np.ndarray]], Dict[str, Dict[str, float]]]:
     """
     past_observed_mask (`torch.BoolTensor` of shape `(batch_size, sequence_length, num_input_channels)`, *optional*):
@@ -111,35 +112,42 @@ def evaluate_mlm_model(
     in `[0, 1]`:
     """
     assert model.mode == "pretrain", "Model must be in pretrain mode"
-    assert model.masking is not None, "Model must have a masking function"
     system_completions = {}
     system_metrics = {system: defaultdict(float) for system in systems}
 
-    for system in tqdm(systems, desc="Evaluating MLM pretrain model"):
+    for idx, system in tqdm(enumerate(systems), desc="Evaluating MLM pretrain model"):
+        if num_systems is not None and idx >= num_systems:
+            break
+
         dataset = systems[system]  # IterableDataset
         log_on_main(f"Evaluating {system}", logger)
         all_completions = []
         for i, batch in enumerate(batcher(dataset, batch_size=batch_size)):
             past_values = [data["past_values"] for data in batch]
+
             past_batch = torch.from_numpy(np.stack(past_values)).to(model.device)
 
-            masked_past_batch = model.masking(past_batch)  # TODO: check shape
+            # # after patching, should be: batch_size, num_channels, sequence_length, num_features = past_batch.shape
+            # masked_past_batch = model_masking(past_batch)  # TODO: check shape
 
             # note past_observed_mask is None because we don't have any missing values in the training data
             completions = (
-                model(masked_past_batch, past_observed_mask=None)
-                .transpose(1, 0)
+                model(past_batch, past_observed_mask=None)
+                .prediction_output.view_as(past_batch)
+                .detach()
                 .cpu()
                 .numpy()
             )
+            completions = completions.transpose(0, 2, 1)
 
-            eval_metrics = compute_metrics(completions, past_batch, include=metrics)  # type: ignore
+            # eval_metrics = compute_metrics(completions, past_batch.cpu().numpy())
 
-            # compute running average of metrics over batches
-            for metric, value in eval_metrics.items():
-                system_metrics[system][metric] += (
-                    value - system_metrics[system][metric]
-                ) / (i + 1)
+            # NOTE: need newest dyst version for this
+            # # compute running average of metrics over batches
+            # for metric, value in eval_metrics.items():
+            #     system_metrics[system][metric] += (
+            #         value - system_metrics[system][metric]
+            #     ) / (i + 1)
 
             if return_completions:
                 all_completions.append(completions)
@@ -396,6 +404,8 @@ def main(cfg):
             model,
             test_datasets,
             batch_size=cfg.eval.batch_size,
+            num_systems=10,
+            return_completions=True,
         )
         # TODO: plot completions, or save to npy or arrow files
         if completions is not None:
