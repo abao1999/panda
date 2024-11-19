@@ -62,6 +62,7 @@ def process_trajs(
     base_dir: str,
     timeseries: Dict[str, np.ndarray],
     split_coords: bool = False,
+    overwrite: bool = False,
     verbose: bool = False,
 ) -> None:
     """Saves each trajectory in timeseries ensemble to a separate directory"""
@@ -76,10 +77,12 @@ def process_trajs(
 
         # get the last sample index from the directory, so we can continue saving samples filenames with the correct index
         max_existing_sample_idx = -1
-        for filename in os.listdir(system_folder):
-            if filename.endswith(".arrow"):
-                sample_idx = int(filename.split("_")[0])
-                max_existing_sample_idx = max(max_existing_sample_idx, sample_idx)
+
+        if overwrite:
+            for filename in os.listdir(system_folder):
+                if filename.endswith(".arrow"):
+                    sample_idx = int(filename.split("_")[0])
+                    max_existing_sample_idx = max(max_existing_sample_idx, sample_idx)
 
         for i, trajectory in enumerate(trajectories):
             curr_sample_idx = max_existing_sample_idx + i + 1

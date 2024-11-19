@@ -30,6 +30,7 @@ def plot_saved_data(
     plot_univariate: bool = False,
     samples_subset_dict: Optional[Dict[str, List[int]]] = None,
     plot_name_suffix: Optional[str] = None,
+    plot_save_dir: str = "tests/figs",
 ) -> None:
     """
     Plot saved Arrow data files.
@@ -75,7 +76,7 @@ def plot_saved_data(
         plot_name = f"{dyst_name}_{plot_name_suffix}" if plot_name_suffix else dyst_name
         plot_trajs_multivariate(
             dyst_coords_samples,
-            save_dir="tests/figs",
+            save_dir=plot_save_dir,
             plot_name=plot_name,
             samples_subset=samples_subset,
         )
@@ -84,7 +85,7 @@ def plot_saved_data(
             plot_trajs_univariate(
                 dyst_coords_samples,
                 selected_dim=None,  # plot all dimensions
-                save_dir="tests/figs/univariate",
+                save_dir=os.path.join(plot_save_dir, "univariate"),
                 plot_name=plot_name,
                 samples_subset=samples_subset,
             )
@@ -114,6 +115,12 @@ if __name__ == "__main__":
         type=str,
         choices=["failed_samples", "valid_samples"],
         default=None,
+    )
+    parser.add_argument(
+        "--plot_save_dir",
+        help="Directory to save plots",
+        type=str,
+        default="tests/figs",
     )
     args = parser.parse_args()
 
@@ -148,4 +155,5 @@ if __name__ == "__main__":
         plot_name_suffix="failures"
         if args.samples_subset == "failed_samples"
         else None,
+        plot_save_dir=args.plot_save_dir,
     )

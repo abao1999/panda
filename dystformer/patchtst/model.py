@@ -205,6 +205,54 @@ class PatchTST(nn.Module):
         # shape: [bs x num_samples x prediction_length x num_channels]
         return torch.cat(predictions, dim=-2)
 
+    @torch.no_grad()
+    def complete(
+        self,
+        context: Union[torch.Tensor, List[torch.Tensor]],
+        past_observed_mask: Optional[torch.Tensor] = None,
+        num_bins: Optional[int] = None,
+        noise_scale: float = 0.0,
+    ) -> torch.Tensor:
+        """
+        Get completions for the given time series.
+        TODO: do autoregressive completion / stitching together of completions
+
+        Parameters
+        ----------
+        context
+            Input series. This is either a 1D tensor, or a list
+            of 1D tensors, or a 2D tensor whose first dimension
+            is batch. In the latter case, use left-padding with
+            ``torch.nan`` to align series of different lengths.
+
+        Returns
+        -------
+        completions
+            Tensor of completions, of shape
+            [bs x context_length x num_channels]
+        """
+        assert (
+            self.mode == "pretrain"
+        ), "Model must be in pretrain mode to use this method"
+
+        context_tensor = self._prepare_and_validate_context(context=context)
+        completions_output = self.model.generate_completions(
+            context_tensor,
+            past_observed_mask=past_observed_mask,
+            num_bins=num_bins,
+            noise_scale=noise_scale,
+        )
+        # TODO: need to check shapes
+        completions = completions_output.completions.view_as(context_tensor).permute(
+            0, 2, 1
+        )
+        loc = completions_output.loc
+        scale = completions_output.scale
+        # mask = completions_output.mask
+        # unod the instance normalization
+        completions = loc + scale * completions
+        return completions
+
     def forward(self, *args, **kwargs):
         """
         Exposed for flexibility in channel mixing strategies.

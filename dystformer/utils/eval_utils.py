@@ -2,11 +2,13 @@
 utils for Chronos Pipeline (evaluation) and evaluation scripts
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 import numpy as np
+import pandas as pd
 import torch
 from git import Union
 from gluonts.dataset.common import FileDataset
@@ -15,8 +17,168 @@ from gluonts.itertools import batcher
 from gluonts.model.forecast import Forecast, SampleForecast
 from tqdm.auto import tqdm
 
+from dystformer.utils import process_trajs
+
+logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from dystformer.chronos.pipeline import ChronosPipeline
+
+
+def rolling_prediction_window_indices(
+    datasets: Dict[str, List],
+    window_stride: int,
+    context_length: int,
+    prediction_length: int,
+) -> Dict[str, List[List[int]]]:
+    """
+    Get the indices of individual windows for each timeseries in each system
+    in the stacked prediction window array from a rolling sampler.
+
+    This can handle multiple timeseries for each system, possible with different lengths
+
+    For each system with stack prediction window array W of shape (..., num_windows*num_datasets, ...),
+    return a list of tuples where each tuple contains the indices of the windows of its
+    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
+    i-th timeseries of that system.
+
+    Args:
+        datasets: Dictionary mapping system names to lists of datasets
+        window_stride: Stride length between consecutive windows
+        context_length: Length of context window
+        prediction_length: Length of prediction window
+        window_dim: Dimension along which to count windows (default: 0)
+
+    Returns:
+        Dictionary mapping system names to shape of the unpacked window arrays
+    """
+    indices = {}
+    for system_name, timeseries in datasets.items():
+        indices[system_name] = []
+        for i, dataset in enumerate(timeseries):
+            ts_shape = next(iter(dataset))["target"].shape
+            assert len(ts_shape) == 2, "Target must be 2D"
+            T = ts_shape[-1]
+            windows = (T - context_length - prediction_length) // window_stride + 1
+            indices[system_name].append(list(range(i * windows, (i + 1) * windows)))
+    return indices
+
+
+def sampled_prediction_window_indices(
+    datasets: Dict[str, List],
+    num_samples: int,
+) -> Dict[str, List[List[int]]]:
+    """
+    Get the indices of individual windows for each timeseries in each system
+    in the stacked prediction window array from a sampled sampler.
+
+    This can handle multiple timeseries for each system, possibly with different lengths.
+
+    For each system with stack prediction window array W of shape (..., num_samples*num_datasets, ...),
+    return a list of tuples where each tuple contains the indices of the windows of its
+    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
+    i-th timeseries of that system.
+
+    NOTE: Assumes that the sample-style window sampler sampled a fixed number of
+    windows for each timeseries
+
+    Args:
+        datasets: Dictionary mapping system names to lists of datasets
+        num_samples: Number of samples to draw for each timeseries
+        context_length: Length of context window
+        prediction_length: Length of prediction window
+
+    Returns:
+        Dictionary mapping system names to shape of the unpacked window arrays
+    """
+    indices = {
+        system_name: [
+            list(range(i * num_samples, (i + 1) * num_samples))
+            for i in range(len(datasets[system_name]))
+        ]
+        for system_name in datasets
+    }
+    return indices
+
+
+def save_evaluation_results(
+    metrics: Dict[str, Dict[str, float]],
+    window_indices: Optional[Dict[str, List[List[int]]]] = None,
+    window_dim: int = 0,
+    coords: Optional[Dict[str, np.ndarray]] = None,
+    metrics_save_dir: str = "results",
+    metrics_fname: Optional[str] = None,
+    overwrite: bool = False,
+    coords_save_dir: Optional[str] = None,
+    split_coords: bool = False,
+    verbose: bool = False,
+):
+    """
+    Save prediction metrics and optionally forecast trajectories.
+
+    Args:
+        coords: Dictionary mapping system names to coordinate numpy arrays.
+        metrics: Nested dictionary containing computed metrics for each system.
+        window_indices: Optional dictionary mapping system names to indices of the windows of its predictions.
+        window_dim: Dimension along which to count windows (default: 0)
+        metrics_save_dir: Directory to save metrics to.
+        metrics_fname: Name of the metrics file to save.
+        overwrite: Whether to overwrite an existing metrics file
+                    AND also overwrite any existing arrow files when saving coords
+        coords_save_dir: Directory to save forecast trajectories to.
+        split_coords: Whether to split the coordinates by dimension
+        verbose: Whether to print verbose output.
+
+    This function performs two main tasks:
+    1. Saves evaluation metrics to a CSV file, appending to existing file if present.
+    2. If specified in eval_cfg, saves forecast trajectories as arrow files.
+    """
+    result_rows = [{"system": system, **metrics[system]} for system in metrics]
+    results_df = pd.DataFrame(result_rows)
+
+    metrics_fname = f"{metrics_fname or 'metrics'}.csv"
+    metrics_save_path = os.path.join(metrics_save_dir, metrics_fname)
+    logger.info(f"Saving metrics to: {metrics_save_path}")
+    os.makedirs(os.path.dirname(metrics_save_path), exist_ok=True)
+
+    if os.path.isfile(metrics_save_path) and not overwrite:
+        existing_df = pd.read_csv(metrics_save_path)
+        results_df = pd.concat([existing_df, results_df], ignore_index=True)
+    results_df.to_csv(metrics_save_path, index=False)
+
+    # save predictions, which is a dictionary mapping system names to prediction numpy arrays, to arrow files
+    if coords_save_dir is not None and coords is not None:
+        logger.info(f"forecast dysts: {coords.keys()}")
+        for system in coords:
+            logger.info(f"{system}: {coords[system].shape}")
+
+        os.makedirs(coords_save_dir, exist_ok=True)
+        logger.info(
+            f"Saving all valid sampled trajectories from {len(coords)} systems to arrow files within {coords_save_dir}",
+        )
+
+        # regroup the predictions by the window indices before writing to arrow files
+        # currently each prediction array (for each system) has shape:
+        # [num_parallel_samples, sum(num_windows for each timeseries), prediction_length, num_channels]
+        # or if a reduction was applied to the parallel sample dim:
+        # [sum(num_windows for each timeseries), prediction_length, num_channels]
+        if window_indices is not None:
+            for system in coords:
+                regrouped_coords = [
+                    np.take(coords[system], indices, axis=window_dim)
+                    for indices in window_indices[system]
+                ]
+
+                # regrouped_predictions is a ragged list of arrays of shape:
+                # (num_windows_for_this_timeseries, prediction_length, num_channels)
+                coords[system] = regrouped_coords  # type: ignore
+
+        process_trajs(
+            coords_save_dir,
+            coords,
+            split_coords=split_coords,
+            overwrite=overwrite,
+            verbose=verbose,
+        )
 
 
 def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:

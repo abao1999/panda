@@ -5,14 +5,14 @@ eval:
   device: cuda:7
   torch_dtype: bfloat16 # float32?
   batch_size: 32
-  num_samples: 20 # TODO: use this
 
-  save_forecasts_to_npy: false
-  forecast_save_dir: null
-  output_dir: ./eval_results
-  output_fname: null
+  forecast_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/forecasts
+  completions_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/completions
+  patch_input_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/patch_input
+
+  metrics_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/metrics
+  metrics_fname: metrics.json
   overwrite: false
-  agg_axis: null # 1 to keep dimensions separate
 
   # for generating forecasts and getting test split
   limit_prediction_length: true
@@ -28,6 +28,10 @@ eval:
   window_stride: 1
   split_coords: false
   verbose: true
+
+# save_forecasts_to_npy: false
+# agg_axis: null # 1 to keep dimensions separate
+# num_samples: 20 # TODO: use this
 
 
 chronos_eval:

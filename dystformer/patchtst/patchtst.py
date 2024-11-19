@@ -1,5 +1,6 @@
 """Exposed PatchTST model, taken from HuggingFace transformers"""
 
+from dataclasses import dataclass
 from itertools import combinations_with_replacement
 from typing import Optional, Tuple, Union
 
@@ -22,6 +23,16 @@ from transformers.models.patchtst.modeling_patchtst import (
     nll,
     weighted_average,
 )
+from transformers.utils import ModelOutput
+
+
+@dataclass
+class CompletionsPatchTSTOutput(ModelOutput):
+    completions: torch.FloatTensor
+    patched_past_values: Optional[torch.FloatTensor] = None
+    mask: Optional[torch.FloatTensor] = None
+    loc: Optional[torch.FloatTensor] = None
+    scale: Optional[torch.FloatTensor] = None
 
 
 class PatchTSTEmbedding(nn.Module):
@@ -680,7 +691,12 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
     def __init__(self, config: PatchTSTConfig):
         super().__init__(config)
 
-        self.channel_embedding = PatchTSTQuadraticEmbedding()
+        if getattr(config, "channel_embedding", None) is None:
+            self.channel_embedding = nn.Identity()
+        elif config.channel_embedding == "quadratic":
+            self.channel_embedding = PatchTSTQuadraticEmbedding()
+        else:
+            raise ValueError(f"Unknown channel embedding: {config.channel_embedding}")
         self.scaler = PatchTSTScaler(config)
         self.quantizer = PatchTSTQuantizer(
             high=config.quantizer_high, low=config.quantizer_low
@@ -755,8 +771,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         # 0. Apply channel embedding
         # past_values: tensor [bs x sequence_length x num_input_channels]
 
-        # NOTE: activate this for training
-        # past_values = self.channel_embedding(past_values)
+        past_values = self.channel_embedding(past_values)
 
         if past_observed_mask is None:
             past_observed_mask = torch.ones_like(past_values)
@@ -940,6 +955,57 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             prediction_output=x_hat,
             hidden_states=encoder_states,
             attentions=model_output.attentions,
+        )
+
+    @torch.no_grad()
+    def generate_completions(
+        self,
+        past_values: torch.Tensor,
+        past_observed_mask: Optional[torch.Tensor] = None,
+        num_bins: Optional[int] = None,
+        noise_scale: float = 0.0,
+    ) -> CompletionsPatchTSTOutput:
+        r"""
+        Parameters:
+            past_values (`torch.Tensor` of shape `(bs, sequence_length, num_input_channels)`, *required*):
+                Input sequence to the model
+            past_observed_mask (`torch.BoolTensor` of shape `(batch_size, sequence_length, num_input_channels)`, *optional*):
+                Boolean mask to indicate which `past_values` were observed and which were missing. Mask values selected
+                in `[0, 1]`:
+
+                - 1 for values that are **observed**,
+                - 0 for values that are **missing** (i.e. NaNs that were replaced by zeros).
+            num_bins (`int`, *optional*): Number of bins to use for adaptive quantization.
+            noise_scale (`float`, *optional*): Scale factor for the noise added to the data.
+
+        Returns:
+            `CompletionPatchTSTOutput`
+
+        """
+
+        # past_values: [bs x num_channels x num_patches x d_model] or
+        # [bs x num_channels x (num_patches+1) x d_model] if use cls_token
+        model_output = self.model(
+            past_values=past_values,
+            past_observed_mask=past_observed_mask,
+            return_dict=True,
+            num_bins=num_bins,
+            noise_scale=noise_scale,
+        )
+
+        x_hat = model_output.last_hidden_state
+
+        # last_hidden_state: [bs x num_channels x num_patches x d_model] or
+        # [bs x num_channels x (num_patches+1) x d_model] if use cls_token
+        # x_hat: [bs x num_channels x num_patches x patch_length]
+        x_hat = self.head(x_hat)
+
+        return CompletionsPatchTSTOutput(
+            completions=x_hat,
+            patched_past_values=model_output.patch_input,
+            loc=model_output.loc,
+            scale=model_output.scale,
+            mask=model_output.mask,
         )
 
 
