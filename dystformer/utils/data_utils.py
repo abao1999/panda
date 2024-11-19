@@ -58,6 +58,34 @@ def convert_to_arrow(
     )
 
 
+def accumulate_coords(
+    filepaths: List[Path], one_dim_target: bool = False
+) -> np.ndarray:
+    dyst_coords_samples = []
+    for filepath in filepaths:
+        # create dataset by reading directly from filepath into FileDataset
+        gts_dataset = FileDataset(
+            path=Path(filepath),
+            freq="h",
+            one_dim_target=one_dim_target,
+        )  # TODO: consider other frequencies?
+
+        # extract the coordinates
+        dyst_coords, metadata = stack_and_extract_metadata(
+            gts_dataset,
+        )
+
+        dyst_coords_samples.append(dyst_coords)
+
+        print("data shape: ", dyst_coords.shape)
+        print("metadata: ", metadata)
+        print("IC: ", dyst_coords[:, 0])
+
+    dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
+    print(dyst_coords_samples.shape)
+    return dyst_coords_samples
+
+
 def process_trajs(
     base_dir: str,
     timeseries: Dict[str, np.ndarray],

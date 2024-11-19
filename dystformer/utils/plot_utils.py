@@ -161,6 +161,111 @@ def plot_trajs_multivariate(
         plt.close()
 
 
+def plot_completions_evaluation(
+    completions: np.ndarray,
+    context: np.ndarray,
+    save_dir: str = "tests/figs",
+    plot_name: str = "dyst",
+    samples_subset: Optional[List[int]] = None,
+) -> None:
+    """
+    Plot side-by-side 3D multivariate timeseries for completions and context,
+    and overlay univariate series for each dimension below with shared legends.
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    num_tot_samples = min(completions.shape[0], context.shape[0])
+    n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
+
+    if samples_subset is not None:
+        if n_samples_plot > len(samples_subset):
+            warnings.warn(
+                f"Number of samples to plot is greater than the number of samples in the subset. Plotting all {len(samples_subset)} samples in the subset."
+            )
+            n_samples_plot = len(samples_subset)
+
+    # Create a figure with 2 rows: one for 3D plots and one for univariate plots
+    fig = plt.figure(figsize=(16, 12))
+    ax1 = fig.add_subplot(221, projection="3d")
+    ax2 = fig.add_subplot(222, projection="3d")
+    ax3 = fig.add_subplot(234)
+    ax4 = fig.add_subplot(235)
+    ax5 = fig.add_subplot(236)
+
+    # Collect lines and labels for a shared legend
+    lines = []
+    labels = []
+
+    # Plot 3D trajectories
+    for sample_idx in range(n_samples_plot):
+        label_sample_idx = (
+            samples_subset[sample_idx] if samples_subset is not None else sample_idx
+        )
+        curr_color = COLORS[label_sample_idx % len(COLORS)]
+
+        # Plot context in 3D
+        (line1,) = ax1.plot(
+            context[sample_idx, 0, :],
+            context[sample_idx, 1, :],
+            context[sample_idx, 2, :],
+            alpha=0.5,
+            linewidth=1,
+            color=curr_color,
+            label=f"Sample {label_sample_idx}",
+        )
+        ax1.set_title("Context")
+        # Plot completions in 3D
+        (line2,) = ax2.plot(
+            completions[sample_idx, 0, :],
+            completions[sample_idx, 1, :],
+            completions[sample_idx, 2, :],
+            alpha=0.5,
+            linewidth=1,
+            color=curr_color,
+            label=f"Sample {label_sample_idx}",
+        )
+        ax2.set_title("Completions")
+
+        # Add lines and labels for the first sample only to avoid duplicates
+        if sample_idx == 0:
+            lines.append(line1)
+            labels.append(f"Sample {label_sample_idx}")
+
+        # Plot univariate series for each dimension
+        for dim, ax in enumerate([ax3, ax4, ax5]):
+            ax.plot(
+                context[sample_idx, dim, :],
+                alpha=0.5,
+                linewidth=1,
+                color=curr_color,
+                linestyle="-",
+            )
+            ax.plot(
+                completions[sample_idx, dim, :],
+                alpha=0.5,
+                linewidth=1,
+                color=curr_color,
+                linestyle="--",
+            )
+            ax.set_title(f"Dimension {dim + 1}")
+            ax.set_xlabel("Timesteps")
+
+    # # Create a shared legend for samples
+    # fig.legend(lines, labels, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 0.95))
+
+    # Add a legend for line styles in the univariate plots
+    line_context = plt.Line2D([0], [0], color="black", linestyle="-", label="Context")  # type: ignore
+    line_completions = plt.Line2D(  # type: ignore
+        [0], [0], color="black", linestyle="--", label="Completions"
+    )
+
+    ax3.legend(handles=[line_context, line_completions], loc="upper right")
+
+    plt.suptitle(plot_name.replace("_", " + "), fontsize=16)  # y=0.95
+    save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+
+
 def plot_forecast_trajs_multivariate(
     dyst_data: np.ndarray,
     context_length: int,
