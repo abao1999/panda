@@ -25,7 +25,7 @@ validator:
   save_failed_trajs: false
 
 events:
-  max_duration: 480
+  max_duration: 300
   instability_threshold: 1e4
   min_step: 1e-16
 

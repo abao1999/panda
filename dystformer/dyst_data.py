@@ -73,6 +73,42 @@ class DystData:
                 **self.attractor_validator_kwargs, tests=self.attractor_tests
             )
 
+    def process_and_save_callback(
+        self,
+        num_total_samples: int,
+        samples_process_interval: int,
+        save_dyst_dir: Optional[str],
+        failed_dyst_dir: Optional[str],
+    ):
+        """
+        Callback to process and save ensembles.
+        """
+        ensemble_list = []
+
+        def _callback(ensemble, excluded_keys, sample_idx):
+            if len(ensemble.keys()) == 0:
+                print(
+                    "No successful trajectories for this sample. Skipping, will not save to arrow files."
+                )
+                return
+
+            ensemble_list.append(ensemble)
+
+            is_last_sample = (sample_idx + 1) == num_total_samples
+            if ((sample_idx + 1) % samples_process_interval) == 0 or is_last_sample:
+                self._process_and_save_ensemble(
+                    ensemble_list, sample_idx, save_dyst_dir, failed_dyst_dir
+                )
+                ensemble_list.clear()
+
+        return _callback
+
+    def handle_failed_integrations_callback(self, ensemble, excluded_keys, sample_idx):
+        if len(excluded_keys) > 0:
+            warnings.warn(f"INTEGRATION FAILED FOR: {excluded_keys}")
+            for dyst_name in excluded_keys:
+                self.failed_integrations[dyst_name].append(sample_idx)
+
     def save_dyst_ensemble(
         self,
         systems: Union[List[str], List[BaseDyn]],
@@ -99,42 +135,19 @@ class DystData:
         )
         num_total_samples = self.num_param_perturbations * self.num_ics
 
-        def process_and_save_callback():
-            """
-            Callback to process and save ensembles.
-            """
-            ensemble_list = []
-
-            def _callback(ensemble, excluded_keys, sample_idx):
-                if len(ensemble.keys()) == 0:
-                    print(
-                        "No successful trajectories for this sample. Skipping, will not save to arrow files."
-                    )
-                    return
-
-                ensemble_list.append(ensemble)
-
-                is_last_sample = (sample_idx + 1) == num_total_samples
-                if ((sample_idx + 1) % samples_process_interval) == 0 or is_last_sample:
-                    self._process_and_save_ensemble(
-                        ensemble_list, sample_idx, save_dyst_dir, failed_dyst_dir
-                    )
-                    ensemble_list.clear()
-
-            return _callback
-
-        def handle_failed_integrations_callback(ensemble, excluded_keys, sample_idx):
-            """
-            Callback to handle failed integrations.
-            """
-            if len(excluded_keys) > 0:
-                warnings.warn(f"INTEGRATION FAILED FOR: {excluded_keys}")
-                for dyst_name in excluded_keys:
-                    self.failed_integrations[dyst_name].append(sample_idx)
+        callbacks = [
+            self.handle_failed_integrations_callback,
+            self.process_and_save_callback(
+                num_total_samples,
+                samples_process_interval,
+                save_dyst_dir,
+                failed_dyst_dir,
+            ),
+        ]
 
         _ = self._generate_ensembles(
             systems,
-            [handle_failed_integrations_callback, process_and_save_callback()],
+            postprocessing_callbacks=callbacks,
             standardize=standardize,
             use_multiprocessing=use_multiprocessing,
             **kwargs,

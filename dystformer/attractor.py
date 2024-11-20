@@ -38,7 +38,6 @@ class AttractorValidator:
         self.valid_dyst_counts = defaultdict(int)  # Dict[str, int]
         self.failed_samples = defaultdict(list)  # Dict[str, List[int]]
         self.valid_samples = defaultdict(list)  # Dict[str, List[int]]
-        self.tests = self.tests or []
 
     def reset(self):
         """
@@ -80,33 +79,28 @@ class AttractorValidator:
                 plot_save_dir=plot_save_dir,
                 plot_name=f"{dyst_name}_sample_{sample_idx}",
             )
-        # call test_fn on trajectory excluding transient time (burn-in time)
         transient_time = int(traj_sample.shape[1] * self.transient_time_frac)
         status = test_fn(traj_sample[:, transient_time:])
         return status, func_name
 
-    def _filter_dyst(
-        self, dyst_name: str, all_traj: np.ndarray, first_sample_idx: int = 0
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def _filter_single_system(
+        self,
+        dyst_name: str,
+        all_traj: np.ndarray,
+        first_sample_idx: int = 0,
+    ) -> Tuple[np.ndarray, np.ndarray, List[Tuple[int, str]], List[int]]:
         """
-        Split all trajectories of a given dyst into valid and failed trajectories
-        Args:
-            dyst_name: name of the dyst
-            all_traj: all trajectories of a given dyst
-            first_sample_idx: index of the first sample of the dyst
+        Multiprocessed version of self._filter_dyst without any verbose output
+        """
+        failed_checks_samples = []
+        valid_samples = []
 
-        Returns:
-            valid_attractor_trajs: valid trajectories of dyst_name
-            failed_attractor_trajs: failed trajectories of dyst_name
-        """
-        # for each trajectory sample for a given system dyst_name
         valid_attractor_trajs = []
         failed_attractor_trajs = []
         for i, traj_sample in enumerate(all_traj):
             sample_idx = first_sample_idx + i
-            # Execute all tests
             status = True
-            for test_fn in self.tests:
+            for test_fn in self.tests or []:
                 status, test_name = self._execute_test_fn(
                     test_fn,
                     dyst_name,
@@ -114,24 +108,21 @@ class AttractorValidator:
                     sample_idx=sample_idx,
                 )
                 if not status:
-                    # add to failed tests
-                    self.failed_checks[dyst_name].append((sample_idx, test_name))
-                    self.failed_samples[dyst_name].append(sample_idx)
-                    # break upon first failure
+                    failed_check = (sample_idx, test_name)
+                    failed_checks_samples.append(failed_check)
                     break
-
             # if traj sample failed a test, move on to next trajectory sample for this dyst
             if not status:
-                # add failed trajectory sample to failed attractor ensemble
                 failed_attractor_trajs.append(traj_sample)
                 continue
-
-            # if all tests pass, add to valid attractor ensemble
             valid_attractor_trajs.append(traj_sample)
-            self.valid_dyst_counts[dyst_name] += 1
-            self.valid_samples[dyst_name].append(sample_idx)
-
-        return np.array(valid_attractor_trajs), np.array(failed_attractor_trajs)
+            valid_samples.append(sample_idx)
+        return (
+            np.array(valid_attractor_trajs),
+            np.array(failed_attractor_trajs),
+            failed_checks_samples,
+            valid_samples,
+        )
 
     def filter_ensemble(
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
@@ -149,13 +140,21 @@ class AttractorValidator:
         valid_attractor_ensemble = {}  # Dict[str, np.ndarray]
         failed_attractor_ensemble = {}  # Dict[str, np.ndarray]
         for dyst_name, all_traj in ensemble.items():
-            valid_attractor_trajs, failed_attractor_trajs = self._filter_dyst(
-                dyst_name, all_traj, first_sample_idx
-            )
+            (
+                valid_attractor_trajs,
+                failed_attractor_trajs,
+                failed_checks,
+                valid_samples,
+            ) = self._filter_single_system(dyst_name, all_traj, first_sample_idx)
+
+            self.failed_checks[dyst_name].extend(failed_checks)
+            self.failed_samples[dyst_name].extend([ind for ind, _ in failed_checks])
+            self.valid_samples[dyst_name].extend(valid_samples)
+            self.valid_dyst_counts[dyst_name] += len(valid_samples)
+
             if len(failed_attractor_trajs) > 0:
                 failed_attractor_ensemble[dyst_name] = failed_attractor_trajs
 
-            # if no valid attractors found, skip this system
             if len(valid_attractor_trajs) == 0:
                 print(f"No valid attractor trajectories found for {dyst_name}")
                 continue
@@ -168,50 +167,6 @@ class AttractorValidator:
 
         return valid_attractor_ensemble, failed_attractor_ensemble
 
-    def _multiprocessed_filter_dyst(
-        self,
-        dyst_name: str,
-        all_traj: np.ndarray,
-        first_sample_idx: int = 0,
-    ) -> Tuple[np.ndarray, np.ndarray, List[Tuple[int, str]], List[int]]:
-        """
-        Multiprocessed version of self._filter_dyst without any verbose output
-        """
-        # book keeping
-        failed_checks_samples = []
-        valid_samples = []
-
-        valid_attractor_trajs = []
-        failed_attractor_trajs = []
-        for i, traj_sample in enumerate(all_traj):
-            sample_idx = first_sample_idx + i
-            # Execute all tests
-            status = True
-            for test_fn in self.tests:
-                status, test_name = self._execute_test_fn(
-                    test_fn,
-                    dyst_name,
-                    traj_sample,
-                    sample_idx=sample_idx,
-                )
-                if not status:
-                    failed_check = (sample_idx, test_name)
-                    failed_checks_samples.append(failed_check)
-                    break
-            # if traj sample failed a test, move on to next trajectory sample for this dyst
-            if not status:
-                failed_attractor_trajs.append(traj_sample)
-                continue
-            # if all tests pass, add to valid attractor ensemble
-            valid_attractor_trajs.append(traj_sample)
-            valid_samples.append(sample_idx)
-        return (
-            np.array(valid_attractor_trajs),
-            np.array(failed_attractor_trajs),
-            failed_checks_samples,
-            valid_samples,
-        )
-
     def multiprocessed_filter_ensemble(
         self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
@@ -220,22 +175,19 @@ class AttractorValidator:
         """
         with Pool() as pool:
             results = pool.starmap(
-                self._multiprocessed_filter_dyst,
+                self._filter_single_system,
                 [
                     (dyst_name, all_traj, first_sample_idx)
                     for dyst_name, all_traj in ensemble.items()
                 ],
             )
-        # unpack multiprocessed results
         valid_trajs, failed_trajs, failed_checks, valid_samples = zip(*results)
-        # book keeping for failed tests
         for dyst_name, failed_check_lst in zip(list(ensemble.keys()), failed_checks):
             if len(failed_check_lst) > 0:
                 self.failed_checks[dyst_name].append(failed_check_lst)
                 self.failed_samples[dyst_name].extend(
                     [index for index, _ in failed_check_lst]
                 )
-        # book keeping for valid samples
         for dyst_name, valid_samples_lst in zip(list(ensemble.keys()), valid_samples):
             if len(valid_samples_lst) > 0:
                 self.valid_samples[dyst_name].extend(valid_samples_lst)
@@ -302,7 +254,6 @@ def check_boundedness(
     return not is_diverging
 
 
-# Function to test if the system goes to a fixed point
 def check_not_fixed_point(
     traj: np.ndarray,
     tail_prop: float = 0.05,
@@ -374,69 +325,6 @@ def check_not_transient(
         if np.allclose(diffs, 0, atol=atol):
             return False
     return True
-
-
-# NOTE: this is too brittle to use currently
-def check_not_spiral_decay(
-    traj: np.ndarray,
-    rel_prominence_threshold: Optional[float] = None,
-) -> bool:
-    """
-    Check if a multi-dimensional trajectory is spiraling towards a fixed point.
-    Actually, this may also test the variance decay in the trajectory to detect a fixed point.
-    Args:
-        traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
-        rel_prominence_threshold: Relative prominence threshold for detecting peaks.
-    Returns:
-        bool: True if the trajectory does not spiral towards a fixed point, False otherwise.
-    """
-    n = traj.shape[1]
-    # find peaks for each coordinate in the trajectory
-    max_peak_indices = [
-        find_peaks(t, prominence=rel_prominence_threshold)[0] for t in traj
-    ]
-    min_peaks_indices = [
-        find_peaks(-t, prominence=rel_prominence_threshold)[0] for t in traj
-    ]
-
-    # If no peaks are found, just pass this test lazily
-    if len(max_peak_indices) == 0 or len(min_peaks_indices) == 0:
-        return True
-
-    # Check if peak indices are empty before interpolation
-    if any(len(indices) == 0 for indices in max_peak_indices) or any(
-        len(indices) == 0 for indices in min_peaks_indices
-    ):
-        # One or more peak indices are empty. Passing interpolation
-        return True
-
-    # Interpolation for envelope
-    upper_envelope = np.asarray(
-        [np.interp(np.arange(n), i, t[i]) for (i, t) in zip(max_peak_indices, traj)]
-    )
-    lower_envelope = np.asarray(
-        [np.interp(np.arange(n), i, t[i]) for (i, t) in zip(min_peaks_indices, traj)]
-    )
-
-    # line fitting, line params shape: [1+1, D]
-    line_params = np.polyfit(np.arange(n), traj.T, 1)
-    # D x n vector of fitted lines
-    line_fit = (
-        line_params[0][:, np.newaxis] * np.arange(n) + line_params[1][:, np.newaxis]
-    )
-
-    # test if the fitted lines are within the envelope
-    within_envelope = (line_fit < upper_envelope) & (line_fit > lower_envelope)
-    all_within_envelope = np.all(within_envelope)
-
-    if not all_within_envelope:
-        return True
-
-    # test monotonicity of the fitted lines
-    diffs = np.diff(line_fit, axis=1)  # D x (n-1)
-    monotonic_decrease = np.all(diffs <= 0)
-
-    return not monotonic_decrease
 
 
 def check_not_limit_cycle(
