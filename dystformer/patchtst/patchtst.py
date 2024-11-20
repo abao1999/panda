@@ -774,29 +774,31 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         # 0. Apply channel embedding
         # past_values: tensor [bs x sequence_length x num_input_channels]
 
-        past_values = self.channel_embedding(past_values)
+        embedded_past_values = self.channel_embedding(past_values)
 
         if past_observed_mask is None:
-            past_observed_mask = torch.ones_like(past_values)
+            past_observed_mask = torch.ones_like(embedded_past_values)
 
         # 1. Apply scaler to instance-normalize the data
         # timeseries: tensor [bs x sequence_length x num_input_channels]
-        processed_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
+        scaled_past_values, loc, scale = self.scaler(
+            embedded_past_values, past_observed_mask
+        )
 
         # 2. (Optional) Apply quantizer to partition phase space
         # quantized timeseries: tensor [bs x sequence_length x num_input_channels]
         if num_bins is not None:
-            processed_past_values = self.quantizer(
-                processed_past_values,
+            scaled_past_values = self.quantizer(
+                scaled_past_values,
                 num_bins=num_bins,
-                device=processed_past_values.device,
+                device=scaled_past_values.device,
             )
 
         # 3. (Optional) Apply noiser to add noise to the data
-        processed_past_values = self.noiser(processed_past_values, noise_scale)
+        noised_past_values = self.noiser(scaled_past_values, noise_scale)
 
         # patched_values: [bs x num_input_channels x num_patches x patch_length] for pretrain
-        patched_values = self.patchifier(processed_past_values)
+        patched_values = self.patchifier(noised_past_values)
 
         if self.do_mask_input:
             masked_values, mask = self.masking(patched_values)

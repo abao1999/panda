@@ -58,7 +58,10 @@ class RandomDelayEmbeddingsTransform:
 class FixedDimensionDelayEmbeddingTransform:
     """Delays embeds a timeseries to a fixed embedding dimension
 
-    NOTE: if the embedding dimension is non permissible (e.g. more delays than timepoints), an error is raised
+    NOTE:
+        - if the embedding dimension is non permissible (e.g. more delays than timepoints), an error is raised
+        - if the dimension of the timeseries is greater than the embedding dimension, then embedding dimensions
+          are randomly sampled from the channel dimension
 
     :param embedding_dim: embedding dimension for the delay embeddings
     :param channel_dim: dimension corresponding to channels
@@ -66,6 +69,10 @@ class FixedDimensionDelayEmbeddingTransform:
     """
 
     embedding_dim: int
+    random_seed: Optional[int] = 0
+
+    def __post_init__(self) -> None:
+        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
     def __call__(self, timeseries: NDArray) -> NDArray:
         """
@@ -74,12 +81,15 @@ class FixedDimensionDelayEmbeddingTransform:
         assert (
             timeseries.shape[1] > self.embedding_dim
         ), "Embedding dimension cannot be larger than the number of timepoints"
-        assert (
-            self.embedding_dim > 2 * timeseries.shape[0]
-        ), f"Not enough embeddding dimensions. System dim: {timeseries.shape[0]}, Embedding dim: {self.embedding_dim}"
         num_channels = timeseries.shape[0]
         per_dim_embed_dim = (self.embedding_dim - num_channels) // num_channels
         remaining_dims = (self.embedding_dim - num_channels) % num_channels
+
+        if num_channels >= self.embedding_dim:
+            selected_dims = self.rng.choice(
+                num_channels, self.embedding_dim, replace=False
+            )
+            return timeseries[selected_dims]
 
         # Distribute remaining dimensions evenly
         extra_dims = [1 if i < remaining_dims else 0 for i in range(num_channels)]
@@ -92,6 +102,7 @@ class FixedDimensionDelayEmbeddingTransform:
                 ]
             )[:, 1 + per_dim_embed_dim :]
             for i, extra in enumerate(extra_dims)
+            if extra > 0 or per_dim_embed_dim > 0
         ]
 
         return np.vstack([timeseries[:, 1 + per_dim_embed_dim :], *delay_embeddings])
