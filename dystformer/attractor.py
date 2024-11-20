@@ -31,13 +31,14 @@ class AttractorValidator:
     transient_time_frac: float = 0.05  # should be low, should be on attractor
     plot_save_dir: Optional[str] = None
     verbose: bool = False
+    tests: Optional[List[Callable]] = None
 
     def __post_init__(self):
-        self.tests = []  # List[Callable]
         self.failed_checks = defaultdict(list)  # Dict[str, List[Tuple[int, str]]]
         self.valid_dyst_counts = defaultdict(int)  # Dict[str, int]
         self.failed_samples = defaultdict(list)  # Dict[str, List[int]]
         self.valid_samples = defaultdict(list)  # Dict[str, List[int]]
+        self.tests = self.tests or []
 
     def reset(self):
         """
@@ -47,13 +48,6 @@ class AttractorValidator:
         self.valid_dyst_counts.clear()
         self.failed_samples.clear()
         self.valid_samples.clear()
-
-    def add_test_fn(self, test_fn):
-        """
-        Add a test_fn to the list of attractorchecks.
-        """
-        assert callable(test_fn), "Check must be a callable function"
-        self.tests.append(test_fn)
 
     def _execute_test_fn(
         self,

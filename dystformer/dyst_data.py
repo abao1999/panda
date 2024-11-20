@@ -4,7 +4,6 @@ import os
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
-from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -15,17 +14,6 @@ from tqdm import trange
 
 from dystformer.attractor import (
     AttractorValidator,
-    check_boundedness,
-    check_lyapunov_exponent,
-    check_not_fixed_point,
-    check_not_limit_cycle,
-    check_not_trajectory_decay,
-    check_not_transient,
-    check_power_spectrum,
-)
-from dystformer.sampling import (
-    InstabilityEvent,
-    TimeLimitEvent,
 )
 from dystformer.utils import process_trajs
 
@@ -44,7 +32,6 @@ class DystData:
         num_param_perturbations: number of parameter perturbations to generate for each system
         split_coords: whether to split the coordinates into two dimensions
         events: events to pass to solve_ivp
-        apply_attractor_tests: whether to apply attractor tests
         attractor_validator_kwargs: kwargs for the attractor validator
         verbose: whether to print verbose output
         save_failed_trajs: flag to save failed trajectory ensembles for debugging
@@ -56,85 +43,35 @@ class DystData:
 
     param_sampler: Optional[BaseSampler] = None
     ic_sampler: Optional[BaseSampler] = None
-    num_ics: int = 3
+    num_ics: int = 1
     num_param_perturbations: int = 1
 
     split_coords: bool = True  # by default save trajectories compatible with Chronos
     events: Optional[List] = None
-    apply_attractor_tests: bool = False
     attractor_validator_kwargs: Dict[str, Any] = field(default_factory=dict)
+    attractor_tests: Optional[List[Callable]] = None
+
     verbose: bool = True
     save_failed_trajs: bool = False
 
-    def __post_init__(self):
-        if self.events is None:
-            warnings.warn(
-                "No events provided for numerical integration. Defaulting to TimeLimitEvent with max_duration of 5 minutes \
-                and InstabilityEvent with threshold of 1e4."
-            )
-            # events for solve_ivp
-            time_limit_event = TimeLimitEvent(max_duration=60 * 5)  # 5 min time limit
-            instability_event = InstabilityEvent(threshold=1e4)
-            self.events = [time_limit_event, instability_event]
-
-        # ensure that we can still generate data even if no samplers are provided
-        if self.param_sampler is None:
-            self.num_param_perturbations = 1
-        if self.ic_sampler is None:
-            self.num_ics = 1
-
-        # attractor tests
-        if self.apply_attractor_tests:
-            self.attractor_validator = self._build_attractor_validator()
-        else:
-            self.attractor_validator = None
-            if self.num_param_perturbations > 1:
-                warnings.warn(
-                    "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
-                )
-
-        # track the failed numerical integrations
+    def __post_init__(self) -> None:
         self.failed_integrations = defaultdict(list)
-
-    def _build_attractor_validator(self) -> AttractorValidator:
-        """
-        Builds a list of attractor tests to check for each trajectory ensemble.
-        """
-        print("Setting up callbacks to test attractor properties")
-        validator = AttractorValidator(**self.attractor_validator_kwargs)
-        validator.add_test_fn(
-            partial(check_boundedness, threshold=1e3, max_num_stds=15, save_plot=False)
-        )
-        validator.add_test_fn(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
-        validator.add_test_fn(
-            partial(check_not_transient, max_transient_prop=0.2, atol=1e-3)
-        )
-        validator.add_test_fn(
-            partial(check_not_trajectory_decay, tail_prop=0.5, atol=1e-3)
-        )
-        # for STRICT MODE (strict criteria for detecting limit cycles), try:
-        # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
-        validator.add_test_fn(
-            partial(
-                check_not_limit_cycle,
-                tolerance=1e-3,
-                min_prop_recurrences=0.1,
-                min_counts_per_rtime=100,
-                min_block_length=50,
-                enforce_endpoint_recurrence=True,
-                save_plot=False,
+        if self.param_sampler is None:
+            assert (
+                self.num_param_perturbations == 1
+            ), "No parameter sampler provided, but num_param_perturbations > 1"
+        if self.ic_sampler is None:
+            assert (
+                self.num_ics == 1
+            ), "No initial condition sampler provided, but num_ics > 1"
+        if self.attractor_tests is None and self.num_param_perturbations > 1:
+            warnings.warn(
+                "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
             )
-        )
-        validator.add_test_fn(
-            partial(
-                check_power_spectrum,
-                rel_peak_height_threshold=1e-5,
-                rel_prominence_threshold=None,
-                save_plot=False,
+        elif self.attractor_tests is not None:
+            self.attractor_validator = AttractorValidator(
+                **self.attractor_validator_kwargs, tests=self.attractor_tests
             )
-        )
-        validator.add_test_fn(check_lyapunov_exponent)
-        return validator
 
     def save_dyst_ensemble(
         self,
@@ -292,9 +229,26 @@ class DystData:
         save_dyst_dir: Optional[str],
         failed_dyst_dir: Optional[str],
     ) -> None:
-        ensemble, failed_ensemble = self._process_ensemble_list(
-            ensemble_list, sample_idx
-        )
+        """
+        Process the ensemble list by checking for valid attractors and filtering out invalid ones.
+        Also, transposes and stacks trajectories to get shape (num_samples, num_dims, num_timesteps).
+        """
+        print(f"Processing {len(ensemble_list)} ensembles")
+        # transpose and stack to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
+        ensemble = {
+            key: np.stack(
+                [d[key] for d in ensemble_list if key in d], axis=0
+            ).transpose(0, 2, 1)
+            for key in [key for d in ensemble_list for key in d.keys()]
+        }
+
+        print(f"Checking if attractor properties are valid for {len(ensemble)} systems")
+        if self.attractor_validator is not None:
+            ensemble, failed_ensemble = (
+                self.attractor_validator.multiprocessed_filter_ensemble(
+                    ensemble, first_sample_idx=sample_idx
+                )
+            )
 
         if save_dyst_dir is not None:
             print(
@@ -316,34 +270,6 @@ class DystData:
                     split_coords=self.split_coords,
                     verbose=self.verbose,
                 )
-
-    def _process_ensemble_list(
-        self,
-        ensemble_list: List[Dict[str, np.ndarray]],
-        sample_idx: int,
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
-        """
-        Process the ensemble list by checking for valid attractors and filtering out invalid ones.
-        Also, transposes and stacks trajectories to get shape (num_samples, num_dims, num_timesteps).
-        """
-        print(f"Processing {len(ensemble_list)} ensembles")
-        # transpose and stack to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
-        ensemble = {
-            key: np.stack(
-                [d[key] for d in ensemble_list if key in d], axis=0
-            ).transpose(0, 2, 1)
-            for key in [key for d in ensemble_list for key in d.keys()]
-        }
-        failed_ensemble = {}
-
-        print(f"Checking if attractor properties are valid for {len(ensemble)} systems")
-        if self.attractor_validator is not None:
-            ensemble, failed_ensemble = (
-                self.attractor_validator.multiprocessed_filter_ensemble(
-                    ensemble, first_sample_idx=sample_idx
-                )
-            )
-        return ensemble, failed_ensemble
 
     def save_summary(self, save_json_path: str):
         """

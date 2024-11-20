@@ -3,6 +3,7 @@ Training augmentations for multivariate time series
 """
 
 from dataclasses import dataclass
+from itertools import combinations_with_replacement
 from typing import Optional
 
 import numpy as np
@@ -106,6 +107,49 @@ class FixedDimensionDelayEmbeddingTransform:
         ]
 
         return np.vstack([timeseries[:, 1 + per_dim_embed_dim :], *delay_embeddings])
+
+
+@dataclass
+class PolynomialEmbeddingTransform:
+    """Embed the channel dimension with a polynomial basis
+
+    NOTE: this embeds along the channel dimension unlike the PatchTSTEmbedding which embeds along the patch length dimension
+    """
+
+    degree: int
+
+    def __call__(self, timeseries: NDArray) -> NDArray:
+        """
+        Parameters:
+            timeseries (`NDArray` of shape `(num_channels, num_timepoints)`, *required*):
+                Timeseries to embed
+        """
+        indices = list(
+            combinations_with_replacement(range(timeseries.shape[0]), self.degree)
+        )
+        features = np.stack(
+            [np.prod(timeseries[:, :, idx], axis=-1) for idx in indices], axis=-1
+        )
+        return np.concatenate([timeseries, features], axis=-1)
+
+
+@dataclass
+class QuadraticEmbeddingTransform:
+    """Embed the channel dimension with a quadratic basis
+
+    NOTE: does the same thing as PatchTSTPolynomialEmbedding with degree=2,
+    but much more efficiently
+    """
+
+    def __call__(self, timeseries: NDArray) -> NDArray:
+        """
+        Parameters:
+            timeseries (`NDArray` of shape `(num_channels, num_timepoints)`, *required*):
+                Timeseries to embed
+        """
+        indices = np.triu_indices(timeseries.shape[0], timeseries.shape[0])
+        features = timeseries[:, indices[0]] * timeseries[:, indices[1]]
+        return np.concatenate([timeseries, features], axis=-1)
 
 
 @dataclass

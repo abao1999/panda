@@ -1,7 +1,6 @@
 """Exposed PatchTST model, taken from HuggingFace transformers"""
 
 from dataclasses import dataclass
-from itertools import combinations_with_replacement
 from typing import Optional, Tuple, Union
 
 import torch
@@ -50,52 +49,6 @@ class PatchTSTEmbedding(nn.Module):
         """
         embeddings = self.input_embedding(patch_input)
         return embeddings
-
-
-class PatchTSTPolynomialEmbedding(nn.Module):
-    """Embed the channel dimension with a polynomial basis
-
-    NOTE: this embeds along the channel dimension unlike the PatchTSTEmbedding which embeds along the patch length dimension
-    """
-
-    def __init__(self, config: PatchTSTConfig):
-        super().__init__()
-        self.degree = config.polynomial_degree
-
-    def forward(self, timeseries: torch.Tensor):
-        """
-        Parameters:
-            timeseries (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
-                Timeseries to embed
-        """
-        indices = list(
-            combinations_with_replacement(range(timeseries.shape[2]), self.degree)
-        )
-        features = torch.stack(
-            [torch.prod(timeseries[:, :, idx], dim=-1) for idx in indices], dim=-1
-        )
-        return torch.cat([timeseries, features], dim=-1)
-
-
-class PatchTSTQuadraticEmbedding(nn.Module):
-    """Embed the channel dimension with a quadratic basis
-
-    NOTE: does the same thing as PatchTSTPolynomialEmbedding with degree=2,
-    but much more efficiently
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, timeseries: torch.Tensor):
-        """
-        Parameters:
-            timeseries (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
-                Timeseries to embed
-        """
-        indices = torch.triu_indices(timeseries.shape[2], timeseries.shape[2])
-        features = timeseries[:, :, indices[0]] * timeseries[:, :, indices[1]]
-        return torch.cat([timeseries, features], dim=-1)
 
 
 class PatchTSTRMSNorm(nn.Module):
@@ -691,15 +644,6 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
     def __init__(self, config: PatchTSTConfig):
         super().__init__(config)
 
-        if not getattr(config, "use_channel_embedding", False):
-            self.channel_embedding = nn.Identity()
-        else:
-            if config.channel_embedding == "quadratic":
-                self.channel_embedding = PatchTSTQuadraticEmbedding()
-            else:
-                raise ValueError(
-                    f"Unknown channel embedding: {config.channel_embedding}"
-                )
         self.scaler = PatchTSTScaler(config)
         self.quantizer = PatchTSTQuantizer(
             high=config.quantizer_high, low=config.quantizer_low
@@ -771,19 +715,12 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
             else self.config.output_hidden_states
         )
 
-        # 0. Apply channel embedding
-        # past_values: tensor [bs x sequence_length x num_input_channels]
-
-        embedded_past_values = self.channel_embedding(past_values)
-
         if past_observed_mask is None:
-            past_observed_mask = torch.ones_like(embedded_past_values)
+            past_observed_mask = torch.ones_like(past_values)
 
         # 1. Apply scaler to instance-normalize the data
         # timeseries: tensor [bs x sequence_length x num_input_channels]
-        scaled_past_values, loc, scale = self.scaler(
-            embedded_past_values, past_observed_mask
-        )
+        scaled_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
 
         # 2. (Optional) Apply quantizer to partition phase space
         # quantized timeseries: tensor [bs x sequence_length x num_input_channels]
@@ -1173,16 +1110,15 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             y_hat_out = y_hat * model_output.scale + model_output.loc
 
         if future_values is not None:
-            future_values_channel_embed = self.model.channel_embedding(future_values)
             if self.distribution_output:
                 distribution = self.distribution_output.distribution(
                     y_hat, loc=model_output.loc, scale=model_output.scale
                 )
-                loss_val = nll(distribution, future_values_channel_embed)
+                loss_val = nll(distribution, future_values)
                 # take average of the loss
                 loss_val = weighted_average(loss_val)
             else:
-                loss_val = self.mse_loss(y_hat_out, future_values_channel_embed)
+                loss_val = self.mse_loss(y_hat_out, future_values)
                 # print(y_hat_out.shape, future_values.shape)
                 # print("loc", model_output.loc, "scale", model_output.scale)
                 # print(
