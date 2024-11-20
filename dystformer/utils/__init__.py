@@ -1,4 +1,5 @@
 from .data_utils import (
+    accumulate_coords,
     construct_basic_affine_map,
     convert_to_arrow,
     get_system_filepaths,
@@ -19,6 +20,7 @@ from .eval_utils import (
     save_evaluation_results,
 )
 from .plot_utils import (
+    plot_completions_evaluation,
     plot_forecast_gt_trajs_multivariate,
     plot_forecast_trajs_multivariate,
     plot_trajs_multivariate,

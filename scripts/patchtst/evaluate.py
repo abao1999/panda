@@ -73,11 +73,15 @@ def evaluate_mlm_model(
             )
 
             completions = (
-                completions_output.completions.view_as(past_batch)
+                completions_output.completions.reshape(
+                    past_batch.shape[0], past_batch.shape[-1], -1
+                )
                 .detach()
                 .cpu()
                 .numpy()
+                .transpose(0, 2, 1)
             )
+
             if completions_output.patched_past_values is None:
                 raise ValueError("Patched past values are None")
 
@@ -88,6 +92,7 @@ def evaluate_mlm_model(
             #     .cpu()
             #     .numpy()
             # )
+
             processed_past_values = past_batch.detach().cpu().numpy()
             masked_past_values = None
 
