@@ -1119,19 +1119,6 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 loss_val = weighted_average(loss_val)
             else:
                 loss_val = self.mse_loss(y_hat_out, future_values)
-                # print(y_hat_out.shape, future_values.shape)
-                # print("loc", model_output.loc, "scale", model_output.scale)
-                # print(
-                #     "future_values loc",
-                #     future_values.mean(dim=1),
-                #     "future_values scale",
-                #     future_values.std(dim=1),
-                # )
-                # print(
-                #     y_hat_out.mean().item(),
-                #     future_values.mean().item(),
-                #     loss_val.item(),
-                # )
 
         loc = model_output.loc
         scale = model_output.scale
