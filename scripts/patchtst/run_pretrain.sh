@@ -27,8 +27,6 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.quantizer_low=-15.0 \
         patchtst.norm_type=rmsnorm \
         patchtst.channel_attention=true \
-        patchtst.use_channel_embedding=true \
-        patchtst.channel_embedding=quadratic \
         patchtst.mode=pretrain \
         train.per_device_train_batch_size=256 \
         train.max_steps=300_000 \
@@ -45,6 +43,5 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         noiser.eps=0.008 \
         noiser.epoch_stop=0.5 \
         noiser.log_steps=100 \
-        use_time_delay_embed=true \
         fixed_dim=21 \
         "$@"

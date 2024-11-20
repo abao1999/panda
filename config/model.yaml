@@ -48,7 +48,6 @@ patchtst:
   rope_percent: 0.8
 
   # channel embedding
-  use_channel_embedding: true
   channel_embedding: "quadratic"
   polynomial_degree: 2
 
@@ -57,7 +56,6 @@ patchtst:
   # quantizer and noiser upper and lower limits
   quantizer_high: 15.0
   quantizer_low: -15.0
-
 
 chronos:
   model_id: amazon/chronos-t5-small

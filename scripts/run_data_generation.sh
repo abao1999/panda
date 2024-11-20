@@ -22,14 +22,15 @@
 #     events.max_duration=240 \
 
 # couple flow space
-python -W ignore scripts/make_skew_systems.py \
+python -W ignore scripts/make_skew_systems_old.py \
     dyst_data.sys_class=continuous_no_delay \
-    dyst_data.split_prefix=big_flow \
+    dyst_data.split_prefix=flow_run2 \
     dyst_data.num_param_perturbations=50 \
     dyst_data.param_scale=1.0 \
+    dyst_data.rseed=123 \
     skew.couple_phase_space=False \
     skew.couple_flows=True \
-    skew.n_combos=1024 \
+    skew.n_combos=1040 \
     events.max_duration=300 \
 
 

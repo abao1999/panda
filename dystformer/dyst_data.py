@@ -167,7 +167,7 @@ class DystData:
                 print("Making ensemble for sample ", sample_idx)
                 ensemble = make_trajectory_ensemble(
                     self.num_points,
-                    subset=systems,
+                    subset=systems,  # type: ignore
                     ic_transform=self.ic_sampler if sample_idx > 0 else None,
                     param_transform=self.param_sampler if i > 0 else None,
                     ic_rng=param_rng,

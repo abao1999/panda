@@ -15,6 +15,7 @@ data/
 *.jpg
 *.jpeg
 *.out
+*_old.py
 nohup.out
 tests/*.json
 tests/*.png

@@ -17,6 +17,8 @@ from dystformer.utils import (
     sample_index_pairs,
 )
 
+# TODO: update this, since we changed how augmentations work
+
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):

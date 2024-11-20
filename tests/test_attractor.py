@@ -76,12 +76,14 @@ if __name__ == "__main__":
         samples_subset = None
 
     ### Build attractor validator ###
+    tests = [
+        partial(check_boundedness, threshold=1e3, max_num_stds=10),
+        partial(check_not_trajectory_decay, atol=1e-3, tail_prop=0.5),
+        partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1),
+    ]
     validator = AttractorValidator(
-        verbose=0, transient_time_frac=0.05, plot_save_dir=None
+        verbose=True, transient_time_frac=0.05, plot_save_dir=None, tests=tests
     )
-    validator.add_test_fn(partial(check_boundedness, threshold=1e3, max_num_stds=10))
-    validator.add_test_fn(partial(check_not_trajectory_decay, atol=1e-3, tail_prop=0.5))
-    validator.add_test_fn(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
 
     ### Make ensemble from Arrow files ###
     ensemble = make_ensemble_from_arrow_dir(

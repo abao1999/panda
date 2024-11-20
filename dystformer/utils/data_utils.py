@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from itertools import combinations
+from itertools import permutations
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
 
@@ -14,9 +14,9 @@ from gluonts.dataset.common import FileDataset
 def split_systems(
     prop: float,
     seed: int,
-    sys_class: Optional[str] = "continuous",
+    sys_class: str = "continuous",
     excluded_systems: List[str] = [],
-):
+) -> Tuple[List[str], List[str]]:
     """
     Split the list of attractors into training and testing sets.
     if exclude_systems is provided, the systems in the list will be excluded
@@ -150,7 +150,7 @@ def sample_index_pairs(
     sampled_pairs = (rng or np.random).choice(
         num_total_pairs, size=num_pairs, replace=False
     )
-    all_pairs = list(combinations(range(size), 2))
+    all_pairs = list(permutations(range(size), 2))  # not combinations
     return (all_pairs[i] for i in sampled_pairs)
 
 

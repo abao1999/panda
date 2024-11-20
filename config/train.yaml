@@ -27,7 +27,6 @@ train:
   ddp_find_unused_parameters: false
   remove_unused_columns: false
 
-
 quantizer:
   enabled: false
   step_interval: 10_000

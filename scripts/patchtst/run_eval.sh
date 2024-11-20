@@ -13,9 +13,8 @@ python scripts/patchtst/evaluate.py \
     patchtst.d_model=512 \
     patchtst.num_parallel_samples=1 \
     patchtst.context_length=512 \
-    patchtst.use_channel_embedding=false \
     eval.mode=pretrain \
-    eval.data_path=$WORK/data/big_flow_skew_systems \
+    eval.data_path=$WORK/data/flow_run2_skew_systems \
     eval.checkpoint_path=$WORK/checkpoints/run-281/checkpoint-final \
     eval.num_test_instances=1 \
     eval.batch_size=64 \
