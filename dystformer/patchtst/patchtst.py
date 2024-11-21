@@ -1061,6 +1061,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        noise_scale: float = 0.0,
     ) -> Union[Tuple, PatchTSTForPredictionOutput]:
         r"""
         Parameters:
@@ -1098,6 +1099,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
             return_dict=True,
+            noise_scale=noise_scale,
         )
         # get output head
         y_hat = self.head(model_output.last_hidden_state)
@@ -1106,8 +1108,11 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
 
         if self.distribution_output:
             y_hat_out = y_hat
+
         else:
-            y_hat_out = y_hat * model_output.scale + model_output.loc
+            y_hat_out = y_hat  # * model_output.scale + model_output.loc
+            future_values = (future_values - model_output.loc) / model_output.scale
+            future_values = self.model.noiser(future_values, noise_scale)
 
         if future_values is not None:
             if self.distribution_output:

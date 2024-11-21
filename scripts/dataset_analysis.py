@@ -276,6 +276,8 @@ if __name__ == "__main__":
 
     # ## Filter saved trajectories
     # import json
+    # from functools import partial
+
     # rejected_samples = filter_saved_trajectories_multiprocessed(
     #     ensemble, filter_fn=partial(filter_quantile_limits, max_abs_val=15)
     # )
@@ -287,6 +289,8 @@ if __name__ == "__main__":
     #     json.dump(rejected_samples, f, indent=4)
     # print(f"Saved rejected samples to {rejected_samples_json}")
     # print(f"Rejected {len(rejected_samples)} samples")
+
+    # exit()
 
     ## Quantile Limits
     quantile_limits = compute_quantities_multiprocessed(

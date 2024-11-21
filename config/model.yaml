@@ -44,8 +44,8 @@ patchtst:
   num_parallel_samples: 100
 
   # rope positional embeddings
-  max_wavelength: 5000
-  rope_percent: 0.8
+  max_wavelength: 10_000
+  rope_percent: 1.0
 
   # channel embedding
   channel_embedding: "quadratic"
