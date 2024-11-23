@@ -9,7 +9,6 @@ import hydra
 import numpy as np
 import torch
 import transformers
-from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import batcher
 from tqdm.auto import tqdm
@@ -18,7 +17,6 @@ from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
     log_on_main,
-    rolling_prediction_window_indices,
     save_evaluation_results,
 )
 
@@ -85,15 +83,17 @@ def evaluate_mlm_model(
             if completions_output.patched_past_values is None:
                 raise ValueError("Patched past values are None")
 
-            # NOTE: use this to get the patched values + flatten the last two dims
-            # processed_past_values = (
-            #     completions_output.patched_past_values.view_as(past_batch)
-            #     .detach()
-            #     .cpu()
-            #     .numpy()
-            # )
+            processed_past_values = (
+                completions_output.patched_past_values.reshape(
+                    past_batch.shape[0], past_batch.shape[-1], -1
+                )
+                .detach()
+                .cpu()
+                .numpy()
+                .transpose(0, 2, 1)
+            )
 
-            processed_past_values = past_batch.detach().cpu().numpy()
+            # processed_past_values = past_batch.detach().cpu().numpy()
             masked_past_values = None
 
             if undo_normalization:
@@ -102,7 +102,7 @@ def evaluate_mlm_model(
                 loc = completions_output.loc.detach().cpu().numpy()
                 scale = completions_output.scale.detach().cpu().numpy()
                 completions = completions * scale + loc
-                # processed_past_values = processed_past_values * scale + loc
+                processed_past_values = processed_past_values * scale + loc
 
             completions = completions.transpose(0, 2, 1)
             processed_past_values = processed_past_values.transpose(0, 2, 1)
@@ -157,7 +157,15 @@ def evaluate_forecasting_model(
     metrics: Optional[List[str]] = None,
     parallel_sample_reduction: str = "none",
     return_predictions: bool = False,
-) -> Tuple[Optional[Dict[str, np.ndarray]], Dict[str, Dict[str, float]]]:
+    return_contexts: bool = False,
+    return_labels: bool = False,
+    redo_normalization: bool = False,
+) -> Tuple[
+    Optional[Dict[str, np.ndarray]],
+    Optional[Dict[str, np.ndarray]],
+    Optional[Dict[str, np.ndarray]],
+    Dict[str, Dict[str, float]],
+]:
     """
     Evaluate the model on each test system and save metrics.
 
@@ -169,14 +177,22 @@ def evaluate_forecasting_model(
         parallel_sample_reduction: How to reduce the parallel samples over dim 0,
             only used if return_predictions is True
         return_predictions: Whether to return the predictions.
+        return_contexts: Whether to return the contexts.
+        return_labels: Whether to return the future values.
     Returns:
         A tuple containing:
         - system_predictions: A dictionary mapping system names to their predictions.
             Only returned if `return_predictions` is True.
+        - system_contexts: A dictionary mapping system names to their contexts.
+            Only returned if `return_contexts` is True.
+        - system_labels: A dictionary mapping system names to their future values.
+            Only returned if `return_labels` is True.
         - system_metrics: A nested dictionary containing computed metrics for each system.
     """
     assert model.mode == "predict", "Model must be in predict mode"
     system_predictions = {}
+    system_contexts = {}
+    system_labels = {}
     system_metrics = {system: {} for system in systems}
 
     parallel_sample_reduction_fn = {
@@ -184,10 +200,10 @@ def evaluate_forecasting_model(
         "median": lambda x: np.median(x, axis=0),
     }.get(parallel_sample_reduction, lambda x: x)
 
-    for system in tqdm(systems, desc="Evaluating model"):
+    for system in tqdm(systems, desc="Forecasting..."):
         print(f"Evaluating {system}")
         dataset = systems[system]
-        predictions, labels = [], []
+        predictions, labels, contexts, future_values = [], [], [], []
         for batch in batcher(dataset, batch_size=batch_size):
             past_values, future_values = zip(
                 *[(data["past_values"], data["future_values"]) for data in batch]
@@ -195,37 +211,65 @@ def evaluate_forecasting_model(
             past_batch = torch.stack(past_values, dim=0).to(model.device)
 
             # shape: (num_parallel_samples, batch_size, prediction_length, num_channels)
-            preds = model.predict(
-                past_batch,
-                prediction_length=prediction_length,
-                limit_prediction_length=limit_prediction_length,
-            ).transpose(1, 0)
+            preds = (
+                model.predict(
+                    past_batch,
+                    prediction_length=prediction_length,
+                    limit_prediction_length=limit_prediction_length,
+                )
+                .cpu()
+                .numpy()
+                .transpose(1, 0, 2, 3)
+            )
+
+            context = past_batch.cpu().numpy()
 
             # shape: (batch_size, sampler_prediction_length, num_channels)h
-            future_batch = torch.stack(future_values, dim=0)
-
+            future_batch = torch.stack(future_values, dim=0).cpu().numpy()
             # Truncate predictions to match future_batch length if needed
             if preds.shape[2] > future_batch.shape[1]:
                 preds = preds[..., : future_batch.shape[1], :]
 
+            if redo_normalization:
+                # compute loc and scale from past_batch
+                loc = context.mean(axis=1)
+                scale = context.std(axis=1)
+                loc = np.expand_dims(loc, axis=1)
+                scale = np.expand_dims(scale, axis=1)
+                future_batch = (future_batch - loc) / scale
+                # preds = (preds - loc) / scale
+                context = (context - loc) / scale
+
             labels.append(future_batch)
             predictions.append(preds)
-
+            contexts.append(context)
         # num_windows is either config.eval.num_test_instances for the sampled window style
         # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
-        predictions = torch.cat(predictions, dim=1).cpu().numpy()
+        predictions = np.concatenate(predictions, axis=1)
         # shape: (num_parallel_samples, num_windows*num_datasets, num_channels)
-        labels = torch.cat(labels, dim=0).cpu().numpy()
+        labels = np.concatenate(labels, axis=0)
+        contexts = np.concatenate(contexts, axis=0)
 
-        system_metrics[system] = compute_metrics(predictions, labels, include=metrics)  # type: ignore
+        # system_metrics[system] = compute_metrics(predictions, labels, include=metrics)  # type: ignore
 
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
         if return_predictions:
-            system_predictions[system] = parallel_sample_reduction_fn(predictions)
+            system_predictions[system] = parallel_sample_reduction_fn(
+                predictions
+            ).transpose(0, 2, 1)
+        if return_contexts:
+            system_contexts[system] = contexts.transpose(0, 2, 1)
+        if return_labels:
+            system_labels[system] = labels.transpose(0, 2, 1)
 
-    return system_predictions if return_predictions else None, system_metrics
+    return (
+        system_predictions if return_predictions else None,
+        system_contexts if return_contexts else None,
+        system_labels if return_labels else None,
+        system_metrics,
+    )
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -296,7 +340,7 @@ def main(cfg):
     )
 
     if cfg.eval.mode == "predict":
-        predictions, metrics = evaluate_forecasting_model(
+        predictions, contexts, labels, metrics = evaluate_forecasting_model(
             model,
             test_datasets,
             batch_size=cfg.eval.batch_size,
@@ -304,23 +348,48 @@ def main(cfg):
             limit_prediction_length=cfg.eval.limit_prediction_length,
             metrics=["mse", "mae", "smape", "mape", "r2_score", "spearman", "pearson"],
             return_predictions=True,
+            return_contexts=True,
+            return_labels=True,
             parallel_sample_reduction="mean",
+            redo_normalization=True,
         )
+        window_indices = None
+        # # get the indices of each prediction window for each timeseries in each system
+        # window_indices = rolling_prediction_window_indices(
+        #     test_data_dict,
+        #     cfg.eval.window_stride,
+        #     cfg.patchtst.context_length,
+        #     cfg.patchtst.prediction_length,
+        # )
 
-        # get the indices of each prediction window for each timeseries in each system
-        window_indices = rolling_prediction_window_indices(
-            test_data_dict,
-            cfg.eval.window_stride,
-            cfg.patchtst.context_length,
-            cfg.patchtst.prediction_length,
-        )
-
-        if predictions is not None:
+        if predictions is not None and contexts is not None:
+            full_trajs = {}
+            for system in predictions:
+                if system not in contexts:
+                    raise ValueError(f"System {system} not in contexts")
+                full_trajs[system] = np.concatenate(
+                    [contexts[system], predictions[system]], axis=2
+                )
             save_eval_results(
                 metrics,
-                coords=predictions,
+                coords=full_trajs,
                 window_indices=window_indices,
                 coords_save_dir=cfg.eval.forecast_save_dir,
+            )
+
+        if labels is not None and contexts is not None:
+            full_trajs = {}
+            for system in labels:
+                if system not in contexts:
+                    raise ValueError(f"System {system} not in contexts")
+                full_trajs[system] = np.concatenate(
+                    [contexts[system], labels[system]], axis=2
+                )
+            save_eval_results(
+                metrics,
+                coords=full_trajs,
+                window_indices=window_indices,
+                coords_save_dir=cfg.eval.labels_save_dir,
             )
 
     elif cfg.eval.mode == "pretrain":
@@ -330,7 +399,7 @@ def main(cfg):
                 test_datasets,
                 batch_size=cfg.eval.batch_size,
                 num_systems=10,
-                undo_normalization=True,
+                undo_normalization=False,
                 return_completions=True,
                 return_processed_past_values=True,
                 return_masked_past_values=False,

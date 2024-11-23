@@ -7,8 +7,10 @@ eval:
   batch_size: 32
 
   forecast_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/forecasts
+  labels_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/labels
   completions_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/completions
   patch_input_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/patch_input
+  masked_input_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/masked_input
 
   metrics_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/metrics
   metrics_fname: metrics.json

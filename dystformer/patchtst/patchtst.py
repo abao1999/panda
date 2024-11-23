@@ -1105,14 +1105,11 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         y_hat = self.head(model_output.last_hidden_state)
 
         loss_val = None
-
         if self.distribution_output:
             y_hat_out = y_hat
 
         else:
             y_hat_out = y_hat  # * model_output.scale + model_output.loc
-            future_values = (future_values - model_output.loc) / model_output.scale
-            future_values = self.model.noiser(future_values, noise_scale)
 
         if future_values is not None:
             if self.distribution_output:
@@ -1123,6 +1120,8 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 # take average of the loss
                 loss_val = weighted_average(loss_val)
             else:
+                future_values = (future_values - model_output.loc) / model_output.scale
+                future_values = self.model.noiser(future_values, noise_scale)
                 loss_val = self.mse_loss(y_hat_out, future_values)
 
         loc = model_output.loc

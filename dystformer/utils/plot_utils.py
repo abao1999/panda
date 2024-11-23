@@ -266,231 +266,126 @@ def plot_completions_evaluation(
     plt.close()
 
 
-def plot_forecast_trajs_multivariate(
-    dyst_data: np.ndarray,
+def plot_forecast_evaluation(
+    forecasts: np.ndarray,
+    ground_truth: np.ndarray,
     context_length: int,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
-    n_samples_plot: Optional[int] = None,
+    samples_subset: Optional[List[int]] = None,
 ) -> None:
     """
-    Plot multivariate timeseries from dyst_data
+    Plot side-by-side 3D multivariate timeseries for completions and context,
+    and overlay univariate series for each dimension below with shared legends.
     """
-    dyst_name = plot_name.split("_")[0]
-    print("Plotting forecast vs ground truth for ", dyst_name)
     os.makedirs(save_dir, exist_ok=True)
-    if n_samples_plot is None:
-        num_tot_samples = dyst_data.shape[0]
-        n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
-    else:
-        n_samples_plot = min(N_SAMPLES_PLOT, n_samples_plot)
+    num_tot_samples = min(forecasts.shape[0], ground_truth.shape[0])
+    n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
 
-    # Plot the first two coordinates
-    save_path = os.path.join(save_dir, f"{plot_name}.png")
-    print("Plotting 2D trajectories and saving to ", save_path)
-    plt.figure(figsize=(6, 6))
+    if samples_subset is not None:
+        if n_samples_plot > len(samples_subset):
+            warnings.warn(
+                f"Number of samples to plot is greater than the number of samples in the subset. Plotting all {len(samples_subset)} samples in the subset."
+            )
+            n_samples_plot = len(samples_subset)
+
+    # Create a figure with 2 rows: one for 3D plots and one for univariate plots
+    fig = plt.figure(figsize=(16, 12))
+    ax1 = fig.add_subplot(221, projection="3d")
+    ax2 = fig.add_subplot(222, projection="3d")
+    ax3 = fig.add_subplot(234)
+    ax4 = fig.add_subplot(235)
+    ax5 = fig.add_subplot(236)
+
+    # Collect lines and labels for a shared legend
+    lines = []
+    labels = []
+
+    # Plot 3D trajectories
     for sample_idx in range(n_samples_plot):
-        curr_color = COLORS[sample_idx % len(COLORS)]
-        plt.scatter(
-            *dyst_data[sample_idx, :2, 0],
-            marker="*",
-            s=25,
-            alpha=1,
+        label_sample_idx = (
+            samples_subset[sample_idx] if samples_subset is not None else sample_idx
+        )
+        curr_color = COLORS[label_sample_idx % len(COLORS)]
+
+        # Plot context in 3D
+        (line1,) = ax1.plot(
+            ground_truth[sample_idx, 0, :context_length],
+            ground_truth[sample_idx, 1, :context_length],
+            ground_truth[sample_idx, 2, :context_length],
+            alpha=0.4,
+            linewidth=1,  # Thin line for context_length points
             color=curr_color,
         )
-        # plot x and y
-        plt.plot(
-            dyst_data[sample_idx, 0, :context_length],
-            dyst_data[sample_idx, 1, :context_length],
-            alpha=0.25,
+        ax1.plot(
+            ground_truth[sample_idx, 0, context_length:],
+            ground_truth[sample_idx, 1, context_length:],
+            ground_truth[sample_idx, 2, context_length:],
+            alpha=0.8,
+            linewidth=2,  # Thick line for points after context_length
+            color=curr_color,
+            label=f"Sample {label_sample_idx} Ground Truth",
+        )
+        ax1.set_title("Ground Truth")
+        # Plot forecasts in 3D
+        (line2,) = ax2.plot(
+            forecasts[sample_idx, 0, :context_length],
+            forecasts[sample_idx, 1, :context_length],
+            forecasts[sample_idx, 2, :context_length],
+            alpha=0.4,
             linewidth=1,
             color=curr_color,
         )
-        plt.scatter(
-            *dyst_data[sample_idx, :2, context_length],
-            marker="*",
-            s=100,
-            alpha=1,
-            color=curr_color,
-        )
-        # plot x and y
-        plt.plot(
-            dyst_data[sample_idx, 0, context_length:],
-            dyst_data[sample_idx, 1, context_length:],
-            alpha=0.5,
+        ax2.set_title("Forecasts")
+        ax2.plot(
+            forecasts[sample_idx, 0, context_length:],
+            forecasts[sample_idx, 1, context_length:],
+            forecasts[sample_idx, 2, context_length:],
+            alpha=0.8,
             linewidth=2,
             color=curr_color,
+            label=f"Sample {label_sample_idx} Forecasts",
         )
-    plt.xlabel("X")
-    plt.ylabel("Y")
-    plt.title(f"{dyst_name} Forecast")
+
+        # Add lines and labels for the first sample only to avoid duplicates
+        if sample_idx == 0:
+            lines.append(line1)
+            labels.append(f"Sample {label_sample_idx}")
+
+        # Plot univariate series for each dimension
+        for dim, ax in enumerate([ax3, ax4, ax5]):
+            ax.plot(
+                ground_truth[sample_idx, dim, context_length:],
+                alpha=0.5,
+                linewidth=1,
+                color=curr_color,
+                linestyle="-",
+            )
+            ax.plot(
+                forecasts[sample_idx, dim, context_length:],
+                alpha=0.5,
+                linewidth=1,
+                color=curr_color,
+                linestyle="--",
+            )
+            # ax.axvline(x=context_length, color="black", linestyle="-", linewidth=1)
+            ax.set_title(f"Dimension {dim + 1}")
+            ax.set_xlabel("Timesteps")
+
+    # # Create a shared legend for samples
+    # fig.legend(lines, labels, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 0.95))
+
+    # Add a legend for line styles in the univariate plots
+    line_ground_truth = plt.Line2D(  # type: ignore
+        [0], [0], color="black", linestyle="-", label="Ground Truth"
+    )
+    line_forecasts = plt.Line2D(  # type: ignore
+        [0], [0], color="black", linestyle="--", label="Forecasts"
+    )
+
+    ax3.legend(handles=[line_ground_truth, line_forecasts], loc="upper right")
+
+    plt.suptitle(plot_name.replace("_", " + "), fontsize=16)  # y=0.95
+    save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
     plt.savefig(save_path, dpi=300)
     plt.close()
-
-    # 3D plot (first three coordinates)
-    save_path = os.path.join(save_dir, f"{plot_name}_3D.png")
-    print("Plotting 3D trajectories and saving to ", save_path)
-    if dyst_data.shape[1] >= 3:
-        fig = plt.figure(figsize=(6, 6))
-        ax = fig.add_subplot(111, projection="3d")
-        for sample_idx in range(n_samples_plot):
-            curr_color = COLORS[sample_idx % len(COLORS)]
-            ax.scatter(
-                *dyst_data[sample_idx, :3, 0],
-                marker="*",
-                s=25,
-                alpha=1,
-                color=curr_color,
-            )
-            # plot x and y and z
-            ax.plot(
-                dyst_data[sample_idx, 0, :context_length],
-                dyst_data[sample_idx, 1, :context_length],
-                dyst_data[sample_idx, 2, :context_length],
-                alpha=0.5,
-                linewidth=1,
-                color=curr_color,
-            )
-            ax.scatter(
-                *dyst_data[sample_idx, :3, context_length],
-                marker="*",
-                s=100,
-                alpha=1,
-                color=curr_color,
-            )
-            ax.plot(
-                dyst_data[sample_idx, 0, context_length:],
-                dyst_data[sample_idx, 1, context_length:],
-                dyst_data[sample_idx, 2, context_length:],
-                alpha=0.5,
-                linewidth=2,
-                color=curr_color,
-            )
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
-        ax.set_zlabel("Z")  # type: ignore
-        ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
-        ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
-        plt.title(f"{dyst_name} Forecast")
-        plt.savefig(save_path, dpi=300)
-        plt.close()
-
-
-def plot_forecast_gt_trajs_multivariate(
-    fc_data: np.ndarray,
-    gt_data: np.ndarray,
-    context_length: int,
-    save_dir: str = "tests/figs",
-    plot_name: str = "dyst",
-    n_samples_plot: Optional[int] = None,
-) -> None:
-    """
-    Plot multivariate timeseries from ground trugh and forecasted data
-    """
-    dyst_name = plot_name.split("_")[0]
-    print("Plotting forecast vs ground truth for ", dyst_name)
-    os.makedirs(save_dir, exist_ok=True)
-    if n_samples_plot is None:
-        num_tot_samples = gt_data.shape[0]
-        assert num_tot_samples == fc_data.shape[0], "Mismatch in number of samples"
-        n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
-    else:
-        n_samples_plot = min(N_SAMPLES_PLOT, n_samples_plot)
-
-    # Plot the first two coordinates
-    save_path = os.path.join(save_dir, f"{plot_name}.png")
-    print("Plotting 2D trajectories and saving to ", save_path)
-    plt.figure(figsize=(6, 6))
-    for sample_idx in range(n_samples_plot):
-        curr_color = COLORS[sample_idx % len(COLORS)]
-        plt.scatter(
-            *gt_data[sample_idx, :2, 0],
-            marker="*",
-            s=25,
-            alpha=1,
-            color=curr_color,
-        )
-        # plot x and y
-        plt.plot(
-            gt_data[sample_idx, 0, :],
-            gt_data[sample_idx, 1, :],
-            alpha=0.25,
-            linewidth=1,
-            color=curr_color,
-            label="Ground Truth",
-        )
-        plt.scatter(
-            *gt_data[sample_idx, :2, context_length],
-            marker="*",
-            s=100,
-            alpha=1,
-            color=curr_color,
-        )
-        # plot x and y
-        plt.plot(
-            fc_data[sample_idx, 0, context_length:],
-            fc_data[sample_idx, 1, context_length:],
-            alpha=0.5,
-            linewidth=1,
-            linestyle="dashed",  # Set the linestyle to dashed
-            color=curr_color,
-            label="Forecast",
-        )
-    plt.xlabel("X")
-    plt.ylabel("Y")
-    plt.title(f"{dyst_name} Forecast vs Ground Truth")
-    plt.legend()
-    plt.savefig(save_path, dpi=300)
-    plt.close()
-
-    # 3D plot (first three coordinates)
-    save_path = os.path.join(save_dir, f"{plot_name}_3D.png")
-    print("Plotting 3D trajectories and saving to ", save_path)
-    if gt_data.shape[1] >= 3:
-        fig = plt.figure(figsize=(6, 6))
-        ax = fig.add_subplot(111, projection="3d")
-        for sample_idx in range(n_samples_plot):
-            curr_color = COLORS[sample_idx % len(COLORS)]
-            ax.scatter(
-                *gt_data[sample_idx, :3, 0],
-                marker="*",
-                s=25,
-                alpha=1,
-                color=curr_color,
-            )
-            # plot x and y and z
-            ax.plot(
-                gt_data[sample_idx, 0, :],
-                gt_data[sample_idx, 1, :],
-                gt_data[sample_idx, 2, :],
-                alpha=0.5,
-                linewidth=1,
-                color=curr_color,
-                label="Ground Truth",
-            )
-            ax.scatter(
-                *gt_data[sample_idx, :3, context_length],
-                marker="*",
-                s=100,
-                alpha=1,
-                color=curr_color,
-            )
-            ax.plot(
-                fc_data[sample_idx, 0, context_length:],
-                fc_data[sample_idx, 1, context_length:],
-                fc_data[sample_idx, 2, context_length:],
-                alpha=0.5,
-                linewidth=1,
-                linestyle="dashed",  # Set the linestyle to dashed
-                color=curr_color,
-                label="Forecast",
-            )
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
-        ax.set_zlabel("Z")  # type: ignore
-        ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
-        ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
-        plt.title(f"{dyst_name} Forecast vs Ground Truth")
-        # plt.legend()
-        plt.savefig(save_path, dpi=300)
-        plt.close()

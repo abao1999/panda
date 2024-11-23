@@ -7,7 +7,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.context_length=512 \
         patchtst.prediction_length=128 \
         patchtst.patch_length=16 \
-        patchtst.patch_stride=4 \
+        patchtst.patch_stride=8 \
         patchtst.num_hidden_layers=8 \
         patchtst.num_attention_heads=8 \
         patchtst.d_model=512 \
@@ -19,8 +19,8 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.pooling_type=max \
         patchtst.loss=mse \
         patchtst.distribution_output=null \
-        train.per_device_train_batch_size=64 \
-        train.max_steps=300_000 \
+        train.per_device_train_batch_size=128 \
+        train.max_steps=500_000 \
         train.save_steps=100_000 \
         train.log_steps=1_000 \
         train.warmup_ratio=0.1 \
@@ -36,6 +36,8 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         noiser.log_steps=100 \
         fixed_dim=4 \
         "$@"
+
+# TODO: try playing with: patch_stride, pre_norm, pooling_type, dropout, head_dropout, attention_dropout, positional_dropout, ff_dropout, norm_type, mask_type
 
 
 

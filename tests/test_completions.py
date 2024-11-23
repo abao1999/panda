@@ -68,9 +68,17 @@ if __name__ == "__main__":
         "dysts_names", help="Names of the dynamical systems", nargs="+", type=str
     )
     parser.add_argument(
-        "--split_completions", help="Split of the completions", type=str
+        "--split_completions",
+        help="Split of the completions",
+        type=str,
+        default="eval/completions",
     )
-    parser.add_argument("--split_context", help="Split of the context", type=str)
+    parser.add_argument(
+        "--split_context",
+        help="Split of the context",
+        type=str,
+        default="eval/patch_input",
+    )
     parser.add_argument(
         "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
     )
@@ -91,7 +99,7 @@ if __name__ == "__main__":
         "--plot_save_dir",
         help="Directory to save plots",
         type=str,
-        default="tests/figs",
+        default="figs/completions",
     )
     args = parser.parse_args()
 

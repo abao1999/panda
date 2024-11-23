@@ -6,14 +6,12 @@ import argparse
 import json
 import os
 import warnings
-from pathlib import Path
 from typing import Dict, List, Optional
 
 from dystformer.utils import (
     accumulate_coords,
     get_system_filepaths,
-    plot_trajs_multivariate,
-    plot_trajs_univariate,
+    plot_forecast_evaluation,
 )
 
 WORK_DIR = os.getenv("WORK", "")
@@ -22,9 +20,10 @@ DATA_DIR = os.path.join(WORK_DIR, "data")
 
 def plot_saved_data(
     dyst_names_lst: List[str],
-    split: str,
+    split_forecasts: str,
+    split_ground_truth: str,
+    context_length: int,
     one_dim_target: bool = False,
-    plot_univariate: bool = False,
     samples_subset_dict: Optional[Dict[str, List[int]]] = None,
     plot_name_suffix: Optional[str] = None,
     plot_save_dir: str = "tests/figs",
@@ -43,30 +42,26 @@ def plot_saved_data(
                 samples_subset = samples_subset_dict[dyst_name]
                 print(f"Plotting samples subset {samples_subset} for {dyst_name}")
 
-        filepaths = get_system_filepaths(dyst_name, DATA_DIR, split)
-        print(f"{dyst_name} filepaths: ", filepaths)
-
-        dyst_coords_samples = accumulate_coords(filepaths, one_dim_target)
-        # # cut off only first 512 time steps
-        # dyst_coords_samples = dyst_coords_samples[:, :, :512]
-
+        filepaths_forecasts = get_system_filepaths(dyst_name, DATA_DIR, split_forecasts)
+        filepaths_ground_truth = get_system_filepaths(
+            dyst_name, DATA_DIR, split_ground_truth
+        )
+        dyst_coords_samples_forecasts = accumulate_coords(
+            filepaths_forecasts, one_dim_target
+        )
+        dyst_coords_samples_ground_truth = accumulate_coords(
+            filepaths_ground_truth, one_dim_target
+        )
         # plot the trajectories
         plot_name = f"{dyst_name}_{plot_name_suffix}" if plot_name_suffix else dyst_name
-        plot_trajs_multivariate(
-            dyst_coords_samples,
+        plot_forecast_evaluation(
+            forecasts=dyst_coords_samples_forecasts,
+            ground_truth=dyst_coords_samples_ground_truth,
+            context_length=context_length,
             save_dir=plot_save_dir,
             plot_name=plot_name,
             samples_subset=samples_subset,
         )
-
-        if plot_univariate:
-            plot_trajs_univariate(
-                dyst_coords_samples,
-                selected_dim=None,  # plot all dimensions
-                save_dir=os.path.join(plot_save_dir, "univariate"),
-                plot_name=plot_name,
-                samples_subset=samples_subset,
-            )
 
 
 if __name__ == "__main__":
@@ -74,12 +69,26 @@ if __name__ == "__main__":
     parser.add_argument(
         "dysts_names", help="Names of the dynamical systems", nargs="+", type=str
     )
-    parser.add_argument("--split", help="Split of the data", type=str, default=None)
     parser.add_argument(
-        "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
+        "--split_forecasts",
+        help="Split of the forecasts",
+        type=str,
+        default="eval/forecasts",
     )
     parser.add_argument(
-        "--plot_univariate", action=argparse.BooleanOptionalAction, default=False
+        "--split_ground_truth",
+        help="Split of the ground truth",
+        type=str,
+        default="eval/labels",
+    )
+    parser.add_argument(
+        "--context_length",
+        help="Context length",
+        type=int,
+        default=512,
+    )
+    parser.add_argument(
+        "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
     )
     parser.add_argument(
         "--metadata_path",
@@ -98,21 +107,11 @@ if __name__ == "__main__":
         "--plot_save_dir",
         help="Directory to save plots",
         type=str,
-        default="tests/figs",
+        default="figs/forecasts",
     )
     args = parser.parse_args()
 
-    if args.split is None:
-        raise ValueError("Split must be provided for loading data")
-
-    if args.dysts_names == ["all"]:
-        split_dir = os.path.join(DATA_DIR, args.split)
-        dyst_names_lst = [
-            folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
-        ]
-    else:
-        dyst_names_lst = args.dysts_names
-
+    dyst_names_lst = args.dysts_names
     print(f"dyst names: {dyst_names_lst}")
 
     samples_subset_dict = None  # default to plotting all samples sequentially
@@ -126,9 +125,10 @@ if __name__ == "__main__":
 
     plot_saved_data(
         dyst_names_lst,
-        split=args.split,
+        split_forecasts=args.split_forecasts,
+        split_ground_truth=args.split_ground_truth,
+        context_length=args.context_length,
         one_dim_target=args.one_dim_target,
-        plot_univariate=args.plot_univariate,
         samples_subset_dict=samples_subset_dict,
         plot_name_suffix="failures"
         if args.samples_subset == "failed_samples"

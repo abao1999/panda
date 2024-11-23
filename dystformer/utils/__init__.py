@@ -21,8 +21,7 @@ from .eval_utils import (
 )
 from .plot_utils import (
     plot_completions_evaluation,
-    plot_forecast_gt_trajs_multivariate,
-    plot_forecast_trajs_multivariate,
+    plot_forecast_evaluation,
     plot_trajs_multivariate,
     plot_trajs_univariate,
 )
