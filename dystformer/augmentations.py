@@ -147,9 +147,9 @@ class QuadraticEmbeddingTransform:
             timeseries (`NDArray` of shape `(num_channels, num_timepoints)`, *required*):
                 Timeseries to embed
         """
-        indices = np.triu_indices(timeseries.shape[0], timeseries.shape[0])
-        features = timeseries[:, indices[0]] * timeseries[:, indices[1]]
-        return np.concatenate([timeseries, features], axis=-1)
+        indices = np.triu_indices(timeseries.shape[0])
+        features = timeseries[indices[0]] * timeseries[indices[1]]
+        return np.vstack([timeseries, features])
 
 
 @dataclass

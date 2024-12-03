@@ -13,6 +13,10 @@ from gluonts.dataset.common import FileDataset
 from gluonts.itertools import batcher
 from tqdm.auto import tqdm
 
+from dystformer.augmentations import (
+    FixedDimensionDelayEmbeddingTransform,
+    QuadraticEmbeddingTransform,
+)
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
@@ -92,6 +96,7 @@ def evaluate_mlm_model(
                 .numpy()
                 .transpose(0, 2, 1)
             )
+            breakpoint()
 
             # processed_past_values = past_batch.detach().cpu().numpy()
             masked_past_values = None
@@ -308,6 +313,10 @@ def main(cfg):
 
     log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
 
+    transforms = [
+        FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
+        QuadraticEmbeddingTransform(),
+    ]
     test_datasets = {
         system_name: PatchTSTDataset(
             datasets=test_data_dict[system_name],
@@ -318,6 +327,7 @@ def main(cfg):
             num_test_instances=cfg.eval.num_test_instances,
             window_style=cfg.eval.window_style,
             window_stride=cfg.eval.window_stride,
+            transforms=transforms,
             mode="test",
         )
         for system_name in test_data_dict

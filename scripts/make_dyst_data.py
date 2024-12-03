@@ -131,8 +131,14 @@ def main(cfg):
     if cfg.dyst_data.debug_dyst:
         # Run save_dyst_ensemble on a single system in debug mode
         ensembles = dyst_data_generator._generate_ensembles(
-            systems=[cfg.dyst_data.debug_dyst]
+            systems=[cfg.dyst_data.debug_dyst],
+            _silent_errors=cfg.dyst_data.silent_errors,
         )
+
+        if any(len(ensemble) == 0 for ensemble in ensembles):
+            logger.error(f"No valid trajectories found for {cfg.dyst_data.debug_dyst}")
+            return
+
         samples = np.array(
             [
                 ensemble[cfg.dyst_data.debug_dyst]
@@ -159,6 +165,7 @@ def main(cfg):
             save_dir=cfg.dyst_data.data_dir,
             standardize=cfg.dyst_data.standardize,
             use_multiprocessing=cfg.dyst_data.multiprocessing,
+            _silent_errors=cfg.dyst_data.silent_errors,
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
@@ -173,6 +180,7 @@ def main(cfg):
             standardize=cfg.dyst_data.standardize,
             reset_attractor_validator=True,  # save validator results separately for test
             use_multiprocessing=cfg.dyst_data.multiprocessing,
+            _silent_errors=cfg.dyst_data.silent_errors,
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
