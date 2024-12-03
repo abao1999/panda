@@ -22,7 +22,8 @@ python scripts/patchtst/evaluate.py \
     noiser.start=0.0 \
     noiser.enabled=false \
     quantizer.enabled=false \
-
+    fixed_dim=4 \
+    "$@"
 
 # # prediction finetune eval
 # python scripts/patchtst/evaluate.py \

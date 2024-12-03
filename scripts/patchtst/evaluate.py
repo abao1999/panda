@@ -13,6 +13,10 @@ from gluonts.dataset.common import FileDataset
 from gluonts.itertools import batcher
 from tqdm.auto import tqdm
 
+from dystformer.augmentations import (
+    FixedDimensionDelayEmbeddingTransform,
+    QuadraticEmbeddingTransform,
+)
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
@@ -308,6 +312,10 @@ def main(cfg):
 
     log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
 
+    transforms = [
+        FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
+        QuadraticEmbeddingTransform(),
+    ]
     test_datasets = {
         system_name: PatchTSTDataset(
             datasets=test_data_dict[system_name],
@@ -319,6 +327,7 @@ def main(cfg):
             window_style=cfg.eval.window_style,
             window_stride=cfg.eval.window_stride,
             mode="test",
+            transforms=transforms,
         )
         for system_name in test_data_dict
     }

@@ -3,7 +3,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/patchtst/train.py \
         shuffle_buffer_length=100_000 \
-        patchtst.pretrained_encoder_path=/stor/work/AMDG_Gilpin_Summer2024/checkpoints/run-303/checkpoint-400000 \
+        patchtst.pretrained_encoder_path=/stor/work/AMDG_Gilpin_Summer2024/checkpoints/run-303/checkpoint-final \
         patchtst.context_length=512 \
         patchtst.prediction_length=128 \
         patchtst.patch_length=16 \
