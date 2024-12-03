@@ -4,13 +4,24 @@ Search for valid skew-product dynamical sytems and generate trajectory datasets
 
 import logging
 import os
+from functools import partial
 from itertools import permutations
+from typing import Callable
 
 import dysts.flows as flows
 import hydra
 import numpy as np
 from dysts.systems import DynSys, get_attractor_list
 
+from dystformer.attractor import (
+    check_boundedness,
+    check_lyapunov_exponent,
+    check_not_fixed_point,
+    check_not_limit_cycle,
+    check_not_trajectory_decay,
+    check_not_transient,
+    check_power_spectrum,
+)
 from dystformer.dyst_data import DystData
 from dystformer.sampling import (
     InstabilityEvent,
@@ -27,6 +38,43 @@ def init_skew_system(drive_name: str, response_name: str) -> DynSys:
     driver = getattr(flows, drive_name)()
     response = getattr(flows, response_name)()
     return SkewProduct(driver=driver, response=response)
+
+
+def default_attractor_tests() -> list[Callable]:
+    """
+    Builds a list of attractor tests to check for each trajectory ensemble.
+    """
+    print("Setting up callbacks to test attractor properties")
+    tests = []
+    tests.append(
+        partial(check_boundedness, threshold=1e3, max_num_stds=15, save_plot=False)
+    )
+    tests.append(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
+    tests.append(partial(check_not_transient, max_transient_prop=0.2, atol=1e-3))
+    tests.append(partial(check_not_trajectory_decay, tail_prop=0.5, atol=1e-3))
+    # for STRICT MODE (strict criteria for detecting limit cycles), try:
+    # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
+    tests.append(
+        partial(
+            check_not_limit_cycle,
+            tolerance=1e-3,
+            min_prop_recurrences=0.1,
+            min_counts_per_rtime=100,
+            min_block_length=50,
+            enforce_endpoint_recurrence=True,
+            save_plot=False,
+        )
+    )
+    tests.append(
+        partial(
+            check_power_spectrum,
+            rel_peak_height_threshold=1e-5,
+            rel_prominence_threshold=None,
+            save_plot=False,
+        )
+    )
+    tests.append(check_lyapunov_exponent)
+    return tests
 
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
@@ -76,46 +124,6 @@ def main(cfg):
         cfg.dyst_data.split_prefix + "_" if cfg.dyst_data.split_prefix else ""
     )
 
-    # skew_data_generator = SkewData(
-    #     rseed=cfg.dyst_data.rseed,
-    #     num_periods=cfg.dyst_data.num_periods,
-    #     num_points=cfg.dyst_data.num_points,
-    #     num_ics=cfg.dyst_data.num_ics,
-    #     num_param_perturbations=cfg.dyst_data.num_param_perturbations,
-    #     param_sampler=param_sampler,
-    #     ic_sampler=ic_sampler,
-    #     events=events,
-    #     verbose=cfg.dyst_data.verbose,
-    #     split_coords=cfg.dyst_data.split_coords,
-    #     apply_attractor_tests=cfg.validator.enable,
-    #     attractor_validator_kwargs={
-    #         "verbose": cfg.validator.verbose,
-    #         "transient_time_frac": cfg.validator.transient_time_frac,  # don't need long transient time because ic should be on attractor
-    #         "plot_save_dir": cfg.validator.plot_save_dir,
-    #     },
-    #     save_failed_trajs=cfg.validator.save_failed_trajs,
-    #     couple_phase_space=cfg.skew.couple_phase_space,
-    #     couple_flows=cfg.skew.couple_flows,
-    # )
-
-    # skew_pair_names = skew_data_generator.sample_skew_pairs(
-    #     system_names, cfg.skew.n_combos
-    # )
-
-    # print(f"Skew pair names: {skew_pair_names}")
-
-    # skew_data_generator.save_dyst_ensemble(
-    #     dysts_names=skew_pair_names,
-    #     split=f"{split_prefix}skew_systems",
-    #     split_failures=f"{split_prefix}failed_skew_systems",
-    #     samples_process_interval=1,
-    #     save_dir=cfg.dyst_data.data_dir,
-    #     standardize=cfg.dyst_data.standardize,
-    # )
-
-    # skew_data_generator.save_summary(
-    #     os.path.join("outputs", f"{split_prefix}skew_system_checks.json"),
-    # )
     dyst_data_generator = DystData(
         rseed=cfg.dyst_data.rseed,
         num_periods=cfg.dyst_data.num_periods,
@@ -127,7 +135,7 @@ def main(cfg):
         events=events,
         verbose=cfg.dyst_data.verbose,
         split_coords=cfg.dyst_data.split_coords,
-        apply_attractor_tests=cfg.validator.enable,
+        attractor_tests=default_attractor_tests(),
         attractor_validator_kwargs={
             "verbose": cfg.validator.verbose,
             "transient_time_frac": cfg.validator.transient_time_frac,

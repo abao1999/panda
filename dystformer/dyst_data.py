@@ -87,7 +87,7 @@ class DystData:
 
         def _callback(ensemble, excluded_keys, sample_idx):
             if len(ensemble.keys()) == 0:
-                print(
+                logger.warning(
                     "No successful trajectories for this sample. Skipping, will not save to arrow files."
                 )
                 return
@@ -122,7 +122,7 @@ class DystData:
         **kwargs,
     ) -> None:
         sys_names = [sys if isinstance(sys, str) else sys.name for sys in systems]
-        print(
+        logger.info(
             f"Making {split} split with {len(systems)} dynamical systems: \n {sys_names}"
         )
 

@@ -326,6 +326,7 @@ def main(cfg):
             num_test_instances=cfg.eval.num_test_instances,
             window_style=cfg.eval.window_style,
             window_stride=cfg.eval.window_stride,
+            transforms=transforms,
             mode="test",
             transforms=transforms,
         )
