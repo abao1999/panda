@@ -24,10 +24,6 @@ python scripts/patchtst/evaluate.py \
     quantizer.enabled=false \
     fixed_dim=4 \
     "$@"
-<<<<<<< HEAD
-=======
-
->>>>>>> 8a6ffe5c488e9cc3a5ba8e0227a87c22aa3a6eba
 
 # # prediction finetune eval
 # python scripts/patchtst/evaluate.py \
