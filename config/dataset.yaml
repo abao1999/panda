@@ -2,11 +2,13 @@
 train_data_dirs:
   # - "/stor/work/AMDG_Gilpin_Summer2024/data/signed_perts_train/"
   - "/stor/work/AMDG_Gilpin_Summer2024/data/big_flow_skew_systems/"
-  - "/stor/work/AMDG_Gilpin_Summer2024/data/flow_run2_skew_systems/"
+  # - "/stor/work/AMDG_Gilpin_Summer2024/data/flow_run2_skew_systems/"
 
 # additional files to add to training data set
 extra_train_data_paths: null
 probability: null
+
+use_time_delay_embedding: false
 
 shuffle_buffer_length: 100_000
 

@@ -2,14 +2,12 @@ main_dir=$(cd "$(dirname "$0")/../.." && pwd)
 echo "main_dir: $main_dir"
 checkpoint_dir=$WORK/checkpoints
 
-# /stor/work/AMDG_Gilpin_Summer2024/checkpoints/run-179/checkpoint-final
-
 # mlm pretrain eval
 python scripts/patchtst/evaluate.py \
-    patchtst.context_length=512 \
     eval.mode=pretrain \
+    eval.checkpoint_path=$WORK/checkpoints/run-317/checkpoint-final \
     eval.data_path=$WORK/data/test_zero_shot \
-    eval.checkpoint_path=$WORK/checkpoints/run-303/checkpoint-final \
+    eval.num_systems=10 \
     eval.num_test_instances=1 \
     eval.batch_size=64 \
     eval.metrics_save_dir=$main_dir/eval_results \
@@ -19,10 +17,10 @@ python scripts/patchtst/evaluate.py \
     eval.forecast_save_dir=$WORK/data/eval/forecasts \
     eval.completions_save_dir=$WORK/data/eval/completions \
     eval.patch_input_save_dir=$WORK/data/eval/patch_input \
-    noiser.start=0.0 \
-    noiser.enabled=false \
-    quantizer.enabled=false \
-    fixed_dim=4 \
+    eval.timestep_masks_save_dir=$WORK/data/eval/timestep_masks \
+    eval.metrics_names=null \
+    use_time_delay_embedding=true \
+    fixed_dim=5 \
     "$@"
 
 # # prediction finetune eval

@@ -22,6 +22,7 @@ def plot_saved_data(
     dyst_names_lst: List[str],
     split_completions: str,
     split_context: str,
+    split_mask: str,
     one_dim_target: bool = False,
     samples_subset_dict: Optional[Dict[str, List[int]]] = None,
     plot_name_suffix: Optional[str] = None,
@@ -41,21 +42,30 @@ def plot_saved_data(
                 samples_subset = samples_subset_dict[dyst_name]
                 print(f"Plotting samples subset {samples_subset} for {dyst_name}")
 
+        # completions
         filepaths_completions = get_system_filepaths(
             dyst_name, DATA_DIR, split_completions
         )
-        filepaths_context = get_system_filepaths(dyst_name, DATA_DIR, split_context)
         dyst_coords_samples_completions = accumulate_coords(
             filepaths_completions, one_dim_target
         )
+
+        # context
+        filepaths_context = get_system_filepaths(dyst_name, DATA_DIR, split_context)
         dyst_coords_samples_context = accumulate_coords(
             filepaths_context, one_dim_target
         )
+
+        # mask
+        filepaths_mask = get_system_filepaths(dyst_name, DATA_DIR, split_mask)
+        dyst_mask_samples = accumulate_coords(filepaths_mask, one_dim_target)
+
         # plot the trajectories
         plot_name = f"{dyst_name}_{plot_name_suffix}" if plot_name_suffix else dyst_name
         plot_completions_evaluation(
             completions=dyst_coords_samples_completions,
             context=dyst_coords_samples_context,
+            mask=dyst_mask_samples,
             save_dir=plot_save_dir,
             plot_name=plot_name,
             samples_subset=samples_subset,
@@ -78,6 +88,12 @@ if __name__ == "__main__":
         help="Split of the context",
         type=str,
         default="eval/patch_input",
+    )
+    parser.add_argument(
+        "--split_mask",
+        help="Split of the context",
+        type=str,
+        default="eval/timestep_masks",
     )
     parser.add_argument(
         "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
@@ -119,6 +135,7 @@ if __name__ == "__main__":
         dyst_names_lst,
         split_completions=args.split_completions,
         split_context=args.split_context,
+        split_mask=args.split_mask,
         one_dim_target=args.one_dim_target,
         samples_subset_dict=samples_subset_dict,
         plot_name_suffix="failures"

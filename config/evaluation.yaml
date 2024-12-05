@@ -3,14 +3,24 @@ eval:
   data_path: /stor/work/AMDG_Gilpin_Summer2024/data/test/
   checkpoint_path: /stor/work/AMDG_Gilpin_Summer2024/checkpoints
   device: cuda:7
-  torch_dtype: bfloat16 # float32?
+  torch_dtype: float32 # bfloat16?
   batch_size: 32
+  num_systems: 10
+
+  metrics_names:
+    - mse
+    - mae
+    - smape
+    - mape
+    - r2_score
+    - spearman
+    - pearson
 
   forecast_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/forecasts
   labels_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/labels
   completions_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/completions
   patch_input_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/patch_input
-  masked_input_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/masked_input
+  timestep_masks_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/timestep_masks
 
   metrics_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/metrics
   metrics_fname: metrics.json

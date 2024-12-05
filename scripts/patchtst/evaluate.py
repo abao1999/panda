@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from collections import defaultdict
@@ -9,6 +10,7 @@ import hydra
 import numpy as np
 import torch
 import transformers
+from dysts.metrics import compute_metrics
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import batcher
 from tqdm.auto import tqdm
@@ -16,6 +18,7 @@ from tqdm.auto import tqdm
 from dystformer.augmentations import (
     FixedDimensionDelayEmbeddingTransform,
     QuadraticEmbeddingTransform,
+    RandomDimSelectionTransform,
 )
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
@@ -31,11 +34,11 @@ def evaluate_mlm_model(
     model: PatchTST,
     systems: Dict[str, PatchTSTDataset],
     batch_size: int,
-    metrics: Optional[List[str]] = None,
+    metrics_names: Optional[List[str]] = None,
     undo_normalization: bool = False,
     return_completions: bool = False,
     return_processed_past_values: bool = False,
-    return_masked_past_values: bool = False,
+    return_masks: bool = False,
     num_systems: Optional[int] = None,
 ) -> Tuple[
     Optional[Dict[str, np.ndarray]],
@@ -51,7 +54,7 @@ def evaluate_mlm_model(
     assert model.mode == "pretrain", "Model must be in pretrain mode"
     system_completions = {}
     system_processed_past_values = {}
-    system_masked_past_values = {}
+    system_timestep_masks = {}
     system_metrics = {system: defaultdict(float) for system in systems}
 
     for idx, system in tqdm(enumerate(systems), desc="Evaluating MLM pretrain model"):
@@ -62,7 +65,7 @@ def evaluate_mlm_model(
         log_on_main(f"Evaluating {system}", logger)
         all_completions = []
         all_processed_past_values = []
-        all_masked_past_values = []
+        all_timestep_masks = []
         for i, batch in enumerate(batcher(dataset, batch_size=batch_size)):
             past_values = [data["past_values"] for data in batch]
 
@@ -73,7 +76,6 @@ def evaluate_mlm_model(
             completions_output = model.model.generate_completions(
                 past_batch, past_observed_mask=None
             )
-
             completions = (
                 completions_output.completions.reshape(
                     past_batch.shape[0], past_batch.shape[-1], -1
@@ -84,9 +86,18 @@ def evaluate_mlm_model(
                 .transpose(0, 2, 1)
             )
 
+            # get the masks
+            patch_size = completions_output.completions.shape[-1]
+            if completions_output.mask is None:
+                raise ValueError("Mask is None")
+            # shape: (batch_size, num_channels, num_patches)
+            patch_mask = completions_output.mask.detach().cpu().numpy()
+            # shape: (batch_size, num_channels, num_timesteps)
+            timestep_mask = np.repeat(patch_mask, repeats=patch_size, axis=2)
+
+            # get the patched past values after instance normalization
             if completions_output.patched_past_values is None:
                 raise ValueError("Patched past values are None")
-
             processed_past_values = (
                 completions_output.patched_past_values.reshape(
                     past_batch.shape[0], past_batch.shape[-1], -1
@@ -96,9 +107,7 @@ def evaluate_mlm_model(
                 .numpy()
                 .transpose(0, 2, 1)
             )
-
             # processed_past_values = past_batch.detach().cpu().numpy()
-            masked_past_values = None
 
             if undo_normalization:
                 if completions_output.loc is None or completions_output.scale is None:
@@ -108,24 +117,28 @@ def evaluate_mlm_model(
                 completions = completions * scale + loc
                 processed_past_values = processed_past_values * scale + loc
 
+            # transpose back to (batch_size, num_channels, num_timesteps)
             completions = completions.transpose(0, 2, 1)
             processed_past_values = processed_past_values.transpose(0, 2, 1)
 
-            # eval_metrics = compute_metrics(completions, past_batch.cpu().numpy())
-
-            # NOTE: need newest dyst version for this
-            # # compute running average of metrics over batches
-            # for metric, value in eval_metrics.items():
-            #     system_metrics[system][metric] += (
-            #         value - system_metrics[system][metric]
-            #     ) / (i + 1)
+            if metrics_names is not None:
+                eval_metrics = compute_metrics(
+                    completions,
+                    past_batch.cpu().numpy(),
+                    include=metrics_names,  # type: ignore
+                )
+                # compute running average of metrics over batches
+                for metric, value in eval_metrics.items():
+                    system_metrics[system][metric] += (
+                        value - system_metrics[system][metric]
+                    ) / (i + 1)
 
             if return_completions:
                 all_completions.append(completions)
             if return_processed_past_values:
                 all_processed_past_values.append(processed_past_values)
-            if return_masked_past_values:
-                all_masked_past_values.append(masked_past_values)
+            if return_masks:
+                all_timestep_masks.append(timestep_mask)
 
         if return_completions:
             full_completion = np.concatenate(all_completions, axis=1)
@@ -135,9 +148,9 @@ def evaluate_mlm_model(
                 all_processed_past_values, axis=1
             )
             system_processed_past_values[system] = full_processed_past_values
-        if return_masked_past_values:
-            full_masked_past_values = np.concatenate(all_masked_past_values, axis=1)
-            system_masked_past_values[system] = full_masked_past_values
+        if return_masks:
+            full_timestep_masks = np.concatenate(all_timestep_masks, axis=1)
+            system_timestep_masks[system] = full_timestep_masks
 
     # convert defaultdicts to regular dicts
     system_metrics = {
@@ -147,7 +160,7 @@ def evaluate_mlm_model(
     return (
         system_completions if return_completions else None,
         system_processed_past_values if return_processed_past_values else None,
-        system_masked_past_values if return_masked_past_values else None,
+        system_timestep_masks if return_masks else None,
         system_metrics,
     )
 
@@ -158,7 +171,7 @@ def evaluate_forecasting_model(
     batch_size: int,
     prediction_length: int,
     limit_prediction_length: bool = False,
-    metrics: Optional[List[str]] = None,
+    metrics_names: Optional[List[str]] = None,
     parallel_sample_reduction: str = "none",
     return_predictions: bool = False,
     return_contexts: bool = False,
@@ -177,7 +190,7 @@ def evaluate_forecasting_model(
         model: The PatchTST model to evaluate.
         systems: A dictionary mapping system names to their respective PatchTSTDataset.
         batch_size: The batch size to use for evaluation.
-        metrics: Optional list of metric names to compute.
+        metrics_names: Optional list of metric names to compute.
         parallel_sample_reduction: How to reduce the parallel samples over dim 0,
             only used if return_predictions is True
         return_predictions: Whether to return the predictions.
@@ -247,6 +260,7 @@ def evaluate_forecasting_model(
             labels.append(future_batch)
             predictions.append(preds)
             contexts.append(context)
+
         # num_windows is either config.eval.num_test_instances for the sampled window style
         # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
@@ -255,7 +269,12 @@ def evaluate_forecasting_model(
         labels = np.concatenate(labels, axis=0)
         contexts = np.concatenate(contexts, axis=0)
 
-        # system_metrics[system] = compute_metrics(predictions, labels, include=metrics)  # type: ignore
+        if metrics_names is not None:
+            system_metrics[system] = compute_metrics(
+                predictions,
+                labels,
+                include=metrics_names,  # type: ignore
+            )
 
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
@@ -278,13 +297,34 @@ def evaluate_forecasting_model(
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
+    checkpoint_path = cfg.eval.checkpoint_path
+    log_on_main(f"Using checkpoint: {checkpoint_path}", logger)
+    training_info_path = os.path.join(checkpoint_path, "training_info.json")
+    if os.path.exists(training_info_path):
+        log_on_main(f"Training info file found at: {training_info_path}", logger)
+        with open(training_info_path, "r") as f:
+            training_info = json.load(f)
+            train_config = training_info.get("training_config", None)
+            dataset_config = training_info.get("dataset_config", None)
+    else:
+        log_on_main(f"No training info file found at: {training_info_path}", logger)
+        train_config = None
+        dataset_config = None
+
+    model = PatchTST.from_pretrained(
+        mode=cfg.eval.mode,
+        pretrain_path=checkpoint_path,
+        device=cfg.eval.device,
+    )
+    model_config = dict(vars(model.config))
+    train_config = train_config or dict(cfg.train)
+    dataset_config = dataset_config or dict(cfg)
     # set floating point precision
-    use_tf32 = cfg.train.tf32
+    use_tf32 = train_config.get("tf32", False)
+    log_on_main(f"use tf32: {use_tf32}", logger)
     if use_tf32 and not (
         torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
     ):
-        # TF32 floating point format is available only on NVIDIA GPUs
-        # with compute capability 8 and above. See link for details.
         # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
         log_on_main(
             "TF32 format is only available on devices with compute capability >= 8. "
@@ -293,9 +333,26 @@ def main(cfg):
         )
         use_tf32 = False
 
-    # set random seed
-    log_on_main(f"Using SEED: {cfg.train.seed}", logger)
-    transformers.set_seed(seed=cfg.train.seed)
+    rseed = train_config.get("seed", cfg.train.seed)
+    log_on_main(f"Using SEED: {rseed}", logger)
+    transformers.set_seed(seed=rseed)
+
+    # use_time_delay_embedding may not exist for older checkpoints
+    use_time_delay_embedding = dataset_config.get(
+        "use_time_delay_embedding", cfg.use_time_delay_embedding
+    )
+    fixed_dim = dataset_config["fixed_dim"]
+    if fixed_dim == 3 and use_time_delay_embedding:
+        raise ValueError(
+            "Fixed dimension of 3 doesn't make sense with time delay embedding"
+        )
+    context_length = model_config["context_length"]
+    prediction_length = model_config["prediction_length"]
+    log_on_main(f"Using fixed_dim: {fixed_dim}", logger)
+    log_on_main(f"use_time_delay_embedding: {use_time_delay_embedding}", logger)
+    log_on_main(f"context_length: {context_length}", logger)
+    log_on_main(f"prediction_length: {prediction_length}", logger)
+    model.eval()
 
     # get test data paths
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
@@ -309,36 +366,35 @@ def main(cfg):
                 for file_path in system_files
                 if file_path.is_file()
             ]
+            if len(list(test_data_dict.keys())) == cfg.eval.num_systems:
+                break
 
     log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
 
-    transforms = [
-        FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
-        QuadraticEmbeddingTransform(),
-    ]
+    if use_time_delay_embedding:
+        transforms = [
+            FixedDimensionDelayEmbeddingTransform(embedding_dim=fixed_dim),
+            QuadraticEmbeddingTransform(),
+        ]
+    else:
+        transforms = [
+            RandomDimSelectionTransform(num_dims=fixed_dim),
+        ]
     test_datasets = {
         system_name: PatchTSTDataset(
             datasets=test_data_dict[system_name],
             probabilities=[1.0 / len(test_data_dict[system_name])]
             * len(test_data_dict[system_name]),
-            context_length=cfg.patchtst.context_length,
-            prediction_length=cfg.patchtst.prediction_length,
+            context_length=context_length,
+            prediction_length=prediction_length,
             num_test_instances=cfg.eval.num_test_instances,
             window_style=cfg.eval.window_style,
             window_stride=cfg.eval.window_stride,
             transforms=transforms,
             mode="test",
-            transforms=transforms,
         )
         for system_name in test_data_dict
     }
-
-    model = PatchTST.from_pretrained(
-        mode=cfg.eval.mode,
-        pretrain_path=cfg.eval.checkpoint_path,
-        device=cfg.eval.device,
-    )
-    model.eval()
 
     save_eval_results = partial(
         save_evaluation_results,
@@ -356,7 +412,7 @@ def main(cfg):
             batch_size=cfg.eval.batch_size,
             prediction_length=cfg.eval.prediction_length,
             limit_prediction_length=cfg.eval.limit_prediction_length,
-            metrics=["mse", "mae", "smape", "mape", "r2_score", "spearman", "pearson"],
+            metrics_names=cfg.eval.metrics_names,
             return_predictions=True,
             return_contexts=True,
             return_labels=True,
@@ -368,8 +424,8 @@ def main(cfg):
         # window_indices = rolling_prediction_window_indices(
         #     test_data_dict,
         #     cfg.eval.window_stride,
-        #     cfg.patchtst.context_length,
-        #     cfg.patchtst.prediction_length,
+        #     context_length,
+        #     prediction_length,
         # )
 
         if predictions is not None and contexts is not None:
@@ -403,19 +459,18 @@ def main(cfg):
             )
 
     elif cfg.eval.mode == "pretrain":
-        completions, processed_past_values, masked_past_values, metrics = (
+        completions, processed_past_values, timestep_masks, metrics = (
             evaluate_mlm_model(
                 model,
                 test_datasets,
+                metrics_names=cfg.eval.metrics_names,
                 batch_size=cfg.eval.batch_size,
-                num_systems=10,
                 undo_normalization=False,
                 return_completions=True,
                 return_processed_past_values=True,
-                return_masked_past_values=False,
+                return_masks=True,
             )
         )
-        # TODO: plot completions, or save to npy or arrow files
         if completions is not None:
             save_eval_results(
                 metrics,
@@ -428,11 +483,11 @@ def main(cfg):
                 coords=processed_past_values,
                 coords_save_dir=cfg.eval.patch_input_save_dir,
             )
-        if masked_past_values is not None:
+        if timestep_masks is not None:
             save_eval_results(
                 metrics,
-                coords=masked_past_values,
-                coords_save_dir=cfg.eval.masked_input_save_dir,
+                coords=timestep_masks,
+                coords_save_dir=cfg.eval.timestep_masks_save_dir,
             )
     else:
         raise ValueError(f"Invalid eval mode: {cfg.eval.mode}")

@@ -24,6 +24,7 @@ from dystformer.augmentations import (
     QuadraticEmbeddingTransform,
     RandomAffineTransform,
     RandomConvexCombinationTransform,
+    RandomDimSelectionTransform,
 )
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
@@ -203,13 +204,15 @@ def main(cfg):
         train_data_paths.extend(
             filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
         )
-
+    # Reduce number of datasets for testing purposes
+    num_data_paths = len(train_data_paths)
+    train_data_paths = train_data_paths[: num_data_paths // 2]
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
-        f"Loaded and filtered {len(train_data_paths)} datasets for training from directories: {train_data_dir_lst}",
+        f"Loading and filtering {len(train_data_paths)} datasets for training from directories: {train_data_dir_lst}",
         logger,
     )
 
@@ -253,10 +256,15 @@ def main(cfg):
         RandomAffineTransform(out_dim=6, scale=1.0),
     ]
 
-    transforms = [
-        FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
-        QuadraticEmbeddingTransform(),
-    ]
+    if cfg.use_time_delay_embedding:
+        transforms = [
+            FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
+            QuadraticEmbeddingTransform(),
+        ]
+    else:
+        transforms = [
+            RandomDimSelectionTransform(num_dims=cfg.fixed_dim),
+        ]
 
     log_on_main(f"Using augmentations: {augmentations}", logger)
 
@@ -367,6 +375,7 @@ def main(cfg):
             output_dir / "checkpoint-final",
             model_config=OmegaConf.to_container(cfg.patchtst, resolve=True),  # type: ignore
             training_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
+            all_config=OmegaConf.to_container(cfg, resolve=True),  # type: ignore
         )
 
 

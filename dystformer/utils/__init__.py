@@ -23,7 +23,6 @@ from .plot_utils import (
     plot_completions_evaluation,
     plot_forecast_evaluation,
     plot_trajs_multivariate,
-    plot_trajs_univariate,
 )
 from .train_utils import (
     ensure_contiguous,

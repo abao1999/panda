@@ -13,7 +13,6 @@ from dystformer.utils import (
     accumulate_coords,
     get_system_filepaths,
     plot_trajs_multivariate,
-    plot_trajs_univariate,
 )
 
 WORK_DIR = os.getenv("WORK", "")
@@ -24,7 +23,6 @@ def plot_saved_data(
     dyst_names_lst: List[str],
     split: str,
     one_dim_target: bool = False,
-    plot_univariate: bool = False,
     samples_subset_dict: Optional[Dict[str, List[int]]] = None,
     plot_name_suffix: Optional[str] = None,
     plot_save_dir: str = "tests/figs",
@@ -59,15 +57,6 @@ def plot_saved_data(
             samples_subset=samples_subset,
         )
 
-        if plot_univariate:
-            plot_trajs_univariate(
-                dyst_coords_samples,
-                selected_dim=None,  # plot all dimensions
-                save_dir=os.path.join(plot_save_dir, "univariate"),
-                plot_name=plot_name,
-                samples_subset=samples_subset,
-            )
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -77,9 +66,6 @@ if __name__ == "__main__":
     parser.add_argument("--split", help="Split of the data", type=str, default=None)
     parser.add_argument(
         "--one_dim_target", action=argparse.BooleanOptionalAction, default=False
-    )
-    parser.add_argument(
-        "--plot_univariate", action=argparse.BooleanOptionalAction, default=False
     )
     parser.add_argument(
         "--metadata_path",
@@ -128,7 +114,6 @@ if __name__ == "__main__":
         dyst_names_lst,
         split=args.split,
         one_dim_target=args.one_dim_target,
-        plot_univariate=args.plot_univariate,
         samples_subset_dict=samples_subset_dict,
         plot_name_suffix="failures"
         if args.samples_subset == "failed_samples"

@@ -2,68 +2,16 @@ import os
 import warnings
 from typing import List, Optional
 
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 
 N_SAMPLES_PLOT = 6
-COLORS = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-
-
-# Plotting utils
-def plot_trajs_univariate(
-    dyst_data: np.ndarray,
-    selected_dim: Optional[int] = None,
-    save_dir: str = "tests/figs",
-    plot_name: str = "dyst",
-    samples_subset: Optional[List[int]] = None,
-    n_samples_plot: Optional[int] = None,
-) -> None:
-    """
-    Plot univariate timeseries from dyst_data
-    """
-    os.makedirs(save_dir, exist_ok=True)
-    if n_samples_plot is None:
-        num_tot_samples = dyst_data.shape[0]
-        n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
-    else:
-        n_samples_plot = min(N_SAMPLES_PLOT, n_samples_plot)
-
-    if samples_subset is not None:
-        if n_samples_plot > len(samples_subset):
-            warnings.warn(
-                f"Number of samples to plot is greater than the number of samples in the subset. Plotting all {len(samples_subset)} samples in the subset."
-            )
-            n_samples_plot = len(samples_subset)
-
-    if selected_dim is None:
-        dims = list(range(dyst_data.shape[1]))
-    else:
-        dims = [selected_dim]
-
-    for dim_idx in dims:
-        plot_name_dim = f"{plot_name}_dim{dim_idx}"
-        save_path = os.path.join(save_dir, f"{plot_name_dim}.png")
-        print(
-            f"Plotting 2D trajectories for {plot_name}, dimension {dim_idx} and saving to {save_path}"
-        )
-        plt.figure(figsize=(6, 6))
-        for sample_idx in range(n_samples_plot):
-            label_sample_idx = sample_idx
-            if samples_subset is not None:
-                label_sample_idx = samples_subset[sample_idx]
-            curr_color = COLORS[label_sample_idx % len(COLORS)]
-            plt.plot(
-                dyst_data[sample_idx, dim_idx, :],
-                alpha=0.5,
-                linewidth=1,
-                color=curr_color,
-                label=f"Sample {label_sample_idx}",
-            )
-        plt.xlabel("timesteps")
-        plt.title(plot_name_dim.replace("_", " "))
-        plt.legend()
-        plt.savefig(save_path, dpi=300)
-        plt.close()
+plt.style.use(["ggplot", "custom_style.mplstyle"])
+colormap = cm.get_cmap("tab10", 10)  # 'tab10' is a colormap with 10 distinct colors
+COLORS = [mcolors.rgb2hex(colormap(i)) for i in range(colormap.N)]
 
 
 def plot_trajs_multivariate(
@@ -164,6 +112,7 @@ def plot_trajs_multivariate(
 def plot_completions_evaluation(
     completions: np.ndarray,
     context: np.ndarray,
+    mask: Optional[np.ndarray] = None,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
     samples_subset: Optional[List[int]] = None,
@@ -183,13 +132,19 @@ def plot_completions_evaluation(
             )
             n_samples_plot = len(samples_subset)
 
-    # Create a figure with 2 rows: one for 3D plots and one for univariate plots
-    fig = plt.figure(figsize=(16, 12))
-    ax1 = fig.add_subplot(221, projection="3d")
-    ax2 = fig.add_subplot(222, projection="3d")
-    ax3 = fig.add_subplot(234)
-    ax4 = fig.add_subplot(235)
-    ax5 = fig.add_subplot(236)
+    # Create a figure with 4 rows: one for 3D plots and three for univariate plots
+    fig = plt.figure(figsize=(12, 15))  # Adjusted height for more rows
+
+    # Create a GridSpec for the layout (make first row twice as tall)
+    gs = gridspec.GridSpec(4, 2, height_ratios=[2, 1, 1, 1])
+    # Top row: ax1 and ax2 share a row
+    ax1 = fig.add_subplot(gs[0, 0], projection="3d")  # Top-left
+    ax2 = fig.add_subplot(gs[0, 1], projection="3d")  # Top-right
+
+    # ax3, ax4, ax5 occupy their own rows
+    ax3 = fig.add_subplot(gs[1, :])  # Second row, spans both columns
+    ax4 = fig.add_subplot(gs[2, :])  # Third row, spans both columns
+    ax5 = fig.add_subplot(gs[3, :])  # Fourth row, spans both columns
 
     # Collect lines and labels for a shared legend
     lines = []
@@ -232,22 +187,55 @@ def plot_completions_evaluation(
 
         # Plot univariate series for each dimension
         for dim, ax in enumerate([ax3, ax4, ax5]):
+            # Ensure mask is a boolean array
+            if mask is not None:
+                mask_bool = mask[sample_idx, dim, :].astype(bool)
+            else:
+                mask_bool = np.ones(
+                    context.shape[2], dtype=bool
+                )  # Default to all True if no mask
+
+            # Find the indices where the mask changes
+            diffs = np.diff(mask_bool.astype(int))
+            change_indices = np.where(diffs)[0]
+            if not mask_bool[0]:
+                change_indices = np.concatenate(([0], change_indices))
+            segment_indices = np.concatenate((change_indices, [context.shape[2]]))
             ax.plot(
                 context[sample_idx, dim, :],
-                alpha=0.5,
+                alpha=0.2,
                 linewidth=1,
                 color=curr_color,
                 linestyle="-",
             )
-            ax.plot(
+            # Plot context and completions with varying line widths
+            segments = zip(segment_indices[:-1], segment_indices[1:])
+            masked_segments = [
+                idx for i, idx in enumerate(segments) if (i + 1) % 2 == 1
+            ]
+            for start, end in masked_segments:
+                if end < completions.shape[2] - 1:
+                    end += 1
+                ax.plot(
+                    range(start, end),  # Ensure end is inclusive
+                    completions[sample_idx, dim, start:end],
+                    alpha=1,
+                    linewidth=1,
+                    color=curr_color,
+                    linestyle="--",
+                )
+
+            # Fill between completions and context where mask is False
+            ax.fill_between(
+                range(context.shape[2]),  # Assuming the mask is 1D over timesteps
+                context[sample_idx, dim, :],
                 completions[sample_idx, dim, :],
-                alpha=0.5,
-                linewidth=1,
+                where=~mask_bool,  # type: ignore
                 color=curr_color,
-                linestyle="--",
+                alpha=0.3,
             )
             ax.set_title(f"Dimension {dim + 1}")
-            ax.set_xlabel("Timesteps")
+            # ax.set_xlabel("Timesteps")
 
     # # Create a shared legend for samples
     # fig.legend(lines, labels, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 0.95))
@@ -260,7 +248,12 @@ def plot_completions_evaluation(
 
     ax3.legend(handles=[line_context, line_completions], loc="upper right")
 
-    plt.suptitle(plot_name.replace("_", " + "), fontsize=16)  # y=0.95
+    plt.suptitle(
+        plot_name.replace("_", " + "), fontsize=18, fontweight="bold"
+    )  # Adjust y for padding
+    # plt.subplots_adjust(hspace=0.6)  # Fine-tune spacing between rows
+    plt.tight_layout()
+
     save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
     plt.savefig(save_path, dpi=300)
     plt.close()
@@ -385,7 +378,9 @@ def plot_forecast_evaluation(
 
     ax3.legend(handles=[line_ground_truth, line_forecasts], loc="upper right")
 
-    plt.suptitle(plot_name.replace("_", " + "), fontsize=16)  # y=0.95
+    plt.suptitle(
+        plot_name.replace("_", " + "), fontsize=16, y=1.02
+    )  # Adjust y for padding
     save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
     plt.savefig(save_path, dpi=300)
     plt.close()
