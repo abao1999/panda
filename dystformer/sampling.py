@@ -1,8 +1,7 @@
 import logging
 import time
-import warnings
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from typing import Callable
 
 import numpy as np
 from dysts.base import BaseDyn
@@ -12,7 +11,6 @@ from numpy.typing import NDArray
 logger = logging.getLogger(__name__)
 
 
-# Event functions for solve_ivp
 @dataclass
 class TimeLimitEvent:
     """
@@ -31,6 +29,7 @@ class TimeLimitEvent:
     def __call__(self, t, y):
         elapsed_time = time.time() - self.start_time
         if elapsed_time > self.max_duration:
+            logger.warning(f"Time limit exceeded! {elapsed_time}")
             return 0  # Trigger the event
         return 1  # Continue the integration
 
@@ -46,6 +45,7 @@ class InstabilityEvent:
 
     def __call__(self, t, y):
         if np.any(np.abs(y) > self.threshold) or np.any(np.isnan(y)):
+            logger.warning(f"Instability detected! {np.abs(y)}")
             return 0
         return 1
 
@@ -65,7 +65,7 @@ class TimeStepEvent:
     def __call__(self, t, y):
         t_diff = abs(t - self.last_t)
         if t_diff < self.min_step:
-            print(f"Time step too small! {t_diff}")
+            logger.warning(f"Time step too small! {t_diff}")
             return 0  # Trigger the event
 
         self.last_t = t
@@ -73,68 +73,22 @@ class TimeStepEvent:
 
 
 @dataclass
-class GaussianParamSampler(BaseSampler):
-    """Sample gaussian perturbations for system parameters
-    NOTE:
-        - This is a MWE of a parameter transform
-        - Other parameter transforms should follow this dataclass template
-    Args:
-        scale: std (isotropic) of gaussian used for sampling
-    """
-
-    scale: float = 1e-2
-    verbose: bool = False  # for testing purposes
-
-    def __call__(
-        self, name: str, param: NDArray, system: Optional[BaseDyn] = None
-    ) -> NDArray | float:
-        # scale each parameter relatively
-        shape = 1 if np.isscalar(param) else param.shape
-
-        # avoid shape errors
-        flat_param = np.array(param).flatten()
-        scale = np.abs(flat_param) * self.scale
-        cov = np.diag(np.square(scale))
-        perturbed_param = (
-            self.rng.multivariate_normal(mean=flat_param, cov=cov)
-            .reshape(shape)
-            .squeeze()
-        )
-        if isinstance(param, (float, int)):
-            perturbed_param = float(perturbed_param)
-
-        if self.verbose:
-            if system is not None:
-                print(
-                    f"System: {system.name} \n"
-                    f"Parameter {name}: {param} -> {perturbed_param}"
-                )
-            else:
-                print(f"Parameter {name}: {param} -> {perturbed_param}")
-
-        return perturbed_param
-
-
-@dataclass
 class SignedGaussianParamSampler(BaseSampler):
-    """Sample sign-matched gaussian perturbations for system parameters
-
-    NOTE:
-        - This is a MWE of a parameter transform
-        - Other parameter transforms should follow this dataclass template
+    """Sample gaussian perturbations for system parameters with sign control
 
     Args:
         scale: std (isotropic) of gaussian used for sampling
-        sign_match_probability: proportion of perturbations that match the sign of the parameter
+        sign_match_probability: probability of matching perturbation sign with parameter sign
+            defaults to 0.0 (never match signs, matching GaussianParamSampler behavior)
     """
 
     scale: float = 1e-2
     eps: float = 1e-6
-    unmatch_sign_probability: float = 0.0
+    sign_match_probability: float = 0.0
     verbose: bool = False
 
     def __call__(
-        self, name: str, param: NDArray, system: Optional[BaseDyn] = None
+        self, name: str, param: NDArray, system: BaseDyn | None = None
     ) -> NDArray | float:
         # scale each parameter relatively
         shape = 1 if np.isscalar(param) else param.shape
@@ -147,26 +101,23 @@ class SignedGaussianParamSampler(BaseSampler):
             mean=np.zeros_like(flat_param), cov=cov
         ).reshape(shape)
 
-        # demote singletons to scalar
         if np.isscalar(param):
             perturbation = perturbation.item()
 
-        # dont sign match with low probability
-        if self.rng.random() > self.unmatch_sign_probability:
+        # match sign with specified probability
+        if self.rng.random() < self.sign_match_probability:
             perturbation = np.sign(param) * np.abs(perturbation)
 
-        # add a signed perturbation with sign matching the og parameter
         param = np.array(param)
         perturbed_param = param + perturbation
 
         if self.verbose:
             if system is not None:
-                print(
-                    f"System: {system.name} \n"
-                    f"Parameter {name}: {param} -> {perturbed_param}"
+                logger.info(
+                    f"System: {system.name} | param {name}: {param} -> {perturbed_param}"
                 )
             else:
-                print(f"Parameter {name}: {param} -> {perturbed_param}")
+                logger.info(f"Parameter {name}: {param} -> {perturbed_param}")
         return perturbed_param
 
 
@@ -180,6 +131,8 @@ class OnAttractorInitCondSampler(BaseSampler):
           parameters before sampling from the attractor.
         - The sampled initial conditions from this sampler are necessarily
           tied to the attractor defined by the default parameters.
+        - Cache does not work in a multiprocessing setting, need to use a Manager
+          to share the cache across processes.
 
     Args:
         reference_traj_length: Length of the reference trajectory to use for sampling ic on attractor.
@@ -190,9 +143,9 @@ class OnAttractorInitCondSampler(BaseSampler):
 
     reference_traj_length: int = 4096
     reference_traj_transient: float = 0.2
-    trajectory_cache: Dict[str, NDArray] = field(default_factory=dict)
+    trajectory_cache: dict[str, NDArray | None] = field(default_factory=dict)
     verbose: bool = False
-    events: Optional[List[Callable]] = None
+    events: list[Callable] | None = None
     recompute_standardization: bool = False
 
     def __post_init__(self):
@@ -205,24 +158,33 @@ class OnAttractorInitCondSampler(BaseSampler):
     def clear_cache(self):
         self.trajectory_cache.clear()
 
-    def __call__(self, ic: NDArray, system: BaseDyn) -> NDArray:
+    def __call__(self, ic: NDArray, system: BaseDyn) -> NDArray | None:
         if system.name is None:
             raise ValueError("System must have a name")
 
-        # # make reference trajectory if not already cached
+        # make reference trajectory if not already cached
         if system.name not in self.trajectory_cache:
-            reference_traj = system.make_trajectory(
-                self.reference_traj_length,
-                events=self.events,
-                standardize=False,
-            )
+            for event in self.events or []:
+                if hasattr(event, "reset") and callable(event.reset):
+                    event.reset()
+            try:
+                reference_traj = system.make_trajectory(
+                    self.reference_traj_length,
+                    events=self.events,
+                    standardize=False,
+                )
+            except ValueError as e:
+                logger.warning(f"Error during integrating {system.name}: {str(e)}")
+                return None
 
             # if integrate fails, resulting in an incomplete trajectory
             if reference_traj is None:
-                warnings.warn(
-                    f"Failed to integrate the system {system.name} with ic {system.ic} and params {system.params}"
+                logger.warning(
+                    "On-attractor sampling failed integration for "
+                    f"{system.name} with ic {system.ic} and params "
+                    f"{system.param_list}"
                 )
-                return ic
+                return None
 
             # renormalize with respect to reference trajectory
             # this should work since system is passed by reference
@@ -239,7 +201,7 @@ class OnAttractorInitCondSampler(BaseSampler):
         new_ic = self.rng.choice(trajectory)
 
         if self.verbose:
-            print(f"System: {system.name} ic: {ic} -> {new_ic}")
+            logger.info(f"System: {system.name} ic: {ic} -> {new_ic}")
 
         return new_ic
 
@@ -269,8 +231,8 @@ class GaussianInitialConditionSampler(BaseSampler):
 
         if self.verbose:
             if system is not None:
-                print(f"System: {system.name} \n" f"IC: {ic} -> {perturbed_ic}")
+                logger.info(f"System: {system.name} \n" f"IC: {ic} -> {perturbed_ic}")
             else:
-                print(f"IC: {ic} -> {perturbed_ic}")
+                logger.info(f"IC: {ic} -> {perturbed_ic}")
 
         return perturbed_ic

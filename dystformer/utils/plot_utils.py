@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 N_SAMPLES_PLOT = 6
-plt.style.use(["ggplot", "custom_style.mplstyle"])
+# plt.style.use(["ggplot", "custom_style.mplstyle"])
 colormap = cm.get_cmap("tab10", 10)  # 'tab10' is a colormap with 10 distinct colors
 COLORS = [mcolors.rgb2hex(colormap(i)) for i in range(colormap.N)]
 

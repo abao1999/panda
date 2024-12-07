@@ -19,11 +19,11 @@ from dystformer.attractor import (
     check_not_transient,
     check_power_spectrum,
 )
-from dystformer.dyst_data import DystData
+from dystformer.dyst_data import DynSysSampler
 from dystformer.sampling import (
+    GaussianParamSampler,
     InstabilityEvent,
     OnAttractorInitCondSampler,
-    SignedGaussianParamSampler,
     TimeLimitEvent,
     TimeStepEvent,
 )
@@ -81,7 +81,7 @@ def main(cfg):
     time_step_event = TimeStepEvent(min_step=cfg.events.min_step)
     events = [time_limit_event, instability_event, time_step_event]
 
-    param_sampler = SignedGaussianParamSampler(
+    param_sampler = GaussianParamSampler(
         random_seed=cfg.dyst_data.rseed,
         scale=cfg.dyst_data.param_scale,
         verbose=cfg.dyst_data.verbose,
@@ -108,7 +108,7 @@ def main(cfg):
     logger.info(f"Param sampler: {param_sampler}")
     logger.info(f"Events: {events}")
 
-    dyst_data_generator = DystData(
+    dyst_data_generator = DynSysSampler(
         rseed=cfg.dyst_data.rseed,
         num_periods=cfg.dyst_data.num_periods,
         num_points=cfg.dyst_data.num_points,
@@ -156,6 +156,20 @@ def main(cfg):
         split_prefix = (
             cfg.dyst_data.split_prefix + "_" if cfg.dyst_data.split_prefix else ""
         )
+
+        parameterless_systems = [
+            "PehlivanWei",
+            "SprottA",
+            "SprottB",
+            "SprottC",
+            "SprottD",
+            "SprottE",
+            "SprottJ",
+            "SprottMore",
+            "SprottN",
+            "SprottS",
+            "SprottTorus",
+        ]
 
         dyst_data_generator.save_dyst_ensemble(
             systems=train_systems,
