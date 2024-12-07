@@ -12,6 +12,7 @@ import numpy as np
 from dysts.base import BaseDyn
 from dysts.sampling import BaseSampler
 from dysts.systems import make_trajectory_ensemble
+from tqdm import tqdm
 
 from dystformer.attractor import (
     AttractorValidator,
@@ -139,14 +140,12 @@ class DynSysSampler:
             subset=systems,
             pts_per_period=self.num_points // self.num_periods,
             events=self.events,
-            use_multiprocessing=True,
+            use_multiprocessing=False,
             **kwargs,
         )
-        breakpoint()
-        for callback in callbacks[:-2]:  # ignore failed integrations and params
+        for callback in callbacks[:-1]:  # ignore failed integrations
             callback(default_ensemble, [], 0)
 
-        breakpoint()
         _ = self._generate_ensembles(
             systems,
             postprocessing_callbacks=callbacks,
@@ -239,6 +238,9 @@ class DynSysSampler:
             self.num_param_perturbations
         )
 
+        total_iterations = self.num_param_perturbations * self.num_ics
+        pbar = tqdm(total=total_iterations, desc="Generating ensembles")
+
         for i, param_rng in enumerate(pp_rng_stream):
             if self.param_sampler is not None:
                 self.param_sampler.set_rng(param_rng)
@@ -250,28 +252,24 @@ class DynSysSampler:
             for j, ic_rng in enumerate(ic_rng_stream):
                 sample_idx = i * len(ic_rng_stream) + j
 
+                pbar.update(1)
+                pbar.set_postfix({"param_idx": i, "ic_idx": j})
+
                 # perturb and initialize the system ensemble
-                if i == 0 and j == 0:  # zeroth sample is default params and ics
-                    perturbed_systems = systems
-                    excluded_systems = []
-                else:
-                    unfiltered_systems = self._init_perturbations(
-                        systems, ic_rng=ic_rng
-                    )
-                    excluded_systems = [
-                        systems[i]
-                        for i in range(len(systems))
-                        if unfiltered_systems[i] is None
-                    ]
-                    perturbed_systems = [
-                        sys for sys in unfiltered_systems if sys is not None
-                    ]
-                    assert len(perturbed_systems) + len(excluded_systems) == len(
-                        systems
-                    )
-                    assert len(perturbed_systems) + len(excluded_systems) == len(
-                        unfiltered_systems
-                    )
+                unfiltered_systems = self._init_perturbations(systems, ic_rng=ic_rng)
+                excluded_systems = [
+                    systems[i]
+                    for i in range(len(systems))
+                    if unfiltered_systems[i] is None
+                ]
+                perturbed_systems = [
+                    sys for sys in unfiltered_systems if sys is not None
+                ]
+                assert (
+                    len(perturbed_systems) + len(excluded_systems)
+                    == len(systems)
+                    == len(unfiltered_systems)
+                )
 
                 ensemble = make_trajectory_ensemble(
                     self.num_points,
@@ -318,7 +316,7 @@ class DynSysSampler:
         """
         ensemble_list = []
 
-        def _callback(ensemble, excluded_keys, sample_idx):
+        def _callback(ensemble, excluded_keys, sample_idx, *args):
             if len(ensemble.keys()) == 0:
                 logger.warning(
                     "No successful trajectories for this sample. Skipping, will not save to arrow files."
@@ -336,7 +334,9 @@ class DynSysSampler:
 
         return _callback
 
-    def save_failed_integrations_callback(self, ensemble, excluded_keys, sample_idx):
+    def save_failed_integrations_callback(
+        self, ensemble, excluded_keys, sample_idx, *args
+    ):
         if len(excluded_keys) > 0:
             warnings.warn(f"INTEGRATION FAILED FOR: {excluded_keys}")
             for dyst_name in excluded_keys:
@@ -391,7 +391,9 @@ class DynSysSampler:
                     verbose=self.verbose,
                 )
 
-    def _save_parameters_callback(self, *args, **kwargs) -> None:
+    def _save_parameters_callback(
+        self, ensemble, excluded_keys, sample_idx, systems
+    ) -> None:
         pass
 
     def save_summary(self, save_json_path: str):

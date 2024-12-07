@@ -21,9 +21,9 @@ from dystformer.attractor import (
 )
 from dystformer.dyst_data import DynSysSampler
 from dystformer.sampling import (
-    GaussianParamSampler,
     InstabilityEvent,
     OnAttractorInitCondSampler,
+    SignedGaussianParamSampler,
     TimeLimitEvent,
     TimeStepEvent,
 )
@@ -34,17 +34,13 @@ def default_attractor_tests() -> List[Callable]:
     """
     Builds a list of attractor tests to check for each trajectory ensemble.
     """
-    print("Setting up callbacks to test attractor properties")
-    tests = []
-    tests.append(
-        partial(check_boundedness, threshold=1e3, max_num_stds=15, save_plot=False)
-    )
-    tests.append(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
-    tests.append(partial(check_not_transient, max_transient_prop=0.2, atol=1e-3))
-    tests.append(partial(check_not_trajectory_decay, tail_prop=0.5, atol=1e-3))
-    # for STRICT MODE (strict criteria for detecting limit cycles), try:
-    # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
-    tests.append(
+    tests = [
+        partial(check_boundedness, threshold=1e3, max_zscore=15),
+        partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1),
+        partial(check_not_transient, max_transient_prop=0.2, atol=1e-3),
+        partial(check_not_trajectory_decay, tail_prop=0.5, atol=1e-3),
+        # for STRICT MODE (strict criteria for detecting limit cycles), try:
+        # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
         partial(
             check_not_limit_cycle,
             tolerance=1e-3,
@@ -52,38 +48,34 @@ def default_attractor_tests() -> List[Callable]:
             min_counts_per_rtime=100,
             min_block_length=50,
             enforce_endpoint_recurrence=True,
-            save_plot=False,
-        )
-    )
-    tests.append(
-        partial(
-            check_power_spectrum,
-            rel_peak_height_threshold=1e-5,
-            rel_prominence_threshold=None,
-            save_plot=False,
-        )
-    )
-    tests.append(check_lyapunov_exponent)
+        ),
+        partial(check_power_spectrum, rel_peak_height_threshold=1e-5),
+        check_lyapunov_exponent,
+    ]
     return tests
 
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
-    # generate split of dynamical systems
     test_systems, train_systems = split_systems(
         cfg.dyst_data.test_split,
         seed=cfg.dyst_data.rseed,
         sys_class=cfg.dyst_data.sys_class,
     )
-    # events for solve_ivp
+
     time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
     instability_event = InstabilityEvent(threshold=cfg.events.instability_threshold)
     time_step_event = TimeStepEvent(min_step=cfg.events.min_step)
-    events = [time_limit_event, instability_event, time_step_event]
+    events = [
+        time_limit_event,
+        time_step_event,
+        # instability_event,
+    ]
 
-    param_sampler = GaussianParamSampler(
+    param_sampler = SignedGaussianParamSampler(
         random_seed=cfg.dyst_data.rseed,
         scale=cfg.dyst_data.param_scale,
+        sign_match_probability=0.1,
         verbose=cfg.dyst_data.verbose,
     )
     ic_sampler = OnAttractorInitCondSampler(
@@ -94,19 +86,6 @@ def main(cfg):
         verbose=cfg.dyst_data.verbose,
         random_seed=cfg.dyst_data.rseed,
     )
-
-    logger.info(f"Dyst data config: {cfg.dyst_data}")
-    logger.info(f"Events config: {cfg.events}")
-    logger.info(f"Validator config: {cfg.validator}")
-    logger.info(
-        f"Generating {cfg.dyst_data.num_ics} initial conditions and {cfg.dyst_data.num_param_perturbations} parameter perturbations"
-    )
-    logger.info(
-        f"{len(train_systems)} train systems and {len(test_systems)} test systems with random seed {cfg.dyst_data.rseed}"
-    )
-    logger.info(f"IC sampler: {ic_sampler}")
-    logger.info(f"Param sampler: {param_sampler}")
-    logger.info(f"Events: {events}")
 
     dyst_data_generator = DynSysSampler(
         rseed=cfg.dyst_data.rseed,
@@ -132,6 +111,7 @@ def main(cfg):
         # Run save_dyst_ensemble on a single system in debug mode
         ensembles = dyst_data_generator._generate_ensembles(
             systems=[cfg.dyst_data.debug_dyst],
+            use_multiprocessing=cfg.dyst_data.multiprocessing,
             _silent_errors=cfg.dyst_data.silent_errors,
         )
 
@@ -157,6 +137,7 @@ def main(cfg):
             cfg.dyst_data.split_prefix + "_" if cfg.dyst_data.split_prefix else ""
         )
 
+        # for debugging
         parameterless_systems = [
             "PehlivanWei",
             "SprottA",
