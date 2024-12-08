@@ -160,7 +160,7 @@ def main(cfg):
             save_dir=cfg.dyst_data.data_dir,
             standardize=cfg.dyst_data.standardize,
             use_multiprocessing=cfg.dyst_data.multiprocessing,
-            _silent_errors=cfg.dyst_data.silent_errors,
+            _silent_errors=cfg.dyst_data.silence_integration_errors,
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
@@ -175,7 +175,7 @@ def main(cfg):
             standardize=cfg.dyst_data.standardize,
             reset_attractor_validator=True,  # save validator results separately for test
             use_multiprocessing=cfg.dyst_data.multiprocessing,
-            _silent_errors=cfg.dyst_data.silent_errors,
+            _silent_errors=cfg.dyst_data.silence_integration_errors,
         )
         dyst_data_generator.save_summary(
             os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),

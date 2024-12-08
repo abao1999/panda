@@ -155,10 +155,7 @@ class AttractorValidator:
         with Pool() as pool:
             results = pool.starmap(
                 self._filter_single_system,
-                [
-                    (dyst_name, all_traj, first_sample_idx)
-                    for dyst_name, all_traj in ensemble.items()
-                ],
+                [(all_traj, first_sample_idx) for all_traj in ensemble.values()],
             )
         valid_trajs, failed_trajs, failed_checks, valid_samples = zip(*results)
         for dyst_name, failed_check_lst in zip(list(ensemble.keys()), failed_checks):

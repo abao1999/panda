@@ -174,7 +174,7 @@ class OnAttractorInitCondSampler(BaseSampler):
                     standardize=False,
                 )
             except ValueError as e:
-                logger.warning(f"Error during integrating {system.name}: {str(e)}")
+                logger.warning(f"Error integrating {system.name}: {str(e)}")
                 return None
 
             # if integrate fails, resulting in an incomplete trajectory
