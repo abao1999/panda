@@ -1,14 +1,51 @@
+import logging
 import os
+import time
 from datetime import datetime
+from functools import wraps
 from itertools import permutations
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from dysts.systems import get_attractor_list
 from gluonts.dataset import Dataset
 from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
+
+
+def timeit(logger: logging.Logger | None = None) -> Callable:
+    """Decorator that measures and logs execution time of a function.
+
+    Args:
+        logger: Optional logger to use for timing output. If None, prints to stdout.
+    """
+
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            result = func(*args, **kwargs)
+            elapsed = time.perf_counter() - start
+
+            if elapsed < 60:
+                time_str = f"{elapsed:.2f} seconds"
+            elif elapsed < 3600:
+                time_str = f"{elapsed/60:.2f} minutes"
+            else:
+                time_str = f"{elapsed/3600:.2f} hours"
+
+            msg = f"{func.__name__} took {time_str}"
+            if logger:
+                logger.info(msg)
+            else:
+                print(msg)
+
+            return result
+
+        return wrapper
+
+    return decorator
 
 
 def split_systems(

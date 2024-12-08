@@ -1,12 +1,11 @@
 import json
 import logging
 import os
-import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import partial
 from multiprocessing import Pool
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import dysts.flows as flows
 import numpy as np
@@ -16,7 +15,7 @@ from dysts.systems import make_trajectory_ensemble
 from tqdm import tqdm
 
 from dystformer.attractor import AttractorValidator
-from dystformer.utils import process_trajs
+from dystformer.utils import process_trajs, timeit
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +41,15 @@ class DynSysSampler:
     num_periods: int = 5
     num_points: int = 1024
 
-    param_sampler: Optional[BaseSampler] = None
-    ic_sampler: Optional[BaseSampler] = None
+    param_sampler: BaseSampler | None = None
+    ic_sampler: BaseSampler | None = None
     num_ics: int = 1
     num_param_perturbations: int = 1
 
     split_coords: bool = True  # by default save trajectories compatible with Chronos
-    events: Optional[List] = None
-    attractor_validator_kwargs: Dict[str, Any] = field(default_factory=dict)
-    attractor_tests: Optional[List[Callable]] = None
+    events: list | None = None
+    attractor_validator_kwargs: dict[str, Any] = field(default_factory=dict)
+    attractor_tests: list[Callable] | None = None
 
     verbose: bool = True
     save_failed_trajs: bool = False
@@ -66,7 +65,7 @@ class DynSysSampler:
                 self.num_ics == 1
             ), "No initial condition sampler provided, but num_ics > 1"
         if self.attractor_tests is None and self.num_param_perturbations > 1:
-            warnings.warn(
+            logger.warning(
                 "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
             )
         elif self.attractor_tests is not None:
@@ -76,10 +75,10 @@ class DynSysSampler:
 
     def _prepare_save_directories(
         self,
-        save_dir: Optional[str],
+        save_dir: str | None,
         split: str,
         split_failures: str = "failed_attractors",
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> tuple[str | None, str | None]:
         if save_dir is not None:
             save_dyst_dir = os.path.join(save_dir, split)
             os.makedirs(save_dyst_dir, exist_ok=True)
@@ -91,18 +90,19 @@ class DynSysSampler:
             else:
                 failed_dyst_dir = None
         else:
-            warnings.warn("save_dir is None, will not save trajectories.")
+            logger.warning("save_dir is None, will not save trajectories.")
             save_dyst_dir = failed_dyst_dir = None
         return save_dyst_dir, failed_dyst_dir
 
+    @timeit(logger=logger)
     def save_dyst_ensemble(
         self,
-        systems: Union[List[str], List[BaseDyn]],
+        systems: list[str] | list[BaseDyn],
         split: str = "train",
         split_failures: str = "failed_attractors",
         samples_process_interval: int = 1,
-        save_dir: Optional[str] = None,
-        save_params_dir: Optional[str] = None,
+        save_dir: str | None = None,
+        save_params_dir: str | None = None,
         standardize: bool = False,
         use_multiprocessing: bool = True,
         reset_attractor_validator: bool = False,
@@ -226,10 +226,10 @@ class DynSysSampler:
 
     def _generate_ensembles(
         self,
-        systems: Union[List[str], List[BaseDyn]],
-        postprocessing_callbacks: List[Callable] = [],
+        systems: list[str] | list[BaseDyn],
+        postprocessing_callbacks: list[Callable] = [],
         **kwargs,
-    ) -> List[Dict[str, np.ndarray]]:
+    ) -> list[dict[str, np.ndarray]]:
         """
         Generate trajectory ensembles for a given set of dynamical systems.
         """
@@ -306,8 +306,8 @@ class DynSysSampler:
         self,
         num_total_samples: int,
         samples_process_interval: int,
-        save_dyst_dir: Optional[str],
-        failed_dyst_dir: Optional[str],
+        save_dyst_dir: str | None,
+        failed_dyst_dir: str | None,
     ):
         """
         Callback to process and save ensembles.
@@ -336,16 +336,16 @@ class DynSysSampler:
         self, sample_idx, ensemble, excluded_keys, *args
     ):
         if len(excluded_keys) > 0:
-            warnings.warn(f"INTEGRATION FAILED FOR: {excluded_keys}")
+            logger.warning(f"INTEGRATION FAILED FOR: {excluded_keys}")
             for dyst_name in excluded_keys:
                 self.failed_integrations[dyst_name].append(sample_idx)
 
     def _process_and_save_ensemble(
         self,
-        ensemble_list: List[Dict[str, np.ndarray]],
+        ensemble_list: list[dict[str, np.ndarray]],
         sample_idx: int,
-        save_dyst_dir: Optional[str],
-        failed_dyst_dir: Optional[str],
+        save_dyst_dir: str | None,
+        failed_dyst_dir: str | None,
     ) -> None:
         """
         Process the ensemble list by checking for valid attractors and filtering out invalid ones.
@@ -387,7 +387,12 @@ class DynSysSampler:
         )
 
     def _save_parameters_callback(
-        self, save_path: str, sample_idx, ensemble, excluded_keys, perturbed_systems
+        self,
+        sample_idx,
+        ensemble,
+        excluded_keys,
+        perturbed_systems,
+        save_path: str | None = None,
     ) -> None:
         if save_path is None or not perturbed_systems:
             return
@@ -448,4 +453,3 @@ class DynSysSampler:
 
         with open(save_json_path, "w") as f:
             json.dump(summary_dict, f, indent=4)
-            f.write("\n")

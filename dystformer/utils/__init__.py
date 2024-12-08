@@ -9,6 +9,7 @@ from .data_utils import (
     sample_index_pairs,
     split_systems,
     stack_and_extract_metadata,
+    timeit,
 )
 from .eval_utils import (
     average_nested_dict,
