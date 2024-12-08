@@ -14,6 +14,16 @@ from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
 
 
+def demote_from_numpy(param: float | np.ndarray) -> float | list[float]:
+    """
+    Demote a float or numpy array to a float or list of floats
+    Used for serializing parameters to json
+    """
+    if isinstance(param, np.ndarray):
+        return param.tolist()
+    return param
+
+
 def timeit(logger: logging.Logger | None = None) -> Callable:
     """Decorator that measures and logs execution time of a function.
 
@@ -282,43 +292,3 @@ def pad_array(arr: np.ndarray, n2: int, m2: int) -> np.ndarray:
     return np.pad(
         arr, ((0, pad_rows), (0, pad_cols)), mode="constant", constant_values=0
     )
-
-
-def construct_basic_affine_map(
-    n: int,
-    m: int,
-    kappa: Union[float, np.ndarray] = 1.0,
-) -> np.ndarray:
-    """
-    Construct an affine map that sends (x, y, 1) -> (x, y, x + y)
-    where x and y have lengths n and m respectively, and n <= m
-    Args:
-        n: driver system dimension
-        m: response system dimension
-        kappa: coupling strength, either a float or a list of floats
-    Returns:
-        A: the affine map matrix (2D array), block matrix (n + 2m) x (n + m + 1)
-    """
-    I_n = np.eye(n)  # n x n identity matrix
-    I_m = np.eye(m)  # m x m identity matrix
-
-    assert isinstance(
-        kappa, (float, np.ndarray)
-    ), "coupling strength kappa must be a float or a list of floats"
-
-    if isinstance(kappa, float):
-        bottom_block = np.hstack(
-            [kappa * pad_array(I_n if n < m else I_m, m, n), I_m, np.zeros((m, 1))]
-        )
-    else:  # kappa is a list of floats
-        k = min(n, m)
-        assert len(kappa) == k, "coupling strength kappa must be of length min(n, m)"  # type: ignore
-        bottom_block = np.hstack(
-            [pad_array(np.diag(kappa), m, n), I_m, np.zeros((m, 1))]
-        )
-
-    top_block = np.hstack([I_n, np.zeros((n, m)), np.zeros((n, 1))])
-    middle_block = np.hstack([np.zeros((m, n)), I_m, np.zeros((m, 1))])
-
-    A = np.vstack([top_block, middle_block, bottom_block])
-    return A

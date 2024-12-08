@@ -1,7 +1,7 @@
 from .data_utils import (
     accumulate_coords,
-    construct_basic_affine_map,
     convert_to_arrow,
+    demote_from_numpy,
     get_system_filepaths,
     make_ensemble_from_arrow_dir,
     pad_array,

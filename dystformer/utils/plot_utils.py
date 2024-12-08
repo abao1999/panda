@@ -1,26 +1,25 @@
 import os
 import warnings
-from typing import List, Optional
 
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import TABLEAU_COLORS
 
-N_SAMPLES_PLOT = 6
-# plt.style.use(["ggplot", "custom_style.mplstyle"])
-colormap = cm.get_cmap("tab10", 10)  # 'tab10' is a colormap with 10 distinct colors
-COLORS = [mcolors.rgb2hex(colormap(i)) for i in range(colormap.N)]
+COLORS = list(TABLEAU_COLORS.values())
 
 
 def plot_trajs_multivariate(
     dyst_data: np.ndarray,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
-    samples_subset: Optional[List[int]] = None,
-    n_samples_plot: Optional[int] = None,
+    samples_subset: list[int] | None = None,
+    n_samples_plot: int | None = None,
     plot_2d_slice: bool = True,
+    plot_projections: bool = False,
+    dims_3d: list[int] = [0, 1, 2],
+    figsize: tuple[int, int] = (6, 6),
+    max_samples: int = 6,
 ) -> None:
     """
     Plot multivariate timeseries from dyst_data
@@ -29,17 +28,20 @@ def plot_trajs_multivariate(
         dyst_data (np.ndarray): Array of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
         save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
         plot_name (str, optional): Base name for the saved plot files. Defaults to "dyst".
-        samples_subset (List[int], optional): Subset of sample indices to plot. If None, all samples are used. Defaults to None.
-        n_samples_plot (int, optional): Number of samples to plot. If None, all samples are plotted. Defaults to None.
-        plot_2d_slice (bool, optional): Whether to plot a 2D slice of the first two dimensions. Defaults to True.
+        samples_subset (list[int] | None): Subset of sample indices to plot. If None, all samples are used. Defaults to None.
+        n_samples_plot (int | None): Number of samples to plot. If None, all samples are plotted. Defaults to None.
+        plot_2d_slice (bool): Whether to plot a 2D slice of the first two dimensions. Defaults to True.
+        plot_projections (bool): Whether to plot 2D projections on the coordinate planes
+        dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
+        figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
+        max_samples (int): Maximum number of samples to plot. Defaults to 6.
     """
     os.makedirs(save_dir, exist_ok=True)
+    assert (
+        dyst_data.shape[1] >= len(dims_3d)
+    ), f"Data has {dyst_data.shape[1]} dimensions, but {len(dims_3d)} dimensions were requested for plotting"
 
-    if n_samples_plot is None:
-        num_tot_samples = dyst_data.shape[0]
-        n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
-    else:
-        n_samples_plot = min(N_SAMPLES_PLOT, n_samples_plot)
+    n_samples_plot = min(max_samples, n_samples_plot or dyst_data.shape[0])
 
     if samples_subset is not None:
         if n_samples_plot > len(samples_subset):
@@ -51,23 +53,22 @@ def plot_trajs_multivariate(
     if plot_2d_slice:
         save_path = os.path.join(save_dir, f"{plot_name}.png")
         print("Plotting 2D trajectories and saving to ", save_path)
-        plt.figure(figsize=(6, 6))
+        plt.figure(figsize=figsize)
         for sample_idx in range(n_samples_plot):
             label_sample_idx = (
                 samples_subset[sample_idx] if samples_subset is not None else sample_idx
             )
             label = f"Sample {label_sample_idx}"
-            print(f"Plotting sample {label_sample_idx}")
             curr_color = COLORS[label_sample_idx % len(COLORS)]
 
             xy = dyst_data[sample_idx, :2, :]
             plt.plot(*xy, alpha=0.5, linewidth=1, color=curr_color, label=label)
 
             ic_point = dyst_data[sample_idx, :2, 0]
-            plt.scatter(*ic_point, marker="*", s=100, alpha=0.5, c=curr_color)
+            plt.scatter(*ic_point, marker="*", s=100, alpha=0.5, color=curr_color)
 
             final_point = dyst_data[sample_idx, :2, -1]
-            plt.scatter(*final_point, marker="x", s=100, alpha=0.5, c=curr_color)
+            plt.scatter(*final_point, marker="x", s=100, alpha=0.5, color=curr_color)
 
         plt.xlabel("X")
         plt.ylabel("Y")
@@ -76,46 +77,87 @@ def plot_trajs_multivariate(
         plt.savefig(save_path, dpi=300)
         plt.close()
 
-    # 3D plot (first three coordinates)
     save_path = os.path.join(save_dir, f"{plot_name}_3D.png")
     print("Plotting 3D trajectories and saving to ", save_path)
-    if dyst_data.shape[1] >= 3:
-        fig = plt.figure(figsize=(6, 6))
-        ax = fig.add_subplot(111, projection="3d")
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111, projection="3d")
+
+    for sample_idx in range(n_samples_plot):
+        label_sample_idx = (
+            samples_subset[sample_idx] if samples_subset is not None else sample_idx
+        )
+        label = f"Sample {label_sample_idx}"
+        curr_color = COLORS[label_sample_idx % len(COLORS)]
+
+        xyz = dyst_data[sample_idx, dims_3d, :]
+        ax.plot(*xyz, alpha=0.5, linewidth=1, color=curr_color, label=label)
+
+        ic_pt = xyz[:, 0]
+        ax.scatter(*ic_pt, marker="*", s=100, alpha=0.5, color=curr_color)
+
+        end_pt = xyz[:, -1]
+        ax.scatter(*end_pt, marker="x", s=100, alpha=0.5, color=curr_color)
+
+    if plot_projections:
+        x_min, x_max = ax.get_xlim3d()  # type: ignore
+        y_min, y_max = ax.get_ylim3d()  # type: ignore
+        z_min, z_max = ax.get_zlim3d()  # type: ignore
+
         for sample_idx in range(n_samples_plot):
             label_sample_idx = (
                 samples_subset[sample_idx] if samples_subset is not None else sample_idx
             )
-            label = f"Sample {label_sample_idx}"
             curr_color = COLORS[label_sample_idx % len(COLORS)]
+            xyz = dyst_data[sample_idx, dims_3d, :]
+            ic_pt = xyz[:, 0]
+            end_pt = xyz[:, -1]
 
-            xyz = dyst_data[sample_idx, :3, :]
-            ax.plot(*xyz, alpha=0.5, linewidth=1, color=curr_color, label=label)
+            # XY plane projection (bottom)
+            ax.plot(xyz[0], xyz[1], z_min, alpha=0.2, linewidth=1, color=curr_color)
+            ax.scatter(
+                ic_pt[0], ic_pt[1], z_min, marker="*", alpha=0.2, color=curr_color
+            )
+            ax.scatter(
+                end_pt[0], end_pt[1], z_min, marker="x", alpha=0.2, color=curr_color
+            )
 
-            ic_point = dyst_data[sample_idx, :3, 0]
-            ax.scatter(*ic_point, marker="*", s=100, alpha=0.5, c=curr_color)
+            # XZ plane projection (back)
+            ax.plot(xyz[0], y_max, xyz[2], alpha=0.2, linewidth=1, color=curr_color)
+            ax.scatter(
+                ic_pt[0], y_max, ic_pt[2], marker="*", alpha=0.2, color=curr_color
+            )
+            ax.scatter(
+                end_pt[0], y_max, end_pt[2], marker="x", alpha=0.2, color=curr_color
+            )
 
-            final_point = dyst_data[sample_idx, :3, -1]
-            ax.scatter(*final_point, marker="x", s=100, alpha=0.5, c=curr_color)
+            # YZ plane projection (right)
+            ax.plot(x_min, xyz[1], xyz[2], alpha=0.2, linewidth=1, color=curr_color)
+            ax.scatter(
+                x_min, ic_pt[1], ic_pt[2], marker="*", alpha=0.2, color=curr_color
+            )
+            ax.scatter(
+                x_min, end_pt[1], end_pt[2], marker="x", alpha=0.2, color=curr_color
+            )
 
-        ax.set_xlabel("X")
-        ax.set_ylabel("Y")
-        ax.set_zlabel("Z")  # type: ignore
-        plt.legend()
-        ax.tick_params(pad=3)  # Increase the padding between ticks and axes labels
-        ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
-        plt.title(plot_name.replace("_", " "))
-        plt.savefig(save_path, dpi=300)
-        plt.close()
+    ax.set_xlabel(f"dim_{dims_3d[0]}")
+    ax.set_ylabel(f"dim_{dims_3d[1]}")
+    ax.set_zlabel(f"dim_{dims_3d[2]}")  # type: ignore
+    plt.legend()
+    ax.tick_params(pad=3)
+    ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
+    plt.title(plot_name.replace("_", " "))
+    plt.savefig(save_path, dpi=300)
+    plt.close()
 
 
 def plot_completions_evaluation(
     completions: np.ndarray,
     context: np.ndarray,
-    mask: Optional[np.ndarray] = None,
+    mask: np.ndarray | None = None,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
-    samples_subset: Optional[List[int]] = None,
+    samples_subset: list[int] | None = None,
+    max_samples: int = 6,
 ) -> None:
     """
     Plot side-by-side 3D multivariate timeseries for completions and context,
@@ -123,7 +165,7 @@ def plot_completions_evaluation(
     """
     os.makedirs(save_dir, exist_ok=True)
     num_tot_samples = min(completions.shape[0], context.shape[0])
-    n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
+    n_samples_plot = min(max_samples, num_tot_samples)
 
     if samples_subset is not None:
         if n_samples_plot > len(samples_subset):
@@ -265,7 +307,8 @@ def plot_forecast_evaluation(
     context_length: int,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
-    samples_subset: Optional[List[int]] = None,
+    samples_subset: list[int] | None = None,
+    max_samples: int = 6,
 ) -> None:
     """
     Plot side-by-side 3D multivariate timeseries for completions and context,
@@ -273,7 +316,7 @@ def plot_forecast_evaluation(
     """
     os.makedirs(save_dir, exist_ok=True)
     num_tot_samples = min(forecasts.shape[0], ground_truth.shape[0])
-    n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
+    n_samples_plot = min(max_samples, num_tot_samples)
 
     if samples_subset is not None:
         if n_samples_plot > len(samples_subset):
@@ -364,9 +407,6 @@ def plot_forecast_evaluation(
             # ax.axvline(x=context_length, color="black", linestyle="-", linewidth=1)
             ax.set_title(f"Dimension {dim + 1}")
             ax.set_xlabel("Timesteps")
-
-    # # Create a shared legend for samples
-    # fig.legend(lines, labels, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 0.95))
 
     # Add a legend for line styles in the univariate plots
     line_ground_truth = plt.Line2D(  # type: ignore

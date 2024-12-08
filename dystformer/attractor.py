@@ -3,6 +3,7 @@ Suite of tests to determine if generated trajectories are valid attractors
 """
 
 import functools
+import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from multiprocessing import Pool
@@ -28,6 +29,7 @@ class AttractorValidator:
     plot_save_dir: Optional[str] = None
     verbose: bool = False
     tests: Optional[List[Callable]] = None
+    logger: logging.Logger | None = None
 
     def __post_init__(self):
         self.failed_checks = defaultdict(list)  # Dict[str, List[Tuple[int, str]]]
@@ -70,6 +72,7 @@ class AttractorValidator:
 
     def _filter_single_system(
         self,
+        dyst_name: str,
         all_traj: np.ndarray,
         first_sample_idx: int = 0,
     ) -> Tuple[np.ndarray, np.ndarray, List[Tuple[int, str]], List[int]]:
@@ -89,6 +92,10 @@ class AttractorValidator:
                 if not status:
                     failed_check = (sample_idx, test_name)
                     failed_checks_samples.append(failed_check)
+                    if self.logger:
+                        self.logger.warning(
+                            f"Failed {test_name} test for {dyst_name} at sample {sample_idx}"
+                        )
                     break
             # if traj sample failed a test, move on to next trajectory sample for this dyst
             if not status:
@@ -124,7 +131,7 @@ class AttractorValidator:
                 failed_attractor_trajs,
                 failed_checks,
                 valid_samples,
-            ) = self._filter_single_system(all_traj, first_sample_idx)
+            ) = self._filter_single_system(dyst_name, all_traj, first_sample_idx)
 
             self.failed_checks[dyst_name].extend(failed_checks)
             self.failed_samples[dyst_name].extend([ind for ind, _ in failed_checks])
@@ -155,7 +162,10 @@ class AttractorValidator:
         with Pool() as pool:
             results = pool.starmap(
                 self._filter_single_system,
-                [(all_traj, first_sample_idx) for all_traj in ensemble.values()],
+                [
+                    (dyst_name, all_traj, first_sample_idx)
+                    for dyst_name, all_traj in ensemble.items()
+                ],
             )
         valid_trajs, failed_trajs, failed_checks, valid_samples = zip(*results)
         for dyst_name, failed_check_lst in zip(list(ensemble.keys()), failed_checks):

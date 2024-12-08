@@ -15,7 +15,7 @@ from dysts.systems import make_trajectory_ensemble
 from tqdm import tqdm
 
 from dystformer.attractor import AttractorValidator
-from dystformer.utils import process_trajs, timeit
+from dystformer.utils import demote_from_numpy, process_trajs, timeit
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,9 @@ class DynSysSampler:
             )
         elif self.attractor_tests is not None:
             self.attractor_validator = AttractorValidator(
-                **self.attractor_validator_kwargs, tests=self.attractor_tests
+                **self.attractor_validator_kwargs,
+                tests=self.attractor_tests,
+                logger=logger,
             )
 
     def _prepare_save_directories(
@@ -131,7 +133,7 @@ class DynSysSampler:
                 failed_dyst_dir,
             ),
             self.save_failed_integrations_callback,
-            partial(self._save_parameters_callback, save_params_dir),
+            partial(self._save_parameters_callback, save_path=save_params_dir),
         ]
 
         # treat the default params as the zeroth sample
@@ -145,6 +147,8 @@ class DynSysSampler:
         )
         for callback in callbacks[:-1]:  # ignore failed integrations
             callback(0, default_ensemble, [], systems)
+
+        breakpoint()
 
         _ = self._generate_ensembles(
             systems,
@@ -250,7 +254,7 @@ class DynSysSampler:
 
             ic_rng_stream = param_rng.spawn(self.num_ics)
             for j, ic_rng in enumerate(ic_rng_stream):
-                sample_idx = i * len(ic_rng_stream) + j
+                sample_idx = i * len(ic_rng_stream) + j + 1
 
                 pbar.update(1)
                 pbar.set_postfix({"param_idx": i, "ic_idx": j})
@@ -409,11 +413,14 @@ class DynSysSampler:
                 param_dict[sys.name] = []
 
             if "_" in sys.name:  # for skew systems
-                param_dict[sys.name].append(
-                    [sys.driver.param_list.tolist(), sys.response.param_list.tolist()]
-                )
+                serialized_params = [
+                    list(map(demote_from_numpy, sys.driver.param_list)),
+                    list(map(demote_from_numpy, sys.response.param_list)),
+                ]
             else:
-                param_dict[sys.name].append(sys.param_list.tolist())
+                serialized_params = list(map(demote_from_numpy, sys.param_list))
+
+            param_dict[sys.name].append(serialized_params)
 
         with open(save_path, "w") as f:
             json.dump(param_dict, f, indent=4)

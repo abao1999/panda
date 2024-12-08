@@ -112,7 +112,7 @@ def main(cfg):
         ensembles = dyst_data_generator._generate_ensembles(
             systems=[cfg.dyst_data.debug_dyst],
             use_multiprocessing=cfg.dyst_data.multiprocessing,
-            _silent_errors=cfg.dyst_data.silent_errors,
+            _silent_errors=cfg.dyst_data.silence_integration_errors,
         )
 
         if any(len(ensemble) == 0 for ensemble in ensembles):
@@ -130,6 +130,8 @@ def main(cfg):
             samples,
             save_dir="figures",
             plot_name=f"{cfg.dyst_data.debug_dyst}_debug",
+            plot_2d_slice=True,
+            plot_projections=True,
         )
 
     else:
@@ -152,12 +154,20 @@ def main(cfg):
             "SprottTorus",
         ]
 
+        if cfg.dyst_data.save_params:
+            param_dir = os.path.join(cfg.dyst_data.data_dir, "parameters")
+        else:
+            param_dir = None
+
         dyst_data_generator.save_dyst_ensemble(
             systems=train_systems,
             split=f"{split_prefix}train",
             split_failures=f"{split_prefix}failed_attractors_train",
             samples_process_interval=1,
             save_dir=cfg.dyst_data.data_dir,
+            save_params_dir=param_dir
+            if param_dir is None
+            else f"{param_dir}/train.json",
             standardize=cfg.dyst_data.standardize,
             use_multiprocessing=cfg.dyst_data.multiprocessing,
             _silent_errors=cfg.dyst_data.silence_integration_errors,
@@ -165,6 +175,7 @@ def main(cfg):
         dyst_data_generator.save_summary(
             os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
         )
+        breakpoint()
 
         dyst_data_generator.save_dyst_ensemble(
             systems=test_systems,
@@ -172,6 +183,9 @@ def main(cfg):
             split_failures=f"{split_prefix}failed_attractors_test",
             samples_process_interval=1,
             save_dir=cfg.dyst_data.data_dir,
+            save_params_dir=param_dir
+            if param_dir is None
+            else f"{param_dir}/test.json",
             standardize=cfg.dyst_data.standardize,
             reset_attractor_validator=True,  # save validator results separately for test
             use_multiprocessing=cfg.dyst_data.multiprocessing,

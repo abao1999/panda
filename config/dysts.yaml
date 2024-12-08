@@ -1,6 +1,5 @@
 dyst_data:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
-  param_dir: $WORK/data/params/
   sys_class: continuous
   test_split: 0.3
   split_prefix: null
@@ -18,6 +17,7 @@ dyst_data:
   multiprocessing: true
   debug_dyst: null
   silence_integration_errors: false
+  save_params: false
 
 validator:
   enable: true
