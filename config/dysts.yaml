@@ -16,7 +16,8 @@ dyst_data:
   verbose: false
   multiprocessing: true
   debug_dyst: null
-  silent_errors: false
+  silence_integration_errors: false
+  save_params: false
 
 validator:
   enable: true

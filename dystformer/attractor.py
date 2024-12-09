@@ -3,15 +3,12 @@ Suite of tests to determine if generated trajectories are valid attractors
 """
 
 import functools
-import inspect
-import os
+import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from multiprocessing import Pool
 from typing import Callable, Dict, List, Optional, Tuple
 
-import matplotlib.colors as colors
-import matplotlib.pyplot as plt
 import numpy as np
 from dysts.analysis import max_lyapunov_exponent_rosenstein
 from scipy.fft import fft, fftfreq
@@ -32,6 +29,7 @@ class AttractorValidator:
     plot_save_dir: Optional[str] = None
     verbose: bool = False
     tests: Optional[List[Callable]] = None
+    logger: logging.Logger | None = None
 
     def __post_init__(self):
         self.failed_checks = defaultdict(list)  # Dict[str, List[Tuple[int, str]]]
@@ -51,9 +49,7 @@ class AttractorValidator:
     def _execute_test_fn(
         self,
         test_fn: Callable,
-        dyst_name: str,
         traj_sample: np.ndarray,
-        sample_idx: int,
     ) -> Tuple[bool, str]:
         """
         Execute a single test for a given trajectory sample of a system.
@@ -70,15 +66,6 @@ class AttractorValidator:
             test_fn.func if isinstance(test_fn, functools.partial) else test_fn
         )
         func_name = original_func.__name__
-        func_params = list(inspect.signature(original_func).parameters.keys())
-        can_plot = all(param in func_params for param in ["plot_save_dir", "plot_name"])
-        if can_plot and self.plot_save_dir is not None:
-            plot_save_dir = os.path.join(self.plot_save_dir, dyst_name)
-            test_fn = functools.partial(
-                test_fn,
-                plot_save_dir=plot_save_dir,
-                plot_name=f"{dyst_name}_sample_{sample_idx}",
-            )
         transient_time = int(traj_sample.shape[1] * self.transient_time_frac)
         status = test_fn(traj_sample[:, transient_time:])
         return status, func_name
@@ -101,15 +88,14 @@ class AttractorValidator:
             sample_idx = first_sample_idx + i
             status = True
             for test_fn in self.tests or []:
-                status, test_name = self._execute_test_fn(
-                    test_fn,
-                    dyst_name,
-                    traj_sample,
-                    sample_idx=sample_idx,
-                )
+                status, test_name = self._execute_test_fn(test_fn, traj_sample)
                 if not status:
                     failed_check = (sample_idx, test_name)
                     failed_checks_samples.append(failed_check)
+                    if self.logger:
+                        self.logger.warning(
+                            f"Failed {test_name} test for {dyst_name} at sample {sample_idx}"
+                        )
                     break
             # if traj sample failed a test, move on to next trajectory sample for this dyst
             if not status:
@@ -137,8 +123,8 @@ class AttractorValidator:
             valid_attractor_ensemble: A new ensemble with only the valid trajectories
             failed_attractor_ensemble: A new ensemble with only the failed trajectories
         """
-        valid_attractor_ensemble = {}  # Dict[str, np.ndarray]
-        failed_attractor_ensemble = {}  # Dict[str, np.ndarray]
+        valid_attractor_ensemble: Dict[str, np.ndarray] = {}
+        failed_attractor_ensemble: Dict[str, np.ndarray] = {}
         for dyst_name, all_traj in ensemble.items():
             (
                 valid_attractor_trajs,
@@ -203,12 +189,7 @@ class AttractorValidator:
 
 
 def check_boundedness(
-    traj: np.ndarray,
-    threshold: float = 1e4,
-    max_num_stds: float = 10,
-    save_plot: bool = False,
-    plot_save_dir: Optional[str] = None,
-    plot_name: Optional[str] = None,
+    traj: np.ndarray, threshold: float = 1e4, max_zscore: float = 10
 ) -> bool:
     """
     Check if a multi-dimensional trajectory is bounded (not diverging).
@@ -216,48 +197,22 @@ def check_boundedness(
     Args:
         traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
         threshold: Maximum absolute value of the trajectory to consider as diverging.
-        max_num_stds: Maximum number of standard deviations from the initial point to consider as diverging.
+        max_zscore: Maximum z-score of the trajectory to consider as diverging.
     Returns:
         bool: False if the system is diverging, True otherwise.
     """
     if np.any(np.abs(traj) > threshold):
         return False
 
-    # Whiten trajectory (i.e. normalize to have zero mean and unit variance)
-
-    whitened_traj = (traj - traj.mean(axis=1)[:, None]) / traj.std(axis=1)[:, None]
-    if np.max(np.abs(whitened_traj)) > max_num_stds:
+    standardized_traj = (traj - traj.mean(axis=1)[:, None]) / traj.std(axis=1)[:, None]
+    if np.max(np.abs(standardized_traj)) > max_zscore:
         return False
 
-    # Calculate the Euclidean distance from the first point in the trajectory at each time point
-    distance_norms = np.linalg.norm(whitened_traj - whitened_traj[:, 0, None], axis=0)
-
-    if save_plot and plot_save_dir is not None and plot_name is not None:
-        os.makedirs(plot_save_dir, exist_ok=True)
-        plt.figure(figsize=(10, 6))
-        plt.hist(
-            distance_norms,
-            bins=100,
-            alpha=0.7,
-            color="tab:blue",
-            edgecolor="black",
-        )
-        plt.title("Distance Norms of Whitened Trajectory")
-        plt.xlabel(r"Distance Norm $||x(t) - x(0)||$")
-        plt.ylabel("Counts")
-        plt.grid(True)
-        plt.savefig(os.path.join(plot_save_dir, f"{plot_name}_distance_norms.png"))
-        plt.close()
-
-    is_diverging = np.max(distance_norms) > 2 * max_num_stds
-
-    return not is_diverging
+    return True
 
 
 def check_not_fixed_point(
-    traj: np.ndarray,
-    tail_prop: float = 0.05,
-    atol: float = 1e-3,
+    traj: np.ndarray, tail_prop: float = 0.05, atol: float = 1e-3
 ) -> bool:
     """
     Check if the system trajectory converges to a fixed point.
@@ -272,7 +227,6 @@ def check_not_fixed_point(
     """
     n = traj.shape[1]
     tail = int(tail_prop * n)
-    # Compute the Euclidean distance between consecutive points
     distances = np.linalg.norm(np.diff(traj[:, -tail:], axis=1), axis=0)
 
     if np.allclose(distances, 0, atol=atol):
@@ -317,7 +271,6 @@ def check_not_transient(
     Returns:
         bool: False if the system is approaching a fixed point, True otherwise.
     """
-    # Check if any dimension of the trajectory is a straight line in the first max_transient_prop of the trajectory
     n = traj.shape[1]
     transient = int(max_transient_prop * n)
     for dim in range(traj.shape[0]):
@@ -335,9 +288,6 @@ def check_not_limit_cycle(
     min_block_length: int = 1,
     min_recurrence_time: int = 1,
     enforce_endpoint_recurrence: bool = False,
-    save_plot: bool = False,
-    plot_save_dir: Optional[str] = None,
-    plot_name: Optional[str] = None,
 ) -> bool:
     """
     Checks if a multidimensional trajectory is collapsing to a limit cycle.
@@ -372,8 +322,6 @@ def check_not_limit_cycle(
     dist_matrix = cdist(reduced_traj.T, reduced_traj.T, metric="euclidean").astype(
         np.float16
     )
-
-    # get upper trangular part of matrix, zero out the lower triangular part
     dist_matrix = np.triu(dist_matrix, k=1)
 
     # Step 3: Get recurrence times from thresholding distance matrix
@@ -401,7 +349,6 @@ def check_not_limit_cycle(
     # Heuristic 1: Check if there are enough recurrences to consider a limit cycle
     n_recurrences = len(recurrence_times)
     if n_recurrences < int(min_prop_recurrences * n):
-        # Not enough recurrences to consider a limit cycle.
         return True
 
     # Heuristic 2: Check if there are enough valid recurrence times
@@ -410,7 +357,6 @@ def check_not_limit_cycle(
         1 for count in rtimes_counts.values() if count >= min_counts_per_rtime
     )
     if n_valid_rtimes < 1:
-        # Not enough valid recurrence times to consider a limit cycle
         return True
 
     # Heuristic 3: Check if the valid recurrence times are formed of blocks of consecutive timepoints
@@ -440,7 +386,6 @@ def check_not_limit_cycle(
                 block_length = 1
             prev_t1, prev_t2, prev_rtime = t1, t2, rtime
             if block_length > min_block_length * 2:
-                # enough is enough
                 rtimes_is_valid = True
                 break
             if num_blocks >= 2:  # if valid, save computation and break
@@ -449,73 +394,10 @@ def check_not_limit_cycle(
         if not rtimes_is_valid:
             return True
 
-    # Plot the recurrence times as histogram and 3D trajectory
-    # NOTE: at this point, this test has detected a limit cycle (return False)
-    if save_plot and plot_save_dir is not None and plot_name is not None:
-        os.makedirs(plot_save_dir, exist_ok=True)
-        dyst_name = plot_name.split("_")[0]
-        plot_name = f"{plot_name}_recurrence_times_FAILED"
-
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 18))
-
-        ax1.hist(recurrence_times, bins=100, edgecolor="black")
-        ax1.set_xlabel("Recurrence Time")
-        ax1.set_ylabel("Frequency")
-        ax1.set_title("Recurrence Times")
-        ax1.grid(True)
-
-        xyz = traj[:3, :]
-        xyz1 = xyz[:, : int(n / 2)]
-        xyz2 = xyz[:, int(n / 2) :]
-        ic_point = traj[:3, 0]
-        final_point = traj[:3, -1]
-        ax2 = fig.add_subplot(312, projection="3d")
-        ax2.plot(*xyz1, alpha=0.5, linewidth=1, color="tab:blue")
-        ax2.plot(*xyz2, alpha=0.5, linewidth=1, color="tab:orange")
-        ax2.scatter(*ic_point, marker="*", s=100, alpha=0.5, color="tab:blue")
-        ax2.scatter(*final_point, marker="x", s=100, alpha=0.5, color="tab:orange")
-        ax2.set_xlabel("X")
-        ax2.set_ylabel("Y")
-        ax2.set_zlabel("Z")  # type: ignore
-        ax2.set_title(dyst_name)
-
-        ax3 = fig.add_subplot(313)
-        X, Y = np.meshgrid(
-            np.arange(dist_matrix.shape[0]), np.arange(dist_matrix.shape[1])
-        )
-        pcolormesh = ax3.pcolormesh(
-            X,
-            Y,
-            dist_matrix,
-            cmap="viridis_r",
-            shading="auto",
-            norm=colors.LogNorm(),
-        )
-        plt.colorbar(pcolormesh, ax=ax3)
-        ax3.scatter(
-            recurrence_indices[0],
-            recurrence_indices[1],
-            color="black",
-            s=20,
-            alpha=0.5,
-        )
-        ax3.set_title("Recurrence Distance Matrix")
-        ax3.set_xlabel("Time")
-        ax3.set_ylabel("Time")
-        ax3.set_aspect("equal")
-
-        plot_save_path = os.path.join(plot_save_dir, f"{plot_name}.png")
-        plt.savefig(plot_save_path, dpi=300)
-        plt.tight_layout()
-        plt.close()
-
-    # Step 4: Identify if recurrences are periodic by looking at concentration
     return False
 
 
-def check_lyapunov_exponent(
-    traj: np.ndarray,
-) -> bool:
+def check_lyapunov_exponent(traj: np.ndarray) -> bool:
     """
     Check if the Lyapunov exponent of the trajectory is greater than 1.
     Args:
@@ -525,18 +407,14 @@ def check_lyapunov_exponent(
     """
     lyapunov_exponent = max_lyapunov_exponent_rosenstein(traj.T)
     if lyapunov_exponent < 0:
-        # The trajectory does not exhibit chaotic behavior.
         return False
     return True
 
 
 def check_power_spectrum_1d(
-    signal,
+    signal: np.ndarray,
     rel_peak_height_threshold: float = 1e-5,
-    rel_prominence_threshold: Optional[float] = 1e-5,  # None,
-    save_plot: bool = False,
-    plot_save_dir: Optional[str] = None,
-    plot_name: Optional[str] = None,
+    rel_prominence_threshold: float = 1e-5,
 ) -> bool:
     """
     Analyzes the power spectrum of a 1D signal to find significant peaks and plots the spectrum on a log scale.
@@ -575,7 +453,6 @@ def check_power_spectrum_1d(
         pos_power, height=peak_height_threshold, prominence=prominence_threshold
     )
     peak_frequencies = pos_freqs[peak_indices]
-    peak_powers = pos_power[peak_indices]
 
     n_significant_peaks = len(peak_frequencies)
 
@@ -594,42 +471,13 @@ def check_power_spectrum_1d(
     if status:
         return True
 
-    # Only plot if the test failed
-    if save_plot and plot_save_dir is not None and plot_name is not None:
-        os.makedirs(plot_save_dir, exist_ok=True)
-        plot_name = f"{plot_name}_power_spectrum"
-        if not status:
-            plot_name = f"{plot_name}_FAILED"
-        # Plot the power spectrum on a logarithmic scale
-        plt.figure(figsize=(10, 6))
-        plt.plot(pos_freqs, pos_power, label="Power Spectrum")
-        plt.scatter(
-            peak_frequencies,
-            peak_powers,
-            color="red",
-            label="Significant Peaks",
-            zorder=5,
-        )
-        plt.yscale("log")
-        plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Power")
-        plt.title("Power Spectrum with Significant Peaks")
-        plt.grid(True, which="both", ls="--", lw=0.5)
-        plt.legend()
-        plt.savefig(os.path.join(plot_save_dir, f"{plot_name}.png"), dpi=300)
-        plt.close()
-        print(f"Saved plot to {os.path.join(plot_save_dir, f'{plot_name}.png')}")
-
     return status
 
 
 def check_power_spectrum(
     traj: np.ndarray,
     rel_peak_height_threshold: float = 1e-5,
-    rel_prominence_threshold: Optional[float] = None,
-    save_plot: bool = False,
-    plot_save_dir: Optional[str] = None,
-    plot_name: Optional[str] = None,
+    rel_prominence_threshold: float = 1e-5,
 ) -> bool:
     """
     Check if a multi-dimensional trajectory has a power spectrum that is significant.
@@ -645,9 +493,6 @@ def check_power_spectrum(
             x,
             rel_peak_height_threshold=rel_peak_height_threshold,
             rel_prominence_threshold=rel_prominence_threshold,
-            save_plot=save_plot,
-            plot_save_dir=plot_save_dir,
-            plot_name=plot_name,
         )
         # NOTE: some systems have a periodic driver in the last dimension, which will make this test fail
         # in that case, we can use the Lyapunov exponent test to check for chaos

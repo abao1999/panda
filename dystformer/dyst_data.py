@@ -1,27 +1,27 @@
 import json
 import logging
 import os
-import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from functools import partial
+from multiprocessing import Pool
+from typing import Any, Callable
 
+import dysts.flows as flows
 import numpy as np
 from dysts.base import BaseDyn
 from dysts.sampling import BaseSampler
 from dysts.systems import make_trajectory_ensemble
-from tqdm import trange
+from tqdm import tqdm
 
-from dystformer.attractor import (
-    AttractorValidator,
-)
-from dystformer.utils import process_trajs
+from dystformer.attractor import AttractorValidator
+from dystformer.utils import demote_from_numpy, process_trajs, timeit
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class DystData:
+class DynSysSampler:
     """
     Class to generate and save trajectory ensembles for a given set of dynamical systems.
     Args:
@@ -41,15 +41,15 @@ class DystData:
     num_periods: int = 5
     num_points: int = 1024
 
-    param_sampler: Optional[BaseSampler] = None
-    ic_sampler: Optional[BaseSampler] = None
+    param_sampler: BaseSampler | None = None
+    ic_sampler: BaseSampler | None = None
     num_ics: int = 1
     num_param_perturbations: int = 1
 
     split_coords: bool = True  # by default save trajectories compatible with Chronos
-    events: Optional[List] = None
-    attractor_validator_kwargs: Dict[str, Any] = field(default_factory=dict)
-    attractor_tests: Optional[List[Callable]] = None
+    events: list | None = None
+    attractor_validator_kwargs: dict[str, Any] = field(default_factory=dict)
+    attractor_tests: list[Callable] | None = None
 
     verbose: bool = True
     save_failed_trajs: bool = False
@@ -65,57 +65,46 @@ class DystData:
                 self.num_ics == 1
             ), "No initial condition sampler provided, but num_ics > 1"
         if self.attractor_tests is None and self.num_param_perturbations > 1:
-            warnings.warn(
+            logger.warning(
                 "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
             )
         elif self.attractor_tests is not None:
             self.attractor_validator = AttractorValidator(
-                **self.attractor_validator_kwargs, tests=self.attractor_tests
+                **self.attractor_validator_kwargs,
+                tests=self.attractor_tests,
+                logger=logger,
             )
 
-    def process_and_save_callback(
+    def _prepare_save_directories(
         self,
-        num_total_samples: int,
-        samples_process_interval: int,
-        save_dyst_dir: Optional[str],
-        failed_dyst_dir: Optional[str],
-    ):
-        """
-        Callback to process and save ensembles.
-        """
-        ensemble_list = []
+        save_dir: str | None,
+        split: str,
+        split_failures: str = "failed_attractors",
+    ) -> tuple[str | None, str | None]:
+        if save_dir is not None:
+            save_dyst_dir = os.path.join(save_dir, split)
+            os.makedirs(save_dyst_dir, exist_ok=True)
+            logger.info(f"valid attractors will be saved to {save_dyst_dir}")
+            if self.save_failed_trajs:
+                failed_dyst_dir = os.path.join(save_dir, split_failures)
+                os.makedirs(failed_dyst_dir, exist_ok=True)
+                logger.info(f"failed attractors will be saved to {failed_dyst_dir}")
+            else:
+                failed_dyst_dir = None
+        else:
+            logger.warning("save_dir is None, will not save trajectories.")
+            save_dyst_dir = failed_dyst_dir = None
+        return save_dyst_dir, failed_dyst_dir
 
-        def _callback(ensemble, excluded_keys, sample_idx):
-            if len(ensemble.keys()) == 0:
-                logger.warning(
-                    "No successful trajectories for this sample. Skipping, will not save to arrow files."
-                )
-                return
-
-            ensemble_list.append(ensemble)
-
-            is_last_sample = (sample_idx + 1) == num_total_samples
-            if ((sample_idx + 1) % samples_process_interval) == 0 or is_last_sample:
-                self._process_and_save_ensemble(
-                    ensemble_list, sample_idx, save_dyst_dir, failed_dyst_dir
-                )
-                ensemble_list.clear()
-
-        return _callback
-
-    def handle_failed_integrations_callback(self, ensemble, excluded_keys, sample_idx):
-        if len(excluded_keys) > 0:
-            warnings.warn(f"INTEGRATION FAILED FOR: {excluded_keys}")
-            for dyst_name in excluded_keys:
-                self.failed_integrations[dyst_name].append(sample_idx)
-
+    @timeit(logger=logger)
     def save_dyst_ensemble(
         self,
-        systems: Union[List[str], List[BaseDyn]],
+        systems: list[str] | list[BaseDyn],
         split: str = "train",
         split_failures: str = "failed_attractors",
         samples_process_interval: int = 1,
-        save_dir: Optional[str] = None,
+        save_dir: str | None = None,
+        save_params_dir: str | None = None,
         standardize: bool = False,
         use_multiprocessing: bool = True,
         reset_attractor_validator: bool = False,
@@ -136,14 +125,30 @@ class DystData:
         num_total_samples = self.num_param_perturbations * self.num_ics
 
         callbacks = [
-            self.handle_failed_integrations_callback,
-            self.process_and_save_callback(
+            self._reset_events_callback,
+            self.validate_and_save_ensemble_callback(
                 num_total_samples,
                 samples_process_interval,
                 save_dyst_dir,
                 failed_dyst_dir,
             ),
+            self.save_failed_integrations_callback,
+            partial(self._save_parameters_callback, save_path=save_params_dir),
         ]
+
+        # treat the default params as the zeroth sample
+        default_ensemble = make_trajectory_ensemble(
+            self.num_points,
+            subset=systems,
+            pts_per_period=self.num_points // self.num_periods,
+            events=self.events,
+            use_multiprocessing=use_multiprocessing,
+            **kwargs,
+        )
+        for callback in callbacks[:-1]:  # ignore failed integrations
+            callback(0, default_ensemble, [], systems)
+
+        breakpoint()
 
         _ = self._generate_ensembles(
             systems,
@@ -153,100 +158,203 @@ class DystData:
             **kwargs,
         )
 
+    def _transform_params_and_ics(
+        self,
+        system,
+        ic_transform=None,
+        param_transform=None,
+        ic_rng=None,
+        param_rng=None,
+    ) -> BaseDyn | None:
+        """
+        Transform the parameters and initial conditions of a system.
+
+        NOTE: If
+         - an IC transform or parameter transform is not successful
+         - the system is parameterless (len(sys.param_list) == 0)
+        the system is not returned (ignored downstream)
+        """
+        sys = getattr(flows, system)()
+
+        if len(sys.param_list) == 0:
+            return None
+
+        success = True
+        if param_transform:
+            if param_rng is not None:
+                param_transform.set_rng(param_rng)
+            param_success = sys.transform_params(param_transform)
+            success &= param_success
+        if ic_transform:
+            if ic_rng is not None:
+                ic_transform.set_rng(ic_rng)
+            ic_success = sys.transform_ic(ic_transform)
+            success &= ic_success
+
+        return sys if success else None
+
+    def _init_perturbations(
+        self,
+        systems: list[str],
+        ic_rng: np.random.Generator | None = None,
+        param_rng: np.random.Generator | None = None,
+    ) -> list[BaseDyn]:
+        """
+        Pre-initialize the perturbed dyst objects for generation
+        """
+        ic_rng_stream = [None] * len(systems)
+        param_rng_stream = [None] * len(systems)
+        if ic_rng is not None:
+            ic_rng_stream = ic_rng.spawn(len(systems))
+        if param_rng is not None:
+            param_rng_stream = param_rng.spawn(len(systems))
+
+        with Pool() as pool:
+            transformed_systems = pool.starmap(
+                self._transform_params_and_ics,
+                [
+                    (
+                        system,
+                        self.ic_sampler,
+                        self.param_sampler,
+                        ic_rng,
+                        param_rng,
+                    )
+                    for system, ic_rng, param_rng in zip(
+                        systems, ic_rng_stream, param_rng_stream
+                    )
+                ],
+            )
+
+        return transformed_systems
+
     def _generate_ensembles(
         self,
-        systems: Union[List[str], List[BaseDyn]],
-        postprocessing_callbacks: List[Callable] = [],
+        systems: list[str] | list[BaseDyn],
+        postprocessing_callbacks: list[Callable] = [],
         **kwargs,
-    ) -> List[Dict[str, np.ndarray]]:
+    ) -> list[dict[str, np.ndarray]]:
+        """
+        Generate trajectory ensembles for a given set of dynamical systems.
+        """
         ensembles = []
         pp_rng_stream = np.random.default_rng(self.rseed).spawn(
             self.num_param_perturbations
         )
 
-        for i, param_rng in zip(range(self.num_param_perturbations), pp_rng_stream):
+        total_iterations = self.num_param_perturbations * self.num_ics
+        pbar = tqdm(total=total_iterations, desc="Generating ensembles")
+
+        for i, param_rng in enumerate(pp_rng_stream):
             if self.param_sampler is not None:
                 self.param_sampler.set_rng(param_rng)
 
-            if self.ic_sampler is not None:
+            if self.ic_sampler is not None and hasattr(self.ic_sampler, "clear_cache"):
                 self.ic_sampler.clear_cache()  # type: ignore
 
-            for j in trange(self.num_ics):
-                sample_idx = i * self.num_ics + j
+            ic_rng_stream = param_rng.spawn(self.num_ics)
+            for j, ic_rng in enumerate(ic_rng_stream):
+                sample_idx = i * len(ic_rng_stream) + j + 1
 
-                # reset events that have a reset method
-                self._reset_events()
+                pbar.update(1)
+                pbar.set_postfix({"param_idx": i, "ic_idx": j})
 
-                print("Making ensemble for sample ", sample_idx)
+                # perturb and initialize the system ensemble
+                unfiltered_systems = self._init_perturbations(systems, ic_rng=ic_rng)
+                excluded_systems = [
+                    systems[i]
+                    for i in range(len(systems))
+                    if unfiltered_systems[i] is None
+                ]
+                perturbed_systems = [
+                    sys for sys in unfiltered_systems if sys is not None
+                ]
+                assert (
+                    len(perturbed_systems) + len(excluded_systems)
+                    == len(systems)
+                    == len(unfiltered_systems)
+                )
+
                 ensemble = make_trajectory_ensemble(
                     self.num_points,
-                    subset=systems,  # type: ignore
-                    ic_transform=self.ic_sampler if sample_idx > 0 else None,
-                    param_transform=self.param_sampler if i > 0 else None,
-                    ic_rng=param_rng,
+                    subset=perturbed_systems,
                     use_tqdm=True,
                     pts_per_period=self.num_points // self.num_periods,
                     events=self.events,
                     **kwargs,
                 )
 
-                excluded_keys = [
+                excluded_systems.extend(
                     key
                     for key, value in ensemble.items()
                     if value is None or np.isnan(value).any()
-                ]
+                )
                 ensemble = {
                     key: value
                     for key, value in ensemble.items()
-                    if key not in excluded_keys
+                    if key not in excluded_systems
                 }
                 ensembles.append(ensemble)
 
                 for callback in postprocessing_callbacks:
-                    callback(ensemble, excluded_keys, sample_idx)
+                    callback(sample_idx, ensemble, excluded_systems, perturbed_systems)
 
         return ensembles
 
-    def _reset_events(self) -> None:
-        if self.events is not None:
-            for event in self.events:
-                if hasattr(event, "reset") and callable(event.reset):
-                    print("Resetting event: ", event)
-                    event.reset()
+    def _reset_events_callback(self, *args, **kwargs) -> None:
+        for event in self.events or []:
+            if hasattr(event, "reset") and callable(event.reset):
+                event.reset()
 
-    def _prepare_save_directories(
+    def validate_and_save_ensemble_callback(
         self,
-        save_dir: Optional[str],
-        split: str,
-        split_failures: str = "failed_attractors",
-    ) -> Tuple[Optional[str], Optional[str]]:
-        if save_dir is not None:
-            save_dyst_dir = os.path.join(save_dir, split)
-            os.makedirs(save_dyst_dir, exist_ok=True)
-            logger.info(f"valid attractors will be saved to {save_dyst_dir}")
-            if self.save_failed_trajs:
-                failed_dyst_dir = os.path.join(save_dir, split_failures)
-                os.makedirs(failed_dyst_dir, exist_ok=True)
-                logger.info(f"failed attractors will be saved to {failed_dyst_dir}")
-            else:
-                failed_dyst_dir = None
-        else:
-            warnings.warn("save_dir is None, will not save trajectories.")
-            save_dyst_dir = failed_dyst_dir = None
-        return save_dyst_dir, failed_dyst_dir
+        num_total_samples: int,
+        samples_process_interval: int,
+        save_dyst_dir: str | None,
+        failed_dyst_dir: str | None,
+    ):
+        """
+        Callback to process and save ensembles.
+        """
+        ensemble_list = []
+
+        def _callback(sample_idx, ensemble, excluded_keys, *args):
+            if len(ensemble.keys()) == 0:
+                logger.warning(
+                    "No successful trajectories for this sample. Skipping, will not save to arrow files."
+                )
+                return
+
+            ensemble_list.append(ensemble)
+
+            is_last_sample = (sample_idx + 1) == num_total_samples
+            if ((sample_idx + 1) % samples_process_interval) == 0 or is_last_sample:
+                self._process_and_save_ensemble(
+                    ensemble_list, sample_idx, save_dyst_dir, failed_dyst_dir
+                )
+                ensemble_list.clear()
+
+        return _callback
+
+    def save_failed_integrations_callback(
+        self, sample_idx, ensemble, excluded_keys, *args
+    ):
+        if len(excluded_keys) > 0:
+            logger.warning(f"INTEGRATION FAILED FOR: {excluded_keys}")
+            for dyst_name in excluded_keys:
+                self.failed_integrations[dyst_name].append(sample_idx)
 
     def _process_and_save_ensemble(
         self,
-        ensemble_list: List[Dict[str, np.ndarray]],
+        ensemble_list: list[dict[str, np.ndarray]],
         sample_idx: int,
-        save_dyst_dir: Optional[str],
-        failed_dyst_dir: Optional[str],
+        save_dyst_dir: str | None,
+        failed_dyst_dir: str | None,
     ) -> None:
         """
         Process the ensemble list by checking for valid attractors and filtering out invalid ones.
         Also, transposes and stacks trajectories to get shape (num_samples, num_dims, num_timesteps).
         """
-        print(f"Processing {len(ensemble_list)} ensembles")
         # transpose and stack to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
         ensemble = {
             key: np.stack(
@@ -255,7 +363,6 @@ class DystData:
             for key in [key for d in ensemble_list for key in d.keys()]
         }
 
-        print(f"Checking if attractor properties are valid for {len(ensemble)} systems")
         if self.attractor_validator is not None:
             ensemble, failed_ensemble = (
                 self.attractor_validator.multiprocessed_filter_ensemble(
@@ -263,26 +370,60 @@ class DystData:
                 )
             )
 
-        if save_dyst_dir is not None:
-            print(
-                f"Saving all valid sampled trajectories from {len(ensemble)} systems to arrow files within {save_dyst_dir}"
-            )
-            process_trajs(
-                save_dyst_dir,
-                ensemble,
-                split_coords=self.split_coords,
-                verbose=self.verbose,
-            )
-            if failed_ensemble and failed_dyst_dir is not None:
-                print(
-                    f"Saving all failed sampled trajectories from {len(failed_ensemble)} systems to arrow files within {failed_dyst_dir}"
-                )
-                process_trajs(
-                    failed_dyst_dir,
-                    failed_ensemble,
-                    split_coords=self.split_coords,
-                    verbose=self.verbose,
-                )
+        if save_dyst_dir is None:
+            return
+
+        process_trajs(
+            save_dyst_dir,
+            ensemble,
+            split_coords=self.split_coords,
+            verbose=self.verbose,
+        )
+
+        if not failed_ensemble or failed_dyst_dir is None:
+            return
+
+        process_trajs(
+            failed_dyst_dir,
+            failed_ensemble,
+            split_coords=self.split_coords,
+            verbose=self.verbose,
+        )
+
+    def _save_parameters_callback(
+        self,
+        sample_idx,
+        ensemble,
+        excluded_keys,
+        perturbed_systems,
+        save_path: str | None = None,
+    ) -> None:
+        if save_path is None or not perturbed_systems:
+            return
+
+        if os.path.exists(save_path):
+            with open(save_path, "r") as f:
+                param_dict = json.load(f)
+        else:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            param_dict = {}
+
+        for sys in perturbed_systems:
+            if sys.name not in param_dict:
+                param_dict[sys.name] = []
+
+            if "_" in sys.name:  # for skew systems
+                serialized_params = [
+                    list(map(demote_from_numpy, sys.driver.param_list)),
+                    list(map(demote_from_numpy, sys.response.param_list)),
+                ]
+            else:
+                serialized_params = list(map(demote_from_numpy, sys.param_list))
+
+            param_dict[sys.name].append(serialized_params)
+
+        with open(save_path, "w") as f:
+            json.dump(param_dict, f, indent=4)
 
     def save_summary(self, save_json_path: str):
         """
@@ -301,9 +442,7 @@ class DystData:
             valid_samples = self.attractor_validator.valid_samples
             summary_dict = {
                 "num_parameter_successes": sum(
-                    np.unique(np.array(sample_inds).astype(int) // self.num_ics).shape[
-                        0
-                    ]
+                    len(np.unique(np.array(sample_inds).astype(int) // self.num_ics))
                     for sample_inds in valid_samples.values()
                 ),
                 "num_total_candidates": self.num_param_perturbations
@@ -321,4 +460,3 @@ class DystData:
 
         with open(save_json_path, "w") as f:
             json.dump(summary_dict, f, indent=4)
-            f.write("\n")

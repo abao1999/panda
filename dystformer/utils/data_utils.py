@@ -1,14 +1,61 @@
+import logging
 import os
+import time
 from datetime import datetime
+from functools import wraps
 from itertools import permutations
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from dysts.systems import get_attractor_list
 from gluonts.dataset import Dataset
 from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
+
+
+def demote_from_numpy(param: float | np.ndarray) -> float | list[float]:
+    """
+    Demote a float or numpy array to a float or list of floats
+    Used for serializing parameters to json
+    """
+    if isinstance(param, np.ndarray):
+        return param.tolist()
+    return param
+
+
+def timeit(logger: logging.Logger | None = None) -> Callable:
+    """Decorator that measures and logs execution time of a function.
+
+    Args:
+        logger: Optional logger to use for timing output. If None, prints to stdout.
+    """
+
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            result = func(*args, **kwargs)
+            elapsed = time.perf_counter() - start
+
+            if elapsed < 60:
+                time_str = f"{elapsed:.2f} seconds"
+            elif elapsed < 3600:
+                time_str = f"{elapsed/60:.2f} minutes"
+            else:
+                time_str = f"{elapsed/3600:.2f} hours"
+
+            msg = f"{func.__name__} took {time_str}"
+            if logger:
+                logger.info(msg)
+            else:
+                print(msg)
+
+            return result
+
+        return wrapper
+
+    return decorator
 
 
 def split_systems(
@@ -245,43 +292,3 @@ def pad_array(arr: np.ndarray, n2: int, m2: int) -> np.ndarray:
     return np.pad(
         arr, ((0, pad_rows), (0, pad_cols)), mode="constant", constant_values=0
     )
-
-
-def construct_basic_affine_map(
-    n: int,
-    m: int,
-    kappa: Union[float, np.ndarray] = 1.0,
-) -> np.ndarray:
-    """
-    Construct an affine map that sends (x, y, 1) -> (x, y, x + y)
-    where x and y have lengths n and m respectively, and n <= m
-    Args:
-        n: driver system dimension
-        m: response system dimension
-        kappa: coupling strength, either a float or a list of floats
-    Returns:
-        A: the affine map matrix (2D array), block matrix (n + 2m) x (n + m + 1)
-    """
-    I_n = np.eye(n)  # n x n identity matrix
-    I_m = np.eye(m)  # m x m identity matrix
-
-    assert isinstance(
-        kappa, (float, np.ndarray)
-    ), "coupling strength kappa must be a float or a list of floats"
-
-    if isinstance(kappa, float):
-        bottom_block = np.hstack(
-            [kappa * pad_array(I_n if n < m else I_m, m, n), I_m, np.zeros((m, 1))]
-        )
-    else:  # kappa is a list of floats
-        k = min(n, m)
-        assert len(kappa) == k, "coupling strength kappa must be of length min(n, m)"  # type: ignore
-        bottom_block = np.hstack(
-            [pad_array(np.diag(kappa), m, n), I_m, np.zeros((m, 1))]
-        )
-
-    top_block = np.hstack([I_n, np.zeros((n, m)), np.zeros((n, 1))])
-    middle_block = np.hstack([np.zeros((m, n)), I_m, np.zeros((m, 1))])
-
-    A = np.vstack([top_block, middle_block, bottom_block])
-    return A
