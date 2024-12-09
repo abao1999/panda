@@ -79,7 +79,9 @@ def get_training_job_info() -> Dict:  # not currently used
     return job_info
 
 
-def save_training_info(ckpt_path: Path, model_config: Dict, training_config: Dict):
+def save_training_info(
+    ckpt_path: Path, model_config: Dict, train_config: Dict, all_config: Dict
+):
     """
     Save info about this training job in a json file for documentation.
     """
@@ -88,7 +90,8 @@ def save_training_info(ckpt_path: Path, model_config: Dict, training_config: Dic
         json.dump(
             {
                 "model_config": model_config,
-                "training_config": training_config,
+                "train_config": train_config,
+                "all_config": all_config,
                 "job_info": get_training_job_info(),
             },
             fp,

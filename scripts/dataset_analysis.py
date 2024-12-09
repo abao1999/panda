@@ -21,12 +21,14 @@ DATA_DIR = os.path.join(WORK_DIR, "data")
 def compute_lyapunov_exponents(
     dyst_name: str,
     all_traj: np.ndarray,
+    trajectory_len: int = 200,
 ) -> np.ndarray:
     """
     Compute the Lyapunov exponents for a specified system.
     Args:
         dyst_name: Name of the dynamical system.
         all_traj: All trajectories for the specified system.
+        trajectory_len: Length of the trajectory to use for Lyapunov exponent computation
     Returns:
         np.ndarray: Lyapunov exponents for the specified system.
     """
@@ -35,7 +37,9 @@ def compute_lyapunov_exponents(
         f"Computing Lyapunov exponents for {dyst_name} samples with shape {all_traj.shape}"
     )
     for traj in all_traj:
-        spectrum = [max_lyapunov_exponent_rosenstein(traj.T, trajectory_len=200)]
+        spectrum = [
+            max_lyapunov_exponent_rosenstein(traj.T, trajectory_len=trajectory_len)
+        ]
         lyapunov_exponents.extend(spectrum)
     return np.array(lyapunov_exponents)
 

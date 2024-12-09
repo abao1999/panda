@@ -50,45 +50,5 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         noiser.epoch_stop=0.5 \
         noiser.log_steps=100 \
         fixed_dim=3 \
-        use_time_delay_embedding=false \
+        use_quadratic_embedding=false \
         "$@"
-
-
-# # On multiple GPUs (example with 4 GPUs)
-# CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
-#         --nproc-per-node 4 \
-#         scripts/patchtst/train.py \
-#         shuffle_buffer_length=100_000 \
-#         patchtst.context_length=512 \
-#         patchtst.patch_length=16 \
-#         patchtst.patch_stride=16 \
-#         patchtst.num_hidden_layers=8 \
-#         patchtst.num_attention_heads=8 \
-#         patchtst.d_model=512 \
-#         patchtst.quantizer_high=15.0 \
-#         patchtst.quantizer_low=-15.0 \
-#         patchtst.norm_type=rmsnorm \
-#         patchtst.channel_attention=true \
-#         patchtst.pooling_type=mean \
-#         patchtst.mask_type=random \
-#         patchtst.random_mask_ratio=0.5 \
-#         patchtst.channel_consistent_masking=true \
-#         patchtst.mode=pretrain \
-#         train.per_device_train_batch_size=256 \
-#         train.max_steps=300_000 \
-#         train.save_steps=100_000 \
-#         train.log_steps=1_000 \
-#         train.warmup_ratio=0.1 \
-#         train.torch_compile=true \
-#         train.weight_decay=1e-4 \
-#         quantizer.enabled=false \
-#         noiser.enabled=true \
-#         noiser.schedule_name=cosine \
-#         noiser.start=1.0 \
-#         noiser.end=0.0 \
-#         noiser.eps=0.008 \
-#         noiser.epoch_stop=0.5 \
-#         noiser.log_steps=100 \
-#         fixed_dim=3 \
-#         use_time_delay_embedding=false \
-#         "$@"

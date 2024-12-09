@@ -2,26 +2,48 @@ main_dir=$(cd "$(dirname "$0")/../.." && pwd)
 echo "main_dir: $main_dir"
 checkpoint_dir=$WORK/checkpoints
 
-# mlm pretrain eval
+# # mlm pretrain eval
+# python scripts/patchtst/evaluate.py \
+#     eval.mode=pretrain \
+#     eval.checkpoint_path=$WORK/checkpoints/run-316/checkpoint-final \
+#     eval.data_path=$WORK/data/test_zero_shot \
+#     eval.num_systems=10 \
+#     eval.num_test_instances=1 \
+#     eval.batch_size=64 \
+#     eval.metrics_save_dir=$main_dir/eval_results \
+#     eval.metrics_fname=eval_mlm_metrics \
+#     eval.overwrite=true \
+#     eval.device=cuda:1 \
+#     eval.forecast_save_dir=$WORK/data/eval/forecasts \
+#     eval.completions_save_dir=$WORK/data/eval/completions \
+#     eval.patch_input_save_dir=$WORK/data/eval/patch_input \
+#     eval.timestep_masks_save_dir=$WORK/data/eval/timestep_masks \
+#     eval.metrics_names=null \
+#     use_quadratic_embedding=false \
+#     fixed_dim=3 \
+#     "$@"
+
+
+# forecast eval
 python scripts/patchtst/evaluate.py \
-    eval.mode=pretrain \
-    eval.checkpoint_path=$WORK/checkpoints/run-317/checkpoint-final \
-    eval.data_path=$WORK/data/test_zero_shot \
-    eval.num_systems=10 \
+    eval.mode=predict \
+    eval.checkpoint_path=$WORK/checkpoints/run-324/checkpoint-final \
+    eval.data_path=$WORK/data/flow_run2_skew_systems \
+    eval.num_systems=20 \
     eval.num_test_instances=1 \
+    eval.window_style=sampled \
     eval.batch_size=64 \
     eval.metrics_save_dir=$main_dir/eval_results \
-    eval.metrics_fname=eval_mlm_metrics \
+    eval.metrics_fname=eval_forecast_metrics \
     eval.overwrite=true \
     eval.device=cuda:1 \
     eval.forecast_save_dir=$WORK/data/eval/forecasts \
-    eval.completions_save_dir=$WORK/data/eval/completions \
-    eval.patch_input_save_dir=$WORK/data/eval/patch_input \
-    eval.timestep_masks_save_dir=$WORK/data/eval/timestep_masks \
+    eval.labels_save_dir=$WORK/data/eval/labels \
     eval.metrics_names=null \
-    use_time_delay_embedding=true \
-    fixed_dim=5 \
+    use_quadratic_embedding=false \
+    fixed_dim=3 \
     "$@"
+
 
 # # prediction finetune eval
 # python scripts/patchtst/evaluate.py \

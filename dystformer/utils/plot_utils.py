@@ -274,7 +274,8 @@ def plot_forecast_evaluation(
     os.makedirs(save_dir, exist_ok=True)
     num_tot_samples = min(forecasts.shape[0], ground_truth.shape[0])
     n_samples_plot = min(N_SAMPLES_PLOT, num_tot_samples)
-
+    forecast_length = forecasts.shape[2] - context_length
+    print(f"Forecast length: {forecast_length}")
     if samples_subset is not None:
         if n_samples_plot > len(samples_subset):
             warnings.warn(
@@ -282,13 +283,19 @@ def plot_forecast_evaluation(
             )
             n_samples_plot = len(samples_subset)
 
-    # Create a figure with 2 rows: one for 3D plots and one for univariate plots
-    fig = plt.figure(figsize=(16, 12))
-    ax1 = fig.add_subplot(221, projection="3d")
-    ax2 = fig.add_subplot(222, projection="3d")
-    ax3 = fig.add_subplot(234)
-    ax4 = fig.add_subplot(235)
-    ax5 = fig.add_subplot(236)
+    # Create a figure with 4 rows: one for 3D plots and three for univariate plots
+    fig = plt.figure(figsize=(12, 15))  # Adjusted height for more rows
+
+    # Create a GridSpec for the layout (make first row twice as tall)
+    gs = gridspec.GridSpec(4, 2, height_ratios=[2, 1, 1, 1])
+    # Top row: ax1 and ax2 share a row
+    ax1 = fig.add_subplot(gs[0, 0], projection="3d")  # Top-left
+    ax2 = fig.add_subplot(gs[0, 1], projection="3d")  # Top-right
+
+    # ax3, ax4, ax5 occupy their own rows
+    ax3 = fig.add_subplot(gs[1, :])  # Second row, spans both columns
+    ax4 = fig.add_subplot(gs[2, :])  # Third row, spans both columns
+    ax5 = fig.add_subplot(gs[3, :])  # Fourth row, spans both columns
 
     # Collect lines and labels for a shared legend
     lines = []
@@ -306,7 +313,7 @@ def plot_forecast_evaluation(
             ground_truth[sample_idx, 0, :context_length],
             ground_truth[sample_idx, 1, :context_length],
             ground_truth[sample_idx, 2, :context_length],
-            alpha=0.4,
+            alpha=0.2,
             linewidth=1,  # Thin line for context_length points
             color=curr_color,
         )
@@ -325,7 +332,7 @@ def plot_forecast_evaluation(
             forecasts[sample_idx, 0, :context_length],
             forecasts[sample_idx, 1, :context_length],
             forecasts[sample_idx, 2, :context_length],
-            alpha=0.4,
+            alpha=0.2,
             linewidth=1,
             color=curr_color,
         )
@@ -349,22 +356,29 @@ def plot_forecast_evaluation(
         for dim, ax in enumerate([ax3, ax4, ax5]):
             ax.plot(
                 ground_truth[sample_idx, dim, context_length:],
-                alpha=0.5,
+                alpha=0.2,
                 linewidth=1,
                 color=curr_color,
                 linestyle="-",
             )
             ax.plot(
                 forecasts[sample_idx, dim, context_length:],
-                alpha=0.5,
+                alpha=1,
                 linewidth=1,
                 color=curr_color,
                 linestyle="--",
             )
-            # ax.axvline(x=context_length, color="black", linestyle="-", linewidth=1)
-            ax.set_title(f"Dimension {dim + 1}")
-            ax.set_xlabel("Timesteps")
 
+            # Fill between completions and context where mask is False
+            ax.fill_between(
+                range(0, forecast_length),
+                ground_truth[sample_idx, dim, context_length:],
+                forecasts[sample_idx, dim, context_length:],
+                color=curr_color,
+                alpha=0.3,
+            )
+            ax.set_title(f"Dimension {dim + 1}")
+            # ax.set_xlabel("Timesteps")
     # # Create a shared legend for samples
     # fig.legend(lines, labels, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 0.95))
 

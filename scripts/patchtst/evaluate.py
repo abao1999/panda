@@ -18,7 +18,6 @@ from tqdm.auto import tqdm
 from dystformer.augmentations import (
     FixedDimensionDelayEmbeddingTransform,
     QuadraticEmbeddingTransform,
-    RandomDimSelectionTransform,
 )
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
@@ -304,7 +303,9 @@ def main(cfg):
         log_on_main(f"Training info file found at: {training_info_path}", logger)
         with open(training_info_path, "r") as f:
             training_info = json.load(f)
-            train_config = training_info.get("training_config", None)
+            train_config = training_info.get("train_config", None)
+            if train_config is None:  # for backwards compatibility
+                train_config = training_info.get("training_config", None)
             dataset_config = training_info.get("dataset_config", None)
     else:
         log_on_main(f"No training info file found at: {training_info_path}", logger)
@@ -337,19 +338,19 @@ def main(cfg):
     log_on_main(f"Using SEED: {rseed}", logger)
     transformers.set_seed(seed=rseed)
 
-    # use_time_delay_embedding may not exist for older checkpoints
-    use_time_delay_embedding = dataset_config.get(
-        "use_time_delay_embedding", cfg.use_time_delay_embedding
+    # use_quadratic_embedding may not exist for older checkpoints
+    use_quadratic_embedding = dataset_config.get(
+        "use_quadratic_embedding", cfg.use_quadratic_embedding
     )
     fixed_dim = dataset_config["fixed_dim"]
-    if fixed_dim == 3 and use_time_delay_embedding:
+    if fixed_dim > 3 and not use_quadratic_embedding:
         raise ValueError(
-            "Fixed dimension of 3 doesn't make sense with time delay embedding"
+            "Quadratic embedding should be on for time delay embedding (fixed dim > 3)"
         )
     context_length = model_config["context_length"]
     prediction_length = model_config["prediction_length"]
     log_on_main(f"Using fixed_dim: {fixed_dim}", logger)
-    log_on_main(f"use_time_delay_embedding: {use_time_delay_embedding}", logger)
+    log_on_main(f"use_quadratic_embedding: {use_quadratic_embedding}", logger)
     log_on_main(f"context_length: {context_length}", logger)
     log_on_main(f"prediction_length: {prediction_length}", logger)
     model.eval()
@@ -371,15 +372,10 @@ def main(cfg):
 
     log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
 
-    if use_time_delay_embedding:
-        transforms = [
-            FixedDimensionDelayEmbeddingTransform(embedding_dim=fixed_dim),
-            QuadraticEmbeddingTransform(),
-        ]
-    else:
-        transforms = [
-            RandomDimSelectionTransform(num_dims=fixed_dim),
-        ]
+    transforms: list = [FixedDimensionDelayEmbeddingTransform(embedding_dim=fixed_dim)]
+    if use_quadratic_embedding:
+        transforms.append(QuadraticEmbeddingTransform())
+
     test_datasets = {
         system_name: PatchTSTDataset(
             datasets=test_data_dict[system_name],

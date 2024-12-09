@@ -24,7 +24,6 @@ from dystformer.augmentations import (
     QuadraticEmbeddingTransform,
     RandomAffineTransform,
     RandomConvexCombinationTransform,
-    RandomDimSelectionTransform,
 )
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
@@ -75,10 +74,9 @@ class NoiseScaleScheduler:
 
         self.schedule_fn = {
             "linear": lambda t: self.start + (self.end - self.start) * t,
-            "cosine": lambda t: torch.cos(
-                (t + self.eps) / (1 + self.eps) * torch.pi / 2
-            )
-            ** 2,
+            "cosine": lambda t: self.end
+            + (self.start - self.end)
+            * torch.cos((t + self.eps) / (1 + self.eps) * torch.pi / 2) ** 2,
             "exponential": lambda t: self.start * torch.exp(-self.decay_rate * t),
         }[self.schedule_name]
 
@@ -175,6 +173,7 @@ def main(cfg):
             sync_tensorboard=False,  # auto-upload tensorboard metrics
             group=cfg.wandb.group_name,
             resume=cfg.wandb.resume,
+            tags=cfg.wandb.tags,
         )
 
     # set floating point precision
@@ -256,15 +255,16 @@ def main(cfg):
         RandomAffineTransform(out_dim=6, scale=1.0),
     ]
 
-    if cfg.use_time_delay_embedding:
-        transforms = [
-            FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim),
-            QuadraticEmbeddingTransform(),
-        ]
+    transforms: list = [
+        FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim)
+    ]
+    if cfg.use_quadratic_embedding:
+        transforms.append(QuadraticEmbeddingTransform())
     else:
-        transforms = [
-            RandomDimSelectionTransform(num_dims=cfg.fixed_dim),
-        ]
+        if cfg.fixed_dim > 3:
+            raise ValueError(
+                "Quadratic embedding should be on for time delay embedding (fixed dim > 3)"
+            )
 
     log_on_main(f"Using augmentations: {augmentations}", logger)
 
@@ -374,7 +374,7 @@ def main(cfg):
         save_training_info(
             output_dir / "checkpoint-final",
             model_config=OmegaConf.to_container(cfg.patchtst, resolve=True),  # type: ignore
-            training_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
+            train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
             all_config=OmegaConf.to_container(cfg, resolve=True),  # type: ignore
         )
 

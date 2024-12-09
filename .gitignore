@@ -38,6 +38,7 @@ logs/
 **/logs/*
 **/outputs/*
 **/metrics/*
+**/eval_results/*
 **/checkpoints/*
 **/wandb/*
 **/runs/*
