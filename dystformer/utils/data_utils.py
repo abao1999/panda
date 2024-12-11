@@ -3,15 +3,21 @@ import os
 import time
 from datetime import datetime
 from functools import wraps
-from itertools import permutations
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from dysts.systems import get_attractor_list
 from gluonts.dataset import Dataset
 from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
+
+
+def filter_skew_pairs(pairs: list[str], system_dir: str | os.PathLike) -> list[str]:
+    """
+    Filter skew pairs based on the system directory
+    """
+    pass
 
 
 def demote_from_numpy(param: float | np.ndarray) -> float | list[float]:
@@ -176,7 +182,6 @@ def process_trajs(
             convert_to_arrow(path, trajectory, split_coords=split_coords)
 
 
-## Utils for augmentations
 def stack_and_extract_metadata(dataset: Dataset) -> Tuple[np.ndarray, Tuple[Any]]:
     """Utility for unpacking gluonts dataset into array and extracting metadata"""
     coords, metadata = zip(*[(coord["target"], coord["start"]) for coord in dataset])
@@ -184,21 +189,6 @@ def stack_and_extract_metadata(dataset: Dataset) -> Tuple[np.ndarray, Tuple[Any]
     if coordinates.ndim > 2:  # if not one_dim_target:
         coordinates = coordinates.squeeze()
     return coordinates, metadata
-
-
-def sample_index_pairs(
-    size: int, num_pairs: int, rng: Optional[np.random.Generator] = None
-) -> Iterator:
-    """
-    Sample pairs from an arbitrary sequence. Returns iterator over Tuple[int, int]
-    """
-    num_total_pairs = size * (size - 1) // 2
-    assert num_pairs <= num_total_pairs, "Cannot sample more pairs than unique pairs."
-    sampled_pairs = (rng or np.random).choice(
-        num_total_pairs, size=num_pairs, replace=False
-    )
-    all_pairs = list(permutations(range(size), 2))  # not combinations
-    return (all_pairs[i] for i in sampled_pairs)
 
 
 def get_system_filepaths(
@@ -276,19 +266,3 @@ def make_ensemble_from_arrow_dir(
             dyst_coords_samples = dyst_coords_samples[samples_subset, :]
         ensemble[dyst_name] = dyst_coords_samples
     return ensemble
-
-
-### Functions to make basic affine maps ###
-def pad_array(arr: np.ndarray, n2: int, m2: int) -> np.ndarray:
-    """
-    Pad an array to a target shape that is bigger than original shape
-    """
-    n1, m1 = arr.shape
-    pad_rows, pad_cols = n2 - n1, m2 - m1
-    if pad_rows < 0 or pad_cols < 0:
-        raise ValueError(
-            "Target dimensions must be greater than or equal to original dimensions."
-        )
-    return np.pad(
-        arr, ((0, pad_rows), (0, pad_cols)), mode="constant", constant_values=0
-    )

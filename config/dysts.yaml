@@ -6,7 +6,7 @@ dyst_data:
   rseed: 999
   reference_traj_length: 2048
   reference_traj_transient: 0.2
-  num_periods: 20
+  num_periods: 10
   num_points: 4096
   num_ics: 1
   num_param_perturbations: 4
@@ -18,6 +18,8 @@ dyst_data:
   debug_dyst: null
   silence_integration_errors: false
   save_params: false
+  ignore_probability: 0.1
+  sign_match_probability: 0.3
 
 validator:
   enable: true
@@ -28,7 +30,7 @@ validator:
 
 events:
   max_duration: 300
-  instability_threshold: 1e4
+  instability_threshold: 1e8
   min_step: 1e-16
 
 skew:

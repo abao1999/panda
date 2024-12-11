@@ -11,7 +11,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from dysts.analysis import max_lyapunov_exponent_rosenstein
-from scipy.fft import fft, fftfreq
+from scipy.fft import rfft
 from scipy.signal import find_peaks
 from scipy.spatial.distance import cdist
 from sklearn.decomposition import PCA
@@ -178,7 +178,8 @@ class AttractorValidator:
             if len(valid_samples_lst) > 0:
                 self.valid_samples[dyst_name].extend(valid_samples_lst)
                 self.valid_dyst_counts[dyst_name] += len(valid_samples_lst)
-        # Form the valid and failed ensembles
+        # form the valid and failed ensembles
+        # note: relies on python 3.7+ order preservation in dictionaries
         valid_ensemble = {
             k: v for k, v in zip(list(ensemble.keys()), valid_trajs) if v.shape[0] > 0
         }
@@ -397,7 +398,7 @@ def check_not_limit_cycle(
     return False
 
 
-def check_lyapunov_exponent(traj: np.ndarray) -> bool:
+def check_lyapunov_exponent(traj: np.ndarray, traj_len: int = 100) -> bool:
     """
     Check if the Lyapunov exponent of the trajectory is greater than 1.
     Args:
@@ -405,97 +406,75 @@ def check_lyapunov_exponent(traj: np.ndarray) -> bool:
     Returns:
         bool: False if the Lyapunov exponent is less than 1, True otherwise.
     """
-    lyapunov_exponent = max_lyapunov_exponent_rosenstein(traj.T)
+    lyapunov_exponent = max_lyapunov_exponent_rosenstein(
+        traj.T, trajectory_len=traj_len
+    )
     if lyapunov_exponent < 0:
         return False
     return True
 
 
-def check_power_spectrum_1d(
-    signal: np.ndarray,
-    rel_peak_height_threshold: float = 1e-5,
-    rel_prominence_threshold: float = 1e-5,
-) -> bool:
-    """
-    Analyzes the power spectrum of a 1D signal to find significant peaks and plots the spectrum on a log scale.
-    Args:
-        signal (array-like): The input 1D signal.
-        peak_height_threshold (float): Minimum relative height of a peak to be considered significant.
-        prominence_threshold (float): Minimum prominence of a peak to be considered significant.
-    """
-    if signal.ndim != 1:
-        raise ValueError("signal must be a 1D array")
-    n = len(signal)
-
-    # Compute the FFT and the power spectrum
-    fft_values = fft(signal)
-    power_spectrum = np.abs(fft_values) ** 2  # type: ignore
-    freqs = fftfreq(n)
-
-    # Consider only positive frequencies
-    pos_freqs = freqs[freqs > 0]
-    pos_power = power_spectrum[freqs > 0]
-
-    # Ensure pos_power is numeric
-    pos_power = np.asarray(pos_power, dtype=float)
-
-    # Find significant peaks in the power spectrum
-    max_peak_height = np.max(pos_power)
-    baseline = np.min(pos_power)
-    peak_height_threshold = rel_peak_height_threshold * max_peak_height
-    peak_height_threshold = max(peak_height_threshold, baseline)
-    if rel_prominence_threshold is not None:
-        prominence_threshold = rel_prominence_threshold * max_peak_height
-        prominence_threshold = max(prominence_threshold, baseline)
-    else:
-        prominence_threshold = None
-    peak_indices, _ = find_peaks(
-        pos_power, height=peak_height_threshold, prominence=prominence_threshold
-    )
-    peak_frequencies = pos_freqs[peak_indices]
-
-    n_significant_peaks = len(peak_frequencies)
-
-    status = True
-    # Heuristic Interpretation of the Power Spectrum
-    if n_significant_peaks < 3:
-        # The power spectrum suggests a fixed point or a simple periodic attractor (few peaks)
-        status = False
-    elif n_significant_peaks > 10:
-        # The power spectrum suggests a chaotic attractor (many peaks with broad distribution)
-        status = True
-    else:
-        # The system appears to have a quasi-periodic or more complex attractor (intermediate peaks)
-        status = True  # this test is intentionally loose
-
-    if status:
-        return True
-
-    return status
-
-
 def check_power_spectrum(
     traj: np.ndarray,
-    rel_peak_height_threshold: float = 1e-5,
-    rel_prominence_threshold: float = 1e-5,
+    rel_peak_height: float = 1e-4,
+    rel_prominence: float = 1e-4,
+    min_peaks: int = 3,
 ) -> bool:
-    """
-    Check if a multi-dimensional trajectory has a power spectrum that is significant.
+    """Check if a multi-dimensional trajectory has characteristics of chaos via power spectrum.
+
     Args:
-        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+        traj: Array of shape (num_vars, num_timepoints)
+        rel_peak_height: Minimum relative peak height threshold
+        rel_prominence: Minimum relative peak prominence threshold
+        min_peaks: Minimum number of significant peaks for chaos
+
     Returns:
-        bool: True if the power spectrum is significant, False otherwise.
+        True if the system exhibits chaotic characteristics
     """
-    num_dims = traj.shape[0]
-    for d in range(num_dims):
-        x = traj[d, :]
-        status = check_power_spectrum_1d(
-            x,
-            rel_peak_height_threshold=rel_peak_height_threshold,
-            rel_prominence_threshold=rel_prominence_threshold,
-        )
-        # NOTE: some systems have a periodic driver in the last dimension, which will make this test fail
-        # in that case, we can use the Lyapunov exponent test to check for chaos
-        if not status:
-            return check_lyapunov_exponent(traj)
-    return True
+    power = np.abs(rfft(traj, axis=1)) ** 2  # type: ignore
+
+    power_maxes = power.max(axis=1)
+    power_mins = power.min(axis=1)
+
+    peaks_per_dim = [
+        find_peaks(
+            power[dim],
+            height=max(rel_peak_height * power_maxes[dim], power_mins[dim]),
+            prominence=max(rel_prominence * power_maxes[dim], power_mins[dim]),
+        )[0]
+        for dim in range(power.shape[0])
+    ]
+
+    return any(len(peaks) >= min_peaks for peaks in peaks_per_dim)
+
+
+def check_not_linear(
+    traj: np.ndarray, r2_threshold: float = 0.98, eps: float = 1e-10
+) -> bool:
+    """Check if n-dimensional trajectory follows a straight line using PCA.
+
+    Args:
+        traj: Array of shape (num_dims, num_timepoints)
+        r2_threshold: Variance explained threshold above which trajectory is considered linear
+        eps: Small value to prevent division by zero
+
+    Returns:
+        bool: False if trajectory is linear, True otherwise
+    """
+    points = traj.T  # (num_timepoints, num_dims)
+
+    if np.any(~np.isfinite(points)):
+        return False
+
+    mean = np.nanmean(points, axis=0)
+    std = np.nanstd(points, axis=0)
+    std = np.where(std < eps, 1.0, std)
+
+    standardized_points = (points - mean) / std
+
+    try:
+        _, s, _ = np.linalg.svd(standardized_points, full_matrices=False)
+        explained_variance_ratio = s**2 / (np.sum(s**2) + eps)
+        return explained_variance_ratio[0] <= r2_threshold
+    except np.linalg.LinAlgError:
+        return True  # fallback if SVD fails

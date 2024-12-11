@@ -30,8 +30,8 @@ class TimeLimitEvent:
         elapsed_time = time.time() - self.start_time
         if elapsed_time > self.max_duration:
             logger.warning(f"Time limit exceeded! {elapsed_time}")
-            return 0  # Trigger the event
-        return 1  # Continue the integration
+            return 0
+        return 1
 
 
 @dataclass
@@ -66,10 +66,10 @@ class TimeStepEvent:
         t_diff = abs(t - self.last_t)
         if t_diff < self.min_step:
             logger.warning(f"Time step too small! {t_diff}")
-            return 0  # Trigger the event
+            return 0
 
         self.last_t = t
-        return 1  # Continue the integration
+        return 1
 
 
 @dataclass
@@ -85,11 +85,22 @@ class SignedGaussianParamSampler(BaseSampler):
     scale: float = 1e-2
     eps: float = 1e-6
     sign_match_probability: float = 0.0
+    ignore_probability: float = 0.0
     verbose: bool = False
 
     def __call__(
         self, name: str, param: NDArray, system: BaseDyn | None = None
     ) -> NDArray | float:
+        # exponentially reduce ignore probability for low parameter count
+        if system:
+            param_count = len(system.param_list)
+            effective_ignore_prob = self.ignore_probability * (1 - np.exp(-param_count))
+        else:
+            effective_ignore_prob = self.ignore_probability
+
+        if self.rng.random() < effective_ignore_prob:
+            return param
+
         # scale each parameter relatively
         shape = 1 if np.isscalar(param) else param.shape
 
@@ -147,6 +158,7 @@ class OnAttractorInitCondSampler(BaseSampler):
     verbose: bool = False
     events: list[Callable] | None = None
     recompute_standardization: bool = False
+    silence_integration_errors: bool = False
 
     def __post_init__(self):
         super().__post_init__()
@@ -175,6 +187,8 @@ class OnAttractorInitCondSampler(BaseSampler):
                 )
             except ValueError as e:
                 logger.warning(f"Error integrating {system.name}: {str(e)}")
+                if not self.silence_integration_errors:
+                    raise e
                 return None
 
             # if integrate fails, resulting in an incomplete trajectory

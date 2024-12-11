@@ -15,7 +15,7 @@ def plot_trajs_multivariate(
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
     n_samples_plot: int | None = None,
-    plot_2d_slice: bool = True,
+    plot_2d_slice: bool = False,
     plot_projections: bool = False,
     dims_3d: list[int] = [0, 1, 2],
     figsize: tuple[int, int] = (6, 6),
