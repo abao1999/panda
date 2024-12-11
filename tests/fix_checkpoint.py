@@ -17,7 +17,7 @@ output_path = os.path.join(checkpoint_path, "model.safetensors")
 tensors = load_file(input_path)
 
 # Open the safetensors file to read metadata
-with safe_open(input_path, framework="pt") as f:
+with safe_open(input_path, framework="pt") as f:  # type: ignore
     metadata = f.metadata()
 
 if metadata is None:

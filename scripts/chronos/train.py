@@ -272,7 +272,8 @@ def main(cfg):
             model_config=vars(
                 chronos_config
             ),  # use dataclass asdict for more complex dataclasses
-            training_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
+            train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
+            all_config=OmegaConf.to_container(cfg, resolve=True),  # type: ignore
         )
 
 

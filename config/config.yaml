@@ -23,3 +23,4 @@ wandb:
   entity: gilpinlab
   group_name: fine-tuning
   resume: False
+  tags: null
