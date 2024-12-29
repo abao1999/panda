@@ -1,4 +1,4 @@
-dyst_data:
+sampling:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
   sys_class: continuous
   test_split: 0.3
@@ -15,11 +15,11 @@ dyst_data:
   standardize: false
   verbose: false
   multiprocessing: true
-  debug_dyst: null
+  debug_system: null
   silence_integration_errors: false
   save_params: false
   ignore_probability: 0.1
-  sign_match_probability: 0.3
+  sign_match_probability: 0.75
 
 validator:
   enable: true

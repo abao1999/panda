@@ -5,7 +5,7 @@ Script to generate and save trajectory ensembles for a given set of dynamical sy
 import logging
 import os
 from functools import partial
-from typing import Callable, List
+from typing import Callable
 
 import hydra
 import numpy as np
@@ -18,18 +18,19 @@ from dystformer.attractor import (
     check_not_linear,
     check_power_spectrum,
 )
-from dystformer.dyst_data import DynSysSampler, flows
 from dystformer.sampling import (
+    DynSysSampler,
     InstabilityEvent,
     OnAttractorInitCondSampler,
     SignedGaussianParamSampler,
     TimeLimitEvent,
     TimeStepEvent,
+    flows,
 )
 from dystformer.utils import plot_trajs_multivariate, split_systems
 
 
-def default_attractor_tests() -> List[Callable]:
+def default_attractor_tests() -> list[Callable]:
     """
     Builds a list of attractor tests to check for each trajectory ensemble.
     """
@@ -57,13 +58,13 @@ def default_attractor_tests() -> List[Callable]:
 
 def plot_single_system(sys_name: str, sys_sampler: DynSysSampler, cfg):
     default_traj = getattr(flows, sys_name)().make_trajectory(
-        cfg.dyst_data.num_points,
-        pts_per_period=cfg.dyst_data.num_points // cfg.dyst_data.num_periods,
+        cfg.sampling.num_points,
+        pts_per_period=cfg.sampling.num_points // cfg.sampling.num_periods,
     )
     ensembles = sys_sampler._generate_ensembles(
         systems=[sys_name],
-        use_multiprocessing=cfg.dyst_data.multiprocessing,
-        _silent_errors=cfg.dyst_data.silence_integration_errors,
+        use_multiprocessing=cfg.sampling.multiprocessing,
+        _silent_errors=cfg.sampling.silence_integration_errors,
     )
 
     samples = np.array(
@@ -82,9 +83,9 @@ def plot_single_system(sys_name: str, sys_sampler: DynSysSampler, cfg):
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
     test_systems, train_systems = split_systems(
-        cfg.dyst_data.test_split,
-        seed=cfg.dyst_data.rseed,
-        sys_class=cfg.dyst_data.sys_class,
+        cfg.sampling.test_split,
+        seed=cfg.sampling.rseed,
+        sys_class=cfg.sampling.sys_class,
     )
 
     time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
@@ -97,33 +98,33 @@ def main(cfg):
     ]
 
     param_sampler = SignedGaussianParamSampler(
-        random_seed=cfg.dyst_data.rseed,
-        scale=cfg.dyst_data.param_scale,
-        sign_match_probability=cfg.dyst_data.sign_match_probability,
-        ignore_probability=cfg.dyst_data.ignore_probability,
-        verbose=cfg.dyst_data.verbose,
+        random_seed=cfg.sampling.rseed,
+        scale=cfg.sampling.param_scale,
+        sign_match_probability=cfg.sampling.sign_match_probability,
+        ignore_probability=cfg.sampling.ignore_probability,
+        verbose=cfg.sampling.verbose,
     )
     ic_sampler = OnAttractorInitCondSampler(
-        reference_traj_length=cfg.dyst_data.reference_traj_length,
-        reference_traj_transient=cfg.dyst_data.reference_traj_transient,
+        reference_traj_length=cfg.sampling.reference_traj_length,
+        reference_traj_transient=cfg.sampling.reference_traj_transient,
         recompute_standardization=True,  # Important!
         events=events,
-        verbose=cfg.dyst_data.verbose,
-        random_seed=cfg.dyst_data.rseed,
-        silence_integration_errors=cfg.dyst_data.silence_integration_errors,
+        verbose=cfg.sampling.verbose,
+        random_seed=cfg.sampling.rseed,
+        silence_integration_errors=cfg.sampling.silence_integration_errors,
     )
 
     sys_sampler = DynSysSampler(
-        rseed=cfg.dyst_data.rseed,
-        num_periods=cfg.dyst_data.num_periods,
-        num_points=cfg.dyst_data.num_points,
-        num_ics=cfg.dyst_data.num_ics,
-        num_param_perturbations=cfg.dyst_data.num_param_perturbations,
+        rseed=cfg.sampling.rseed,
+        num_periods=cfg.sampling.num_periods,
+        num_points=cfg.sampling.num_points,
+        num_ics=cfg.sampling.num_ics,
+        num_param_perturbations=cfg.sampling.num_param_perturbations,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,
-        verbose=cfg.dyst_data.verbose,
-        split_coords=cfg.dyst_data.split_coords,
+        verbose=cfg.sampling.verbose,
+        split_coords=cfg.sampling.split_coords,
         attractor_validator_kwargs={
             "verbose": cfg.validator.verbose,
             "transient_time_frac": cfg.validator.transient_time_frac,
@@ -134,11 +135,11 @@ def main(cfg):
     )
 
     # Run save_dyst_ensemble on a single system in debug mode
-    if cfg.dyst_data.debug_dyst:
-        plot_single_system(cfg.dyst_data.debug_dyst, sys_sampler, cfg)
+    if cfg.sampling.debug_system:
+        plot_single_system(cfg.sampling.debug_system, sys_sampler, cfg)
     else:
         split_prefix = (
-            cfg.dyst_data.split_prefix + "_" if cfg.dyst_data.split_prefix else ""
+            cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
         )
 
         # for debugging
@@ -156,8 +157,8 @@ def main(cfg):
             "SprottTorus",
         ]
 
-        if cfg.dyst_data.save_params:
-            param_dir = os.path.join(cfg.dyst_data.data_dir, "parameters")
+        if cfg.sampling.save_params:
+            param_dir = os.path.join(cfg.sampling.data_dir, "parameters")
         else:
             param_dir = None
 
@@ -166,11 +167,11 @@ def main(cfg):
             split=f"{split_prefix}train",
             split_failures=f"{split_prefix}failed_attractors_train",
             samples_process_interval=1,
-            save_dir=cfg.dyst_data.data_dir,
+            save_dir=cfg.sampling.data_dir,
             save_params_dir=f"{param_dir}/train" if param_dir else None,
-            standardize=cfg.dyst_data.standardize,
-            use_multiprocessing=cfg.dyst_data.multiprocessing,
-            _silent_errors=cfg.dyst_data.silence_integration_errors,
+            standardize=cfg.sampling.standardize,
+            use_multiprocessing=cfg.sampling.multiprocessing,
+            _silent_errors=cfg.sampling.silence_integration_errors,
         )
         sys_sampler.save_summary(
             os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
@@ -181,12 +182,12 @@ def main(cfg):
             split=f"{split_prefix}test",
             split_failures=f"{split_prefix}failed_attractors_test",
             samples_process_interval=1,
-            save_dir=cfg.dyst_data.data_dir,
+            save_dir=cfg.sampling.data_dir,
             save_params_dir=f"{param_dir}/test" if param_dir else None,
-            standardize=cfg.dyst_data.standardize,
+            standardize=cfg.sampling.standardize,
             reset_attractor_validator=True,  # save validator results separately for test
-            use_multiprocessing=cfg.dyst_data.multiprocessing,
-            _silent_errors=cfg.dyst_data.silence_integration_errors,
+            use_multiprocessing=cfg.sampling.multiprocessing,
+            _silent_errors=cfg.sampling.silence_integration_errors,
         )
         sys_sampler.save_summary(
             os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),

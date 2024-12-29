@@ -165,11 +165,11 @@ class DynSysSampler:
 
     def _transform_params_and_ics(
         self,
-        system,
-        ic_transform=None,
-        param_transform=None,
-        ic_rng=None,
-        param_rng=None,
+        system: BaseDyn | str,
+        ic_transform: Callable | None = None,
+        param_transform: Callable | None = None,
+        ic_rng: np.random.Generator | None = None,
+        param_rng: np.random.Generator | None = None,
     ) -> BaseDyn | None:
         """
         Transform the parameters and initial conditions of a system.
@@ -179,7 +179,7 @@ class DynSysSampler:
          - the system is parameterless (len(sys.param_list) == 0)
         the system is not returned (ignored downstream)
         """
-        sys = getattr(flows, system)()
+        sys = getattr(flows, system)() if isinstance(system, str) else system
 
         if len(sys.param_list) == 0:
             return None
@@ -200,7 +200,7 @@ class DynSysSampler:
 
     def _init_perturbations(
         self,
-        systems: list[str],
+        systems: list[str | BaseDyn],
         ic_rng: np.random.Generator | None = None,
         param_rng: np.random.Generator | None = None,
     ) -> list[BaseDyn]:
@@ -235,7 +235,7 @@ class DynSysSampler:
 
     def _generate_ensembles(
         self,
-        systems: list[str] | list[BaseDyn],
+        systems: list[str | BaseDyn],
         postprocessing_callbacks: list[Callable] | None = None,
         **kwargs,
     ) -> list[dict[str, np.ndarray]]:

@@ -3,7 +3,7 @@ Search for valid skew-product dynamical sytems and generate trajectory datasets
 """
 
 import logging
-from typing import Callable, Optional
+from typing import Callable
 
 import numpy as np
 from dysts.base import DynSys
@@ -18,48 +18,61 @@ class SkewProduct(DynSys):
         self,
         driver: DynSys,
         response: DynSys,
-        coupling_map: Optional[Callable[[np.ndarray, np.ndarray], np.ndarray]] = None,
+        coupling_map: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
         **kwargs,
     ):
+        # default to additively forcing the response with the driver
+        if coupling_map is None:
+            self.coupling_map = AdditiveCouplingMap(
+                driver.dimension, response.dimension
+            )
+        else:
+            self.coupling_map = coupling_map
+
         super().__init__(
             metadata_path=None,
             parameters={},  # dummy: parameters are handled in the overwritten methods below
             dt=min(driver.dt, response.dt),
             period=max(driver.period, response.period),
             metadata={
-                "name": f"skew_{driver.name}_{response.name}",
-                "dimension": driver.dimension + response.dimension,
+                "name": f"{driver.name}_{response.name}",
+                "dimension": driver.dimension + self.coupling_map.dim,
+                "driver": driver,
+                "response": response,
+                "driver_dim": driver.dimension,
+                "response_dim": response.dimension,
             },
             **kwargs,
         )
-        self.driver = driver
-        self.response = response
 
-        self.driver_dim, self.response_dim = driver.dimension, response.dimension
+        # hack: set a dummy param list for param count checks
+        n_params = len(driver.parameters) + len(response.parameters)
+        if hasattr(self.coupling_map, "n_params"):
+            n_params += self.coupling_map.n_params
+        self.param_list = [0 for _ in range(n_params)]
 
-        assert hasattr(driver, "ic") and hasattr(
-            response, "ic"
-        ), "Driver and response must have default initial conditions"
-        self.ic = np.concatenate([self.driver.ic, self.response.ic])
+        assert hasattr(driver, "ic") and hasattr(response, "ic"), (
+            "Driver and response must have default initial conditions"
+            "and must be of the same dimension"
+        )
 
-        self.mean = np.concatenate([self.driver.mean, self.response.mean])
-        self.std = np.concatenate([self.driver.std, self.response.std])
-
-        # default to additively forcing the response with the driver
-        if coupling_map is None:
-            self.coupling_map = AdditiveCouplingMap(self.driver_dim, self.response_dim)
-        else:
-            self.coupling_map = coupling_map
-
-    def transform_ic(self, ic_transform: Callable):
-        self.driver.transform_ic(ic_transform)
-        self.response.transform_ic(ic_transform)
-        self.ic = np.concatenate([self.driver.ic, self.response.ic])
+        self.ic = np.concatenate([self.driver.ic, self.response.ic])[: self.dimension]
+        self.mean = np.concatenate([self.driver.mean, self.response.mean])[
+            : self.dimension
+        ]
+        self.std = np.concatenate([self.driver.std, self.response.std])[
+            : self.dimension
+        ]
 
     def transform_params(self, param_transform: Callable):
-        self.driver.transform_params(param_transform)
-        self.response.transform_params(param_transform)
-        self.coupling_map.transform_params(param_transform)
+        driver_success = self.driver.transform_params(param_transform)
+        response_success = self.response.transform_params(param_transform)
+        success = driver_success and response_success
+
+        if hasattr(self.coupling_map, "transform_params"):
+            success &= self.coupling_map.transform_params(param_transform)
+
+        return success
 
     def has_jacobian(self):
         return self.driver.has_jacobian() and self.response.has_jacobian()

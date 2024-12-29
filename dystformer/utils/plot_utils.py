@@ -102,6 +102,7 @@ def plot_trajs_multivariate(
         x_min, x_max = ax.get_xlim3d()  # type: ignore
         y_min, y_max = ax.get_ylim3d()  # type: ignore
         z_min, z_max = ax.get_zlim3d()  # type: ignore
+        palpha = 0.1
 
         for sample_idx in range(n_samples_plot):
             label_sample_idx = (
@@ -113,30 +114,30 @@ def plot_trajs_multivariate(
             end_pt = xyz[:, -1]
 
             # XY plane projection (bottom)
-            ax.plot(xyz[0], xyz[1], z_min, alpha=0.2, linewidth=1, color=curr_color)
+            ax.plot(xyz[0], xyz[1], z_min, alpha=palpha, linewidth=1, color=curr_color)
             ax.scatter(
-                ic_pt[0], ic_pt[1], z_min, marker="*", alpha=0.2, color=curr_color
+                ic_pt[0], ic_pt[1], z_min, marker="*", alpha=palpha, color=curr_color
             )
             ax.scatter(
-                end_pt[0], end_pt[1], z_min, marker="x", alpha=0.2, color=curr_color
+                end_pt[0], end_pt[1], z_min, marker="x", alpha=palpha, color=curr_color
             )
 
             # XZ plane projection (back)
-            ax.plot(xyz[0], y_max, xyz[2], alpha=0.2, linewidth=1, color=curr_color)
+            ax.plot(xyz[0], y_max, xyz[2], alpha=palpha, linewidth=1, color=curr_color)
             ax.scatter(
-                ic_pt[0], y_max, ic_pt[2], marker="*", alpha=0.2, color=curr_color
+                ic_pt[0], y_max, ic_pt[2], marker="*", alpha=palpha, color=curr_color
             )
             ax.scatter(
-                end_pt[0], y_max, end_pt[2], marker="x", alpha=0.2, color=curr_color
+                end_pt[0], y_max, end_pt[2], marker="x", alpha=palpha, color=curr_color
             )
 
             # YZ plane projection (right)
-            ax.plot(x_min, xyz[1], xyz[2], alpha=0.2, linewidth=1, color=curr_color)
+            ax.plot(x_min, xyz[1], xyz[2], alpha=palpha, linewidth=1, color=curr_color)
             ax.scatter(
-                x_min, ic_pt[1], ic_pt[2], marker="*", alpha=0.2, color=curr_color
+                x_min, ic_pt[1], ic_pt[2], marker="*", alpha=palpha, color=curr_color
             )
             ax.scatter(
-                x_min, end_pt[1], end_pt[2], marker="x", alpha=0.2, color=curr_color
+                x_min, end_pt[1], end_pt[2], marker="x", alpha=palpha, color=curr_color
             )
 
     ax.set_xlabel(f"dim_{dims_3d[0]}")

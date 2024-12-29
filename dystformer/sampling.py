@@ -155,10 +155,10 @@ class OnAttractorInitCondSampler(BaseSampler):
     reference_traj_length: int = 4096
     reference_traj_transient: float = 0.2
     trajectory_cache: dict[str, NDArray | None] = field(default_factory=dict)
-    verbose: bool = False
-    events: list[Callable] | None = None
-    recompute_standardization: bool = False
     silence_integration_errors: bool = False
+    recompute_standardization: bool = False
+    events: list[Callable] | None = None
+    verbose: int = 0
 
     def __post_init__(self):
         super().__post_init__()
@@ -186,18 +186,23 @@ class OnAttractorInitCondSampler(BaseSampler):
                     standardize=False,
                 )
             except ValueError as e:
-                logger.warning(f"Error integrating {system.name}: {str(e)}")
+                if self.verbose > 0:
+                    logger.warning(f"Error integrating {system.name}: {str(e)}")
                 if not self.silence_integration_errors:
                     raise e
                 return None
 
             # if integrate fails, resulting in an incomplete trajectory
             if reference_traj is None:
-                logger.warning(
-                    "On-attractor sampling failed integration for "
-                    f"{system.name} with ic {system.ic} and params "
-                    f"{system.param_list}"
-                )
+                if self.verbose > 0:
+                    fail_str = (
+                        f"On-attractor sampling failed integration for {system.name}"
+                    )
+                    if self.verbose > 1:
+                        fail_str += (
+                            f" with ic {system.ic} and params {system.param_list}"
+                        )
+                    logger.warning(fail_str)
                 return None
 
             # renormalize with respect to reference trajectory
@@ -214,7 +219,7 @@ class OnAttractorInitCondSampler(BaseSampler):
         # Sample a new initial condition from the attractor
         new_ic = self.rng.choice(trajectory)
 
-        if self.verbose:
+        if self.verbose > 1:
             logger.info(f"System: {system.name} ic: {ic} -> {new_ic}")
 
         return new_ic

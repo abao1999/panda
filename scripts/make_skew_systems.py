@@ -18,11 +18,10 @@ from dystformer.attractor import (
     check_lyapunov_exponent,
     check_not_fixed_point,
     check_not_limit_cycle,
-    check_not_trajectory_decay,
-    check_not_transient,
+    check_not_linear,
     check_power_spectrum,
 )
-from dystformer.dyst_data import DystData
+from dystformer.dyst_data import DynSysSampler
 from dystformer.sampling import (
     InstabilityEvent,
     OnAttractorInitCondSampler,
@@ -44,53 +43,40 @@ def default_attractor_tests() -> list[Callable]:
     """
     Builds a list of attractor tests to check for each trajectory ensemble.
     """
-    print("Setting up callbacks to test attractor properties")
-    tests = []
-    tests.append(
-        partial(check_boundedness, threshold=1e3, max_num_stds=15, save_plot=False)
-    )
-    tests.append(partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1))
-    tests.append(partial(check_not_transient, max_transient_prop=0.2, atol=1e-3))
-    tests.append(partial(check_not_trajectory_decay, tail_prop=0.5, atol=1e-3))
-    # for STRICT MODE (strict criteria for detecting limit cycles), try:
-    # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
-    tests.append(
+    tests = [
+        partial(check_not_linear, r2_threshold=0.99, eps=1e-10),  # pretty lenient
+        partial(check_boundedness, threshold=1e3, max_zscore=15),
+        partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1),
+        # for STRICT MODE (strict criteria for detecting limit cycles), try:
+        # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
         partial(
             check_not_limit_cycle,
             tolerance=1e-3,
             min_prop_recurrences=0.1,
-            min_counts_per_rtime=100,
+            min_counts_per_rtime=200,
             min_block_length=50,
             enforce_endpoint_recurrence=True,
-            save_plot=False,
-        )
-    )
-    tests.append(
+        ),
         partial(
-            check_power_spectrum,
-            rel_peak_height_threshold=1e-5,
-            rel_prominence_threshold=None,
-            save_plot=False,
-        )
-    )
-    tests.append(check_lyapunov_exponent)
+            check_power_spectrum, rel_peak_height=1e-5, rel_prominence=1e-5, min_peaks=3
+        ),
+        partial(check_lyapunov_exponent, traj_len=150),
+    ]
     return tests
 
 
-@hydra.main(config_path="../config", config_name="config", version_base=None)
-def main(cfg):
-    systems = get_attractor_list(sys_class="continuous_no_delay")
+def sample_skew_systems(systems: list[str], cfg) -> tuple[list[DynSys], list[DynSys]]:
     system_pairs = list(permutations(systems, 2))
 
     # Randomly sample 3 system pairs
     n_combos = 3
-    rng = np.random.default_rng(cfg.dyst_data.rseed)
+    rng = np.random.default_rng(cfg.sampling.rseed)
     system_pairs = rng.choice(system_pairs, size=n_combos, replace=False)
     logger.info(f"Generated {len(system_pairs)} system pairs")
 
-    np.random.seed(cfg.dyst_data.rseed)
+    np.random.seed(cfg.sampling.rseed)
     np.random.shuffle(system_pairs)
-    split_idx = int(len(system_pairs) * (1 - cfg.dyst_data.test_split))
+    split_idx = int(len(system_pairs) * (1 - cfg.sampling.test_split))
     train_pairs = system_pairs[:split_idx]
     test_pairs = system_pairs[split_idx:]
 
@@ -101,6 +87,38 @@ def main(cfg):
         init_skew_system(driver, response) for driver, response in test_pairs
     ]
 
+    return train_systems, test_systems
+
+
+def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
+    default_traj = system.make_trajectory(
+        cfg.sampling.num_points,
+        pts_per_period=cfg.sampling.num_points // cfg.sampling.num_periods,
+    )
+    ensembles = sys_sampler._generate_ensembles(
+        systems=[system],
+        use_multiprocessing=cfg.sampling.multiprocessing,
+        _silent_errors=cfg.sampling.silence_integration_errors,
+    )
+
+    samples = np.array(
+        [default_traj]
+        + [ensemble[system.name] for ensemble in ensembles if len(ensemble) > 0]
+    ).transpose(0, 2, 1)
+    plot_trajs_multivariate(
+        samples,
+        save_dir="figures",
+        plot_name=f"{system.name}_debug",
+        plot_2d_slice=True,
+        plot_projections=True,
+        max_samples=len(ensembles),
+    )
+
+
+@hydra.main(config_path="../config", config_name="config", version_base=None)
+def main(cfg):
+    systems = get_attractor_list(sys_class="continuous_no_delay")
+
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
     instability_event = InstabilityEvent(threshold=cfg.events.instability_threshold)
@@ -108,33 +126,32 @@ def main(cfg):
     events = [time_limit_event, instability_event, time_step_event]
 
     param_sampler = SignedGaussianParamSampler(
-        random_seed=cfg.dyst_data.rseed,
-        scale=cfg.dyst_data.param_scale,
-        verbose=cfg.dyst_data.verbose,
+        random_seed=cfg.sampling.rseed,
+        scale=cfg.sampling.param_scale,
+        verbose=cfg.sampling.verbose,
     )
     ic_sampler = OnAttractorInitCondSampler(
-        reference_traj_length=cfg.dyst_data.reference_traj_length,
-        reference_traj_transient=cfg.dyst_data.reference_traj_transient,
-        recompute_standardization=cfg.dyst_data.standardize,  # Important (if standardize=True)
+        reference_traj_length=cfg.sampling.reference_traj_length,
+        reference_traj_transient=cfg.sampling.reference_traj_transient,
+        recompute_standardization=cfg.sampling.standardize,  # Important (if standardize=True)
         events=events,
-        verbose=cfg.dyst_data.verbose,
+        silence_integration_errors=cfg.sampling.silence_integration_errors,
+        verbose=1,
     )
 
-    split_prefix = (
-        cfg.dyst_data.split_prefix + "_" if cfg.dyst_data.split_prefix else ""
-    )
+    split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
 
-    dyst_data_generator = DystData(
-        rseed=cfg.dyst_data.rseed,
-        num_periods=cfg.dyst_data.num_periods,
-        num_points=cfg.dyst_data.num_points,
-        num_ics=cfg.dyst_data.num_ics,
-        num_param_perturbations=cfg.dyst_data.num_param_perturbations,
+    sys_sampler = DynSysSampler(
+        rseed=cfg.sampling.rseed,
+        num_periods=cfg.sampling.num_periods,
+        num_points=cfg.sampling.num_points,
+        num_ics=cfg.sampling.num_ics,
+        num_param_perturbations=cfg.sampling.num_param_perturbations,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
         events=events,
-        verbose=cfg.dyst_data.verbose,
-        split_coords=cfg.dyst_data.split_coords,
+        verbose=cfg.sampling.verbose,
+        split_coords=cfg.sampling.split_coords,
         attractor_tests=default_attractor_tests(),
         attractor_validator_kwargs={
             "verbose": cfg.validator.verbose,
@@ -144,53 +161,40 @@ def main(cfg):
         save_failed_trajs=cfg.validator.save_failed_trajs,
     )
 
-    if cfg.dyst_data.debug_dyst:  # TODO: adapt this to skew systems
-        # Run save_dyst_ensemble on a single system in debug mode
-        ensembles = dyst_data_generator._generate_ensembles(
-            systems=[cfg.dyst_data.debug_dyst]
-        )
-        samples = np.array(
-            [
-                ensemble[cfg.dyst_data.debug_dyst]
-                for ensemble in ensembles
-                if len(ensemble) > 0
-            ]
-        ).transpose(0, 2, 1)
-        plot_trajs_multivariate(
-            samples,
-            save_dir="figures",
-            plot_name=f"{cfg.dyst_data.debug_dyst}_debug",
-        )
-
+    if cfg.sampling.debug_system:
+        system = init_skew_system(*cfg.sampling.debug_system.split("_"))
+        plot_single_system(system, sys_sampler, cfg)
     else:
+        train_systems, test_systems = sample_skew_systems(systems, cfg)
+
         split_prefix = (
-            cfg.dyst_data.split_prefix + "_" if cfg.dyst_data.split_prefix else ""
+            cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
         )
 
-        dyst_data_generator.save_dyst_ensemble(
+        sys_sampler.sample_ensembles(
             systems=train_systems,
             split=f"{split_prefix}train",
             split_failures=f"{split_prefix}failed_attractors_train",
             samples_process_interval=1,
-            save_dir=cfg.dyst_data.data_dir,
-            standardize=cfg.dyst_data.standardize,
-            use_multiprocessing=cfg.dyst_data.multiprocessing,
+            save_dir=cfg.sampling.data_dir,
+            standardize=cfg.sampling.standardize,
+            use_multiprocessing=cfg.sampling.multiprocessing,
         )
-        dyst_data_generator.save_summary(
+        sys_sampler.save_summary(
             os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
         )
 
-        dyst_data_generator.save_dyst_ensemble(
+        sys_sampler.sample_ensembles(
             systems=test_systems,
             split=f"{split_prefix}test",
             split_failures=f"{split_prefix}failed_attractors_test",
             samples_process_interval=1,
-            save_dir=cfg.dyst_data.data_dir,
-            standardize=cfg.dyst_data.standardize,
+            save_dir=cfg.sampling.data_dir,
+            standardize=cfg.sampling.standardize,
             reset_attractor_validator=True,  # save validator results separately for test
-            use_multiprocessing=cfg.dyst_data.multiprocessing,
+            use_multiprocessing=cfg.sampling.multiprocessing,
         )
-        dyst_data_generator.save_summary(
+        sys_sampler.save_summary(
             os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
         )
 
