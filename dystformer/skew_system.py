@@ -8,7 +8,7 @@ from typing import Callable
 import numpy as np
 from dysts.base import DynSys
 
-from dystformer.coupling_maps import AdditiveCouplingMap
+from dystformer.coupling_maps import RandomAdditiveCouplingMap
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class SkewProduct(DynSys):
     ):
         # default to additively forcing the response with the driver
         if coupling_map is None:
-            self.coupling_map = AdditiveCouplingMap(
+            self.coupling_map = RandomAdditiveCouplingMap(
                 driver.dimension, response.dimension
             )
         else:
@@ -36,7 +36,7 @@ class SkewProduct(DynSys):
             period=max(driver.period, response.period),
             metadata={
                 "name": f"{driver.name}_{response.name}",
-                "dimension": driver.dimension + self.coupling_map.dim,
+                "dimension": driver.dimension + response.dimension,
                 "driver": driver,
                 "response": response,
                 "driver_dim": driver.dimension,
@@ -56,13 +56,9 @@ class SkewProduct(DynSys):
             "and must be of the same dimension"
         )
 
-        self.ic = np.concatenate([self.driver.ic, self.response.ic])[: self.dimension]
-        self.mean = np.concatenate([self.driver.mean, self.response.mean])[
-            : self.dimension
-        ]
-        self.std = np.concatenate([self.driver.std, self.response.std])[
-            : self.dimension
-        ]
+        self.ic = np.concatenate([self.driver.ic, self.response.ic])
+        self.mean = np.concatenate([self.driver.mean, self.response.mean])
+        self.std = np.concatenate([self.driver.std, self.response.std])
 
     def transform_params(self, param_transform: Callable):
         driver_success = self.driver.transform_params(param_transform)
@@ -82,7 +78,6 @@ class SkewProduct(DynSys):
         driver_rhs = np.asarray(self.driver.rhs(driver, t))
         response_rhs = np.asarray(self.response.rhs(response, t))
         coupled_rhs = self.coupling_map(driver_rhs, response_rhs)
-
         return np.concatenate([driver_rhs, coupled_rhs])
 
     def jac(self, X, t):

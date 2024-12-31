@@ -81,6 +81,7 @@ TODO: write up current PatchTST docs
 + [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
 + [LOW | MEDIUM] curriculum learning setup for growing the training dataset - use some notion of complexity/hardness to learn.
 + [LOW | HARD] add flash attention support for AMD, see this warning: 
++ [LOW | HARD] generalize coupling map to handle flows and phase space inputs for more general skew system couplings, update jac to reflect changes
 ```
 [W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
 [W sdp_utils.cpp:320] Warning: 1Torch was not compiled with memory efficient attention. (function operator())

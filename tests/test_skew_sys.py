@@ -1,14 +1,21 @@
 import hydra
 import matplotlib.pyplot as plt
-from dysts.flows import Lorenz, MackeyGlass
+from dysts.flows import CircadianRhythm, DoublePendulum
 
+from dystformer.coupling_maps import RandomAdditiveCouplingMap
 from dystformer.skew_system import SkewProduct
 
 
 def test_skew_system():
+    driver = DoublePendulum()
+    response = CircadianRhythm()
+    coupling_map = RandomAdditiveCouplingMap(
+        driver.dimension, response.dimension, random_seed=0
+    )
     sys = SkewProduct(
-        driver=Lorenz(),
-        response=MackeyGlass(),
+        driver=driver,
+        response=response,
+        # coupling_map=coupling_map,
     )
     traj = sys.make_trajectory(
         1024,
