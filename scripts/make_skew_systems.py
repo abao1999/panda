@@ -6,6 +6,7 @@ import logging
 import os
 from functools import partial
 from itertools import permutations
+from multiprocessing import Pool
 from typing import Callable
 
 import dysts.flows as flows
@@ -21,6 +22,7 @@ from dystformer.attractor import (
     check_not_linear,
     check_power_spectrum,
 )
+from dystformer.coupling_maps import RandomAdditiveCouplingMap
 from dystformer.dyst_data import DynSysSampler
 from dystformer.sampling import (
     InstabilityEvent,
@@ -33,19 +35,32 @@ from dystformer.skew_system import SkewProduct
 from dystformer.utils import plot_trajs_multivariate
 
 
-def init_skew_system(drive_name: str, response_name: str) -> DynSys:
-    driver = getattr(flows, drive_name)()
+def init_skew_system(
+    driver_name: str, response_name: str, driver_scale: float, response_scale: float
+) -> DynSys:
+    """Initialize a skew-product dynamical system with a driver and response system"""
+    driver = getattr(flows, driver_name)()
     response = getattr(flows, response_name)()
-    return SkewProduct(driver=driver, response=response)
+
+    coupling_map = RandomAdditiveCouplingMap(
+        driver_dim=driver.dimension,
+        response_dim=response.dimension,
+        driver_scale=driver_scale,
+        response_scale=response_scale,
+    )
+
+    return SkewProduct(
+        driver=driver,
+        response=response,
+        coupling_map=coupling_map,
+    )
 
 
 def default_attractor_tests() -> list[Callable]:
-    """
-    Builds a list of attractor tests to check for each trajectory ensemble.
-    """
+    """Builds default attractor tests to check for each trajectory ensemble"""
     tests = [
         partial(check_not_linear, r2_threshold=0.99, eps=1e-10),  # pretty lenient
-        partial(check_boundedness, threshold=1e3, max_zscore=15),
+        partial(check_boundedness, threshold=1e4, max_zscore=15),
         partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1),
         # for STRICT MODE (strict criteria for detecting limit cycles), try:
         # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
@@ -65,11 +80,16 @@ def default_attractor_tests() -> list[Callable]:
     return tests
 
 
-def sample_skew_systems(systems: list[str], cfg) -> tuple[list[DynSys], list[DynSys]]:
+def sample_skew_systems(
+    systems: list[str], scale_cache: dict[str, float], cfg
+) -> tuple[list[DynSys], list[DynSys]]:
+    """Sample skew systems from all pairs of non-skew systems and split into train/test
+
+    TODO: filter skew systems based on non-skew train and test sets, optionally
+    """
     system_pairs = list(permutations(systems, 2))
 
-    # Randomly sample 3 system pairs
-    n_combos = 3
+    n_combos = 100
     rng = np.random.default_rng(cfg.sampling.rseed)
     system_pairs = rng.choice(system_pairs, size=n_combos, replace=False)
     logger.info(f"Generated {len(system_pairs)} system pairs")
@@ -81,16 +101,19 @@ def sample_skew_systems(systems: list[str], cfg) -> tuple[list[DynSys], list[Dyn
     test_pairs = system_pairs[split_idx:]
 
     train_systems = [
-        init_skew_system(driver, response) for driver, response in train_pairs
+        init_skew_system(driver, response, scale_cache[driver], scale_cache[response])
+        for driver, response in train_pairs
     ]
     test_systems = [
-        init_skew_system(driver, response) for driver, response in test_pairs
+        init_skew_system(driver, response, scale_cache[driver], scale_cache[response])
+        for driver, response in test_pairs
     ]
 
     return train_systems, test_systems
 
 
 def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
+    """Plot a single skew system and its ensembles for debugging"""
     default_traj = system.make_trajectory(
         cfg.sampling.num_points,
         pts_per_period=cfg.sampling.num_points // cfg.sampling.num_periods,
@@ -115,9 +138,48 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     )
 
 
+def _compute_system_scale(
+    system: str, n: int, num_periods: int, transient: int
+) -> tuple[str, float]:
+    """Compute RMS scale in flow spacefor a single system"""
+    sys = getattr(flows, system)()
+    ts, traj = sys.make_trajectory(
+        n, pts_per_period=n // num_periods, return_times=True
+    )
+    flow_rms = np.sqrt(
+        np.mean(
+            [
+                np.mean(np.max(sys(x, t)) ** 2)
+                for x, t in zip(traj[transient:], ts[transient:])
+            ]
+        )
+    )
+    return system, 1 / flow_rms
+
+
+def init_trajectory_scale_cache(systems: list[str], cfg) -> dict[str, float]:
+    """Initialize a cache of vector field RMS scales for each system using multiprocessing"""
+    transient = int(
+        cfg.sampling.reference_traj_length * cfg.sampling.reference_traj_transient
+    )
+    _compute_scale_worker = partial(
+        _compute_system_scale,
+        n=cfg.sampling.reference_traj_length,
+        num_periods=cfg.sampling.num_periods,
+        transient=transient,
+    )
+    with Pool() as pool:
+        results = pool.map(_compute_scale_worker, systems)
+
+    return dict(results)
+
+
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
     systems = get_attractor_list(sys_class="continuous_no_delay")
+
+    logger.info(f"Initializing trajectory scale cache for {len(systems)} systems")
+    scale_cache = init_trajectory_scale_cache(systems, cfg)
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
@@ -165,7 +227,7 @@ def main(cfg):
         system = init_skew_system(*cfg.sampling.debug_system.split("_"))
         plot_single_system(system, sys_sampler, cfg)
     else:
-        train_systems, test_systems = sample_skew_systems(systems, cfg)
+        train_systems, test_systems = sample_skew_systems(systems, scale_cache, cfg)
 
         split_prefix = (
             cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""

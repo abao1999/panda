@@ -151,6 +151,11 @@ class DynSysSampler:
             use_multiprocessing=use_multiprocessing,
             **kwargs,
         )
+        default_ensemble = {
+            key: value
+            for key, value in default_ensemble.items()
+            if value is not None and not np.isnan(value).any()
+        }
         for callback in callbacks[:-1]:  # ignore failed integrations
             callback(0, default_ensemble)
 
@@ -267,7 +272,7 @@ class DynSysSampler:
                 # perturb and initialize the system ensemble
                 unfiltered_systems = self._init_perturbations(systems, ic_rng=ic_rng)
                 excluded_systems = [
-                    systems[i]
+                    systems[i].name
                     for i in range(len(systems))
                     if unfiltered_systems[i] is None
                 ]
@@ -338,7 +343,6 @@ class DynSysSampler:
         ensemble_list = []
 
         def _callback(sample_idx, ensemble, **kwargs):
-            perturbed_systems = kwargs.get("perturbed_systems")
             if len(ensemble.keys()) == 0:
                 logger.warning(
                     "No successful trajectories for this sample. Skipping, will not save to arrow files."
@@ -352,7 +356,7 @@ class DynSysSampler:
                 self._process_and_save_ensemble(
                     ensemble_list,
                     sample_idx,
-                    perturbed_systems=perturbed_systems,
+                    perturbed_systems=kwargs.get("perturbed_systems"),
                     save_dyst_dir=save_dyst_dir,
                     failed_dyst_dir=failed_dyst_dir,
                     save_params_dir=save_params_dir,

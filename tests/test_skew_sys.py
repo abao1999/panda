@@ -1,21 +1,18 @@
 import hydra
 import matplotlib.pyplot as plt
-from dysts.flows import CircadianRhythm, DoublePendulum
+from dysts.flows import CircadianRhythm, ExcitableCell
 
-from dystformer.coupling_maps import RandomAdditiveCouplingMap
 from dystformer.skew_system import SkewProduct
 
 
 def test_skew_system():
-    driver = DoublePendulum()
+    driver = ExcitableCell()
     response = CircadianRhythm()
-    coupling_map = RandomAdditiveCouplingMap(
-        driver.dimension, response.dimension, random_seed=0
-    )
+    driver, response = response, driver
     sys = SkewProduct(
         driver=driver,
         response=response,
-        # coupling_map=coupling_map,
+        _default_random_seed=None,
     )
     traj = sys.make_trajectory(
         1024,
@@ -24,6 +21,11 @@ def test_skew_system():
         resample=True,
         standardize=False,
     )
+
+    if traj is None:
+        print("Integration failed")
+        exit()
+
     driver_traj = traj[:, : sys.driver_dim]
     response_traj = traj[:, sys.driver_dim :]
     print(driver_traj.shape, response_traj.shape)
