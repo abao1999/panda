@@ -89,7 +89,7 @@ def sample_skew_systems(
     """
     system_pairs = list(permutations(systems, 2))
 
-    n_combos = 100
+    n_combos = 8
     rng = np.random.default_rng(cfg.sampling.rseed)
     system_pairs = rng.choice(system_pairs, size=n_combos, replace=False)
     logger.info(f"Generated {len(system_pairs)} system pairs")
