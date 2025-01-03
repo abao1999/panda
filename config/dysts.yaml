@@ -1,13 +1,14 @@
 sampling:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
-  sys_class: continuous
+  sys_class: continuous_no_delay
   test_split: 0.3
   split_prefix: null
   rseed: 999
   reference_traj_length: 2048
   reference_traj_transient: 0.2
-  num_periods: 10
+  reference_traj_n_periods: 5
   num_points: 4096
+  num_periods: 10
   num_ics: 1
   num_param_perturbations: 4
   param_scale: 0.5
@@ -19,7 +20,7 @@ sampling:
   silence_integration_errors: false
   save_params: false
   ignore_probability: 0.1
-  sign_match_probability: 0.75
+  sign_match_probability: 0.5
 
 validator:
   enable: true
@@ -35,6 +36,8 @@ events:
 
 skew:
   num_pairs: 5000
-  couple_phase_space: true
-  couple_flows: false
-  use_all_systems: true
+
+  # paths to train and test sets of non-skew systems for filtering
+  # skew system samples into train/test sets
+  train_nonskew_path: null
+  test_nonskew_path: null

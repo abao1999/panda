@@ -118,7 +118,8 @@ class DynSysSampler:
             sys_names
         ), "Cannot have duplicate system names"
         logger.info(
-            f"Making {split} split with {len(systems)} dynamical systems: \n {sys_names}"
+            f"""Making {split} split with {len(systems)} dynamical systems
+            (showing first 10): \n {sys_names[:10]}"""
         )
 
         if self.attractor_validator is not None and reset_attractor_validator:
@@ -143,6 +144,7 @@ class DynSysSampler:
         ]
 
         # treat the default params as the zeroth sample
+        logger.info("Generating default ensemble...")
         default_ensemble = make_trajectory_ensemble(
             self.num_points,
             subset=systems,
@@ -159,6 +161,7 @@ class DynSysSampler:
         for callback in callbacks[:-1]:  # ignore failed integrations
             callback(0, default_ensemble)
 
+        logger.info("Generating perturbed ensembles...")
         ensembles = self._generate_ensembles(
             systems,
             postprocessing_callbacks=callbacks,

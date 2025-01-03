@@ -63,9 +63,7 @@ class TimeStepEvent:
     terminal: bool = True
     min_step: float = 1e-20
     verbose: bool = False
-
-    def __post_init__(self):
-        self.last_t = float("inf")
+    last_t: float = float("inf")
 
     def __call__(self, t, y):
         t_diff = abs(t - self.last_t)
@@ -160,6 +158,7 @@ class OnAttractorInitCondSampler(BaseSampler):
 
     reference_traj_length: int = 4096
     reference_traj_transient: float = 0.2
+    reference_traj_n_periods: int = 10
     trajectory_cache: dict[str, NDArray | None] = field(default_factory=dict)
     silence_integration_errors: bool = False
     recompute_standardization: bool = False

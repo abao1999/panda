@@ -237,7 +237,7 @@ def init_trajectory_scale_cache(
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
-    systems = get_attractor_list(sys_class="continuous_no_delay")
+    systems = get_attractor_list(sys_class=cfg.sampling.sys_class)
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
@@ -302,7 +302,13 @@ def main(cfg):
             cfg.sampling.num_periods,
             cfg.sampling.reference_traj_transient,
         )
-        train_systems, test_systems = sample_skew_systems(systems, scale_cache, cfg)
+        train_systems, test_systems = sample_skew_systems(
+            cfg.skew.num_pairs,
+            systems,
+            scale_cache=scale_cache,
+            test_split=cfg.sampling.test_split,
+            random_seed=cfg.sampling.rseed,
+        )
 
         split_prefix = (
             cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""

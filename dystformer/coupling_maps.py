@@ -39,8 +39,11 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
     _randomize_on_transform: bool = True
 
     def __post_init__(self) -> None:
-        if self.random_seed is not None and not self._randomize_on_transform:
+        if self.random_seed is not None:
             self.rng = np.random.default_rng(self.random_seed)
+
+        # generate the indices from the driver to be coupled to the response
+        if self.random_seed is not None and not self._randomize_on_transform:
             self.driver_indices = self.rng.choice(
                 max(self.driver_dim, self.response_dim),
                 self.response_dim,
