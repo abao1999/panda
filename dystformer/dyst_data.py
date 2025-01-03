@@ -442,7 +442,7 @@ class DynSysSampler:
             if sys.name not in param_dict:
                 param_dict[sys.name] = []
 
-            if "_" in sys.name:  # for skew systems
+            if "_" in sys.name:  # hack: for skew systems
                 serialized_params = [
                     list(map(demote_from_numpy, sys.driver.param_list)),
                     list(map(demote_from_numpy, sys.response.param_list)),

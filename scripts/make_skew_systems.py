@@ -118,6 +118,8 @@ def sample_skew_systems(
     scale_cache: dict[str, float] | None = None,
     test_split: float = 0.2,
     random_seed: int = 0,
+    train_systems: list[str] | None = None,
+    test_systems: list[str] | None = None,
 ) -> tuple[list[DynSys], list[DynSys]]:
     """Sample skew systems from all pairs of non-skew systems and split into train/test
 
@@ -138,16 +140,44 @@ def sample_skew_systems(
     system_pairs = list(permutations(systems, 2))
 
     rng = np.random.default_rng(random_seed)
-    sampled_pairs = rng.choice(system_pairs, size=num_pairs, replace=False)
-    logger.info(f"Generated {len(sampled_pairs)} system pairs")
+    sampled_pairs = rng.choice(
+        system_pairs, size=min(num_pairs, len(system_pairs)), replace=False
+    )
+    logger.info(f"Sampled {len(sampled_pairs)}/{len(system_pairs)} total system pairs")
 
     split_idx = int(len(sampled_pairs) * (1 - test_split))
     train_pairs = sampled_pairs[:split_idx]
     test_pairs = sampled_pairs[split_idx:]
 
+    # if provided, filter out pairs from train and test pairs that contain systems
+    # that are not in the train or test sets, then recombine to update valid train/test pairs
+    logger.info(f"Filtering {len(train_pairs)} train and {len(test_pairs)} test pairs")
+
+    def is_valid_pair(pair: tuple[str, str], filter_list: list[str] | None) -> bool:
+        return (
+            True
+            if filter_list is None
+            else all(system in filter_list for system in pair)
+        )
+
+    valid_train_pairs = filter(
+        lambda pair: is_valid_pair(pair, train_systems), train_pairs
+    )
+    valid_test_pairs = filter(
+        lambda pair: is_valid_pair(pair, test_systems), test_pairs
+    )
+    invalid_train_pairs = filter(
+        lambda pair: not is_valid_pair(pair, train_systems), train_pairs
+    )
+    invalid_test_pairs = filter(
+        lambda pair: not is_valid_pair(pair, test_systems), test_pairs
+    )
+    train_pairs = list(valid_train_pairs) + list(invalid_test_pairs)
+    test_pairs = list(valid_test_pairs) + list(invalid_train_pairs)
+
     logger.info(
         f"""Splitting {len(sampled_pairs)}/{len(system_pairs)} skew pairs into """
-        f"""{len(train_pairs)} train and {len(test_pairs)} test pairs"""
+        f"""{len(train_pairs)} train and {len(test_pairs)} test pairs after filtering"""
     )
 
     train_systems = [
