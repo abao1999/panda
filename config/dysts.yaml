@@ -34,7 +34,7 @@ events:
   min_step: 1e-16
 
 skew:
-  n_combos: 10
+  num_pairs: 5000
   couple_phase_space: true
   couple_flows: false
   use_all_systems: true

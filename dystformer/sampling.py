@@ -19,6 +19,7 @@ class TimeLimitEvent:
 
     max_duration: float
     terminal: bool = True
+    verbose: bool = False
 
     def __post_init__(self):
         self.start_time = time.time()
@@ -29,7 +30,8 @@ class TimeLimitEvent:
     def __call__(self, t, y):
         elapsed_time = time.time() - self.start_time
         if elapsed_time > self.max_duration:
-            logger.warning(f"Time limit exceeded! {elapsed_time}")
+            if self.verbose:
+                logger.warning(f"Time limit exceeded: {elapsed_time:.2f}s")
             return 0
         return 1
 
@@ -42,10 +44,12 @@ class InstabilityEvent:
 
     threshold: float
     terminal: bool = True
+    verbose: bool = False
 
     def __call__(self, t, y):
         if np.any(np.abs(y) > self.threshold) or np.any(np.isnan(y)):
-            logger.warning(f"Instability detected! {np.abs(y)}")
+            if self.verbose:
+                logger.warning(f"Instability detected @ t={t} | {np.abs(y)}\n")
             return 0
         return 1
 
@@ -58,6 +62,7 @@ class TimeStepEvent:
 
     terminal: bool = True
     min_step: float = 1e-20
+    verbose: bool = False
 
     def __post_init__(self):
         self.last_t = float("inf")
@@ -65,7 +70,8 @@ class TimeStepEvent:
     def __call__(self, t, y):
         t_diff = abs(t - self.last_t)
         if t_diff < self.min_step:
-            logger.warning(f"Time step too small! {t_diff}")
+            if self.verbose:
+                logger.warning(f"Time step too small! {t_diff}")
             return 0
 
         self.last_t = t

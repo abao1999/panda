@@ -35,27 +35,6 @@ from dystformer.skew_system import SkewProduct
 from dystformer.utils import plot_trajs_multivariate
 
 
-def init_skew_system(
-    driver_name: str, response_name: str, driver_scale: float, response_scale: float
-) -> DynSys:
-    """Initialize a skew-product dynamical system with a driver and response system"""
-    driver = getattr(flows, driver_name)()
-    response = getattr(flows, response_name)()
-
-    coupling_map = RandomAdditiveCouplingMap(
-        driver_dim=driver.dimension,
-        response_dim=response.dimension,
-        driver_scale=driver_scale,
-        response_scale=response_scale,
-    )
-
-    return SkewProduct(
-        driver=driver,
-        response=response,
-        coupling_map=coupling_map,
-    )
-
-
 def default_attractor_tests() -> list[Callable]:
     """Builds default attractor tests to check for each trajectory ensemble"""
     tests = [
@@ -78,38 +57,6 @@ def default_attractor_tests() -> list[Callable]:
         partial(check_lyapunov_exponent, traj_len=150),
     ]
     return tests
-
-
-def sample_skew_systems(
-    systems: list[str], scale_cache: dict[str, float], cfg
-) -> tuple[list[DynSys], list[DynSys]]:
-    """Sample skew systems from all pairs of non-skew systems and split into train/test
-
-    TODO: filter skew systems based on non-skew train and test sets, optionally
-    """
-    system_pairs = list(permutations(systems, 2))
-
-    n_combos = 8
-    rng = np.random.default_rng(cfg.sampling.rseed)
-    system_pairs = rng.choice(system_pairs, size=n_combos, replace=False)
-    logger.info(f"Generated {len(system_pairs)} system pairs")
-
-    np.random.seed(cfg.sampling.rseed)
-    np.random.shuffle(system_pairs)
-    split_idx = int(len(system_pairs) * (1 - cfg.sampling.test_split))
-    train_pairs = system_pairs[:split_idx]
-    test_pairs = system_pairs[split_idx:]
-
-    train_systems = [
-        init_skew_system(driver, response, scale_cache[driver], scale_cache[response])
-        for driver, response in train_pairs
-    ]
-    test_systems = [
-        init_skew_system(driver, response, scale_cache[driver], scale_cache[response])
-        for driver, response in test_pairs
-    ]
-
-    return train_systems, test_systems
 
 
 def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
@@ -138,6 +85,95 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     )
 
 
+def init_skew_system(
+    driver_name: str,
+    response_name: str,
+    driver_scale: float,
+    response_scale: float,
+    seed: int = 0,
+) -> DynSys:
+    """Initialize a skew-product dynamical system with a driver and response system"""
+    driver = getattr(flows, driver_name)()
+    response = getattr(flows, response_name)()
+
+    coupling_map = RandomAdditiveCouplingMap(
+        driver_dim=driver.dimension,
+        response_dim=response.dimension,
+        driver_scale=driver_scale,
+        response_scale=response_scale,
+        random_seed=seed,
+        _randomize_on_transform=True,
+    )
+
+    return SkewProduct(
+        driver=driver,
+        response=response,
+        coupling_map=coupling_map,
+    )
+
+
+def sample_skew_systems(
+    num_pairs: int,
+    systems: list[str],
+    scale_cache: dict[str, float] | None = None,
+    test_split: float = 0.2,
+    random_seed: int = 0,
+) -> tuple[list[DynSys], list[DynSys]]:
+    """Sample skew systems from all pairs of non-skew systems and split into train/test
+
+    TODO: filter skew systems based on non-skew train and test sets, optionally
+
+    Args:
+        num_pairs: Number of skew system pairs to generate
+        systems: List of system names to sample from
+        scale_cache: Optional dictionary mapping system names to their RMS flow scales.
+            If None, scales are set to 1.0
+        test_split: Fraction of systems to use for testing
+        random_seed: Random seed for reproducibility
+
+    Returns:
+        Tuple of (train_systems, test_systems) where each is a list of initialized
+        skew product systems
+    """
+    system_pairs = list(permutations(systems, 2))
+
+    rng = np.random.default_rng(random_seed)
+    sampled_pairs = rng.choice(system_pairs, size=num_pairs, replace=False)
+    logger.info(f"Generated {len(sampled_pairs)} system pairs")
+
+    split_idx = int(len(sampled_pairs) * (1 - test_split))
+    train_pairs = sampled_pairs[:split_idx]
+    test_pairs = sampled_pairs[split_idx:]
+
+    logger.info(
+        f"""Splitting {len(sampled_pairs)}/{len(system_pairs)} skew pairs into """
+        f"""{len(train_pairs)} train and {len(test_pairs)} test pairs"""
+    )
+
+    train_systems = [
+        init_skew_system(
+            driver,
+            response,
+            1.0 if scale_cache is None else scale_cache[driver],
+            1.0 if scale_cache is None else scale_cache[response],
+            seed=random_seed,
+        )
+        for driver, response in train_pairs
+    ]
+    test_systems = [
+        init_skew_system(
+            driver,
+            response,
+            1.0 if scale_cache is None else scale_cache[driver],
+            1.0 if scale_cache is None else scale_cache[response],
+            seed=random_seed,
+        )
+        for driver, response in test_pairs
+    ]
+
+    return train_systems, test_systems
+
+
 def _compute_system_scale(
     system: str, n: int, num_periods: int, transient: int
 ) -> tuple[str, float]:
@@ -148,38 +184,30 @@ def _compute_system_scale(
     )
     flow_rms = np.sqrt(
         np.mean(
-            [
-                np.mean(np.max(sys(x, t)) ** 2)
-                for x, t in zip(traj[transient:], ts[transient:])
-            ]
+            [np.max(sys(x, t)) ** 2 for x, t in zip(traj[transient:], ts[transient:])]
         )
     )
     return system, 1 / flow_rms
 
 
-def init_trajectory_scale_cache(systems: list[str], cfg) -> dict[str, float]:
+def init_trajectory_scale_cache(
+    systems: list[str], traj_length: int, num_periods: int, traj_transient: float
+) -> dict[str, float]:
     """Initialize a cache of vector field RMS scales for each system using multiprocessing"""
-    transient = int(
-        cfg.sampling.reference_traj_length * cfg.sampling.reference_traj_transient
-    )
     _compute_scale_worker = partial(
         _compute_system_scale,
-        n=cfg.sampling.reference_traj_length,
-        num_periods=cfg.sampling.num_periods,
-        transient=transient,
+        n=traj_length,
+        num_periods=num_periods,
+        transient=int(traj_length * traj_transient),
     )
     with Pool() as pool:
         results = pool.map(_compute_scale_worker, systems)
-
     return dict(results)
 
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
     systems = get_attractor_list(sys_class="continuous_no_delay")
-
-    logger.info(f"Initializing trajectory scale cache for {len(systems)} systems")
-    scale_cache = init_trajectory_scale_cache(systems, cfg)
 
     # events for solve_ivp
     time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
@@ -224,9 +252,26 @@ def main(cfg):
     )
 
     if cfg.sampling.debug_system:
-        system = init_skew_system(*cfg.sampling.debug_system.split("_"))
+        driver, response = cfg.sampling.debug_system.split("_")
+        logger.info(f"Initializing trajectory scale cache for {driver} and {response}")
+        scale_cache = init_trajectory_scale_cache(
+            [driver, response],
+            cfg.sampling.num_points,
+            cfg.sampling.num_periods,
+            cfg.sampling.reference_traj_transient,
+        )
+        system = init_skew_system(
+            driver, response, scale_cache[driver], scale_cache[response]
+        )
         plot_single_system(system, sys_sampler, cfg)
     else:
+        logger.info(f"Initializing trajectory scale cache for {len(systems)} systems")
+        scale_cache = init_trajectory_scale_cache(
+            systems,
+            cfg.sampling.num_points,
+            cfg.sampling.num_periods,
+            cfg.sampling.reference_traj_transient,
+        )
         train_systems, test_systems = sample_skew_systems(systems, scale_cache, cfg)
 
         split_prefix = (

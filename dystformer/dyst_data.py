@@ -272,7 +272,7 @@ class DynSysSampler:
                 # perturb and initialize the system ensemble
                 unfiltered_systems = self._init_perturbations(systems, ic_rng=ic_rng)
                 excluded_systems = [
-                    systems[i].name
+                    systems[i] if isinstance(systems[i], str) else systems[i].name  # type: ignore
                     for i in range(len(systems))
                     if unfiltered_systems[i] is None
                 ]
