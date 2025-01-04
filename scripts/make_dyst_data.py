@@ -88,14 +88,18 @@ def main(cfg):
         sys_class=cfg.sampling.sys_class,
     )
 
-    time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
-    instability_event = InstabilityEvent(threshold=cfg.events.instability_threshold)
-    time_step_event = TimeStepEvent(min_step=cfg.events.min_step)
-    events = [
-        time_limit_event,
-        time_step_event,
-        instability_event,
-    ]
+    time_limit_event = TimeLimitEvent(
+        max_duration=cfg.events.max_duration, verbose=cfg.events.verbose
+    )
+    instability_event = partial(
+        InstabilityEvent,
+        threshold=cfg.events.instability_threshold,
+        verbose=cfg.events.verbose,
+    )
+    time_step_event = TimeStepEvent(
+        min_step=cfg.events.min_step, verbose=cfg.events.verbose
+    )
+    event_fns = [time_limit_event, time_step_event, instability_event]
 
     param_sampler = SignedGaussianParamSampler(
         random_seed=cfg.sampling.rseed,
@@ -108,7 +112,7 @@ def main(cfg):
         reference_traj_length=cfg.sampling.reference_traj_length,
         reference_traj_transient=cfg.sampling.reference_traj_transient,
         recompute_standardization=True,  # Important!
-        events=events,
+        events=event_fns,
         verbose=cfg.sampling.verbose,
         random_seed=cfg.sampling.rseed,
         silence_integration_errors=cfg.sampling.silence_integration_errors,
@@ -122,7 +126,7 @@ def main(cfg):
         num_param_perturbations=cfg.sampling.num_param_perturbations,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
-        events=events,
+        events=event_fns,
         verbose=cfg.sampling.verbose,
         split_coords=cfg.sampling.split_coords,
         attractor_validator_kwargs={
@@ -134,64 +138,50 @@ def main(cfg):
         save_failed_trajs=cfg.validator.save_failed_trajs,
     )
 
+    ###########################################################################
     # Run save_dyst_ensemble on a single system in debug mode
+    ###########################################################################
     if cfg.sampling.debug_system:
         plot_single_system(cfg.sampling.debug_system, sys_sampler, cfg)
+        exit()
+
+    split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
+
+    if cfg.sampling.save_params:
+        param_dir = os.path.join(cfg.sampling.data_dir, "parameters")
     else:
-        split_prefix = (
-            cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
-        )
+        param_dir = None
 
-        # for debugging
-        parameterless_systems = [
-            "PehlivanWei",
-            "SprottA",
-            "SprottB",
-            "SprottC",
-            "SprottD",
-            "SprottE",
-            "SprottJ",
-            "SprottMore",
-            "SprottN",
-            "SprottS",
-            "SprottTorus",
-        ]
+    _ = sys_sampler.sample_ensembles(
+        systems=train_systems,
+        split=f"{split_prefix}train",
+        split_failures=f"{split_prefix}failed_attractors_train",
+        samples_process_interval=1,
+        save_dir=cfg.sampling.data_dir,
+        save_params_dir=f"{param_dir}/train" if param_dir else None,
+        standardize=cfg.sampling.standardize,
+        use_multiprocessing=cfg.sampling.multiprocessing,
+        _silent_errors=cfg.sampling.silence_integration_errors,
+    )
+    sys_sampler.save_summary(
+        os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
+    )
 
-        if cfg.sampling.save_params:
-            param_dir = os.path.join(cfg.sampling.data_dir, "parameters")
-        else:
-            param_dir = None
-
-        _ = sys_sampler.sample_ensembles(
-            systems=train_systems,
-            split=f"{split_prefix}train",
-            split_failures=f"{split_prefix}failed_attractors_train",
-            samples_process_interval=1,
-            save_dir=cfg.sampling.data_dir,
-            save_params_dir=f"{param_dir}/train" if param_dir else None,
-            standardize=cfg.sampling.standardize,
-            use_multiprocessing=cfg.sampling.multiprocessing,
-            _silent_errors=cfg.sampling.silence_integration_errors,
-        )
-        sys_sampler.save_summary(
-            os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
-        )
-
-        _ = sys_sampler.sample_ensembles(
-            systems=test_systems,
-            split=f"{split_prefix}test",
-            split_failures=f"{split_prefix}failed_attractors_test",
-            samples_process_interval=1,
-            save_dir=cfg.sampling.data_dir,
-            save_params_dir=f"{param_dir}/test" if param_dir else None,
-            standardize=cfg.sampling.standardize,
-            reset_attractor_validator=True,  # save validator results separately for test
-            use_multiprocessing=cfg.sampling.multiprocessing,
-            _silent_errors=cfg.sampling.silence_integration_errors,
-        )
-        sys_sampler.save_summary(
-            os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
-        )
+    _ = sys_sampler.sample_ensembles(
+        systems=test_systems,
+        split=f"{split_prefix}test",
+        split_failures=f"{split_prefix}failed_attractors_test",
+        samples_process_interval=1,
+        save_dir=cfg.sampling.data_dir,
+        save_params_dir=f"{param_dir}/test" if param_dir else None,
+        standardize=cfg.sampling.standardize,
+        reset_attractor_validator=True,  # save validator results separately for test
+        use_multiprocessing=cfg.sampling.multiprocessing,
+        _silent_errors=cfg.sampling.silence_integration_errors,
+    )
+    sys_sampler.save_summary(
+        os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
+    )
 
 
 if __name__ == "__main__":

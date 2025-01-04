@@ -49,6 +49,8 @@ class SkewProduct(DynSys):
             parameters={},  # dummy: parameters are handled in the overwritten methods below
             dt=min(driver.dt, response.dt),
             period=max(driver.period, response.period),
+            unbounded_indices=driver.unbounded_indices
+            + [i + driver.dimension for i in response.unbounded_indices],
             metadata={
                 "name": f"{driver.name}_{response.name}",
                 "dimension": driver.dimension + response.dimension,
@@ -126,4 +128,12 @@ class SkewProduct(DynSys):
     #     #
     #     # one solution is to place all responsibility for managing unbounded indices on the coupling map
     #     # then if the coupling map has an attribute for unbounded indices, we'll use it here
-    #     raise NotImplementedError
+    #     if hasattr(self.driver, "_postprocessing") and hasattr(
+    #         self.response, "_postprocessing"
+    #     ):
+    #         driver, response = X[: self.driver_dim], X[self.driver_dim :]
+    #         driver_unbounded = self.driver._postprocess(driver)
+    #         response_unbounded = self.response._postprocess(response)
+    #         return np.concatenate([driver_unbounded, response_unbounded])
+
+    #     return np.asarray(X)

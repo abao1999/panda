@@ -6,6 +6,7 @@ from typing import Callable
 import numpy as np
 from dysts.base import BaseDyn
 from dysts.sampling import BaseSampler
+from dysts.systems import _resolve_event_signature
 from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
@@ -40,16 +41,22 @@ class TimeLimitEvent:
 class InstabilityEvent:
     """
     Event to detect instability during numerical integration
+
+    Ignores unbounded indices from the system
     """
 
+    system: BaseDyn
     threshold: float
     terminal: bool = True
     verbose: bool = False
 
     def __call__(self, t, y):
-        if np.any(np.abs(y) > self.threshold) or np.any(np.isnan(y)):
+        bounded_coords = np.abs(np.delete(y, self.system.unbounded_indices))
+        if np.any(bounded_coords > self.threshold) or np.any(np.isnan(y)):
             if self.verbose:
-                logger.warning(f"Instability detected @ t={t} | {np.abs(y)}\n")
+                logger.warning(
+                    f"Instability in {self.system.name} @ t={t} | {np.abs(y)}\n"
+                )
             return 0
         return 1
 
@@ -60,10 +67,10 @@ class TimeStepEvent:
     Event to check if the system time step is invalid
     """
 
-    terminal: bool = True
-    min_step: float = 1e-20
-    verbose: bool = False
     last_t: float = float("inf")
+    min_step: float = 1e-20
+    terminal: bool = True
+    verbose: bool = False
 
     def __call__(self, t, y):
         t_diff = abs(t - self.last_t)
@@ -159,6 +166,8 @@ class OnAttractorInitCondSampler(BaseSampler):
     reference_traj_length: int = 4096
     reference_traj_transient: float = 0.2
     reference_traj_n_periods: int = 10
+    reference_traj_atol: float = 1e-10
+    reference_traj_rtol: float = 1e-10
     trajectory_cache: dict[str, NDArray | None] = field(default_factory=dict)
     silence_integration_errors: bool = False
     recompute_standardization: bool = False
@@ -181,14 +190,21 @@ class OnAttractorInitCondSampler(BaseSampler):
 
         # make reference trajectory if not already cached
         if system.name not in self.trajectory_cache:
-            for event in self.events or []:
+            # resolve event signatures and reset events attributes if applicable
+            events = [
+                _resolve_event_signature(system, event) for event in self.events or []
+            ]
+            for event in events:
                 if hasattr(event, "reset") and callable(event.reset):
                     event.reset()
+
             try:
                 reference_traj = system.make_trajectory(
                     self.reference_traj_length,
-                    events=self.events,
+                    events=events,
                     standardize=False,
+                    atol=self.reference_traj_atol,
+                    rtol=self.reference_traj_rtol,
                 )
             except Exception as e:
                 if self.verbose > 0:

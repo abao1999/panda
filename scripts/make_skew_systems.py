@@ -12,7 +12,7 @@ from typing import Callable
 import dysts.flows as flows
 import hydra
 import numpy as np
-from dysts.systems import DynSys, get_attractor_list
+from dysts.systems import DynSys, _resolve_event_signature, get_attractor_list
 
 from dystformer.attractor import (
     check_boundedness,
@@ -64,6 +64,10 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     default_traj = system.make_trajectory(
         cfg.sampling.num_points,
         pts_per_period=cfg.sampling.num_points // cfg.sampling.num_periods,
+        events=[
+            _resolve_event_signature(system, event_fn)
+            for event_fn in sys_sampler.events or []
+        ],
     )
     ensembles = sys_sampler._generate_ensembles(
         systems=[system],
@@ -85,12 +89,12 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     )
 
 
-def init_skew_system(
+def init_additive_skew_system(
     driver_name: str,
     response_name: str,
     driver_scale: float,
     response_scale: float,
-    seed: int = 0,
+    seed: int | None = None,
 ) -> DynSys:
     """Initialize a skew-product dynamical system with a driver and response system"""
     driver = getattr(flows, driver_name)()
@@ -113,11 +117,21 @@ def init_skew_system(
 
 
 def sample_skew_systems(
-    num_pairs: int,
-    systems: list[str],
-    scale_cache: dict[str, float] | None = None,
+    systems: list[str], num_pairs: int, random_seed: int = 0
+) -> list[tuple[str, str]]:
+    system_pairs = list(permutations(systems, 2))
+    rng = np.random.default_rng(random_seed)
+    sampled_pairs = rng.choice(
+        len(system_pairs), size=min(num_pairs, len(system_pairs)), replace=False
+    )
+    return [system_pairs[i] for i in sampled_pairs]
+
+
+def filter_and_split_skew_systems(
+    skew_pairs: list[tuple[str, str]],
     test_split: float = 0.2,
-    random_seed: int = 0,
+    random_seed: int | None = None,
+    scale_cache: dict[str, float] | None = None,
     train_systems: list[str] | None = None,
     test_systems: list[str] | None = None,
 ) -> tuple[list[DynSys], list[DynSys]]:
@@ -126,33 +140,23 @@ def sample_skew_systems(
     TODO: filter skew systems based on non-skew train and test sets, optionally
 
     Args:
-        num_pairs: Number of skew system pairs to generate
-        systems: List of system names to sample from
+        skew_pairs: List of skew system pairs to sample from
+        test_split: Fraction of systems to use for testing
         scale_cache: Optional dictionary mapping system names to their RMS flow scales.
             If None, scales are set to 1.0
-        test_split: Fraction of systems to use for testing
-        random_seed: Random seed for reproducibility
+        train_systems: List of system names to use for training
+        test_systems: List of system names to use for testing
 
     Returns:
         Tuple of (train_systems, test_systems) where each is a list of initialized
         skew product systems
     """
-    system_pairs = list(permutations(systems, 2))
-
-    rng = np.random.default_rng(random_seed)
-    sampled_pairs = rng.choice(
-        system_pairs, size=min(num_pairs, len(system_pairs)), replace=False
-    )
-    logger.info(f"Sampled {len(sampled_pairs)}/{len(system_pairs)} total system pairs")
-
-    split_idx = int(len(sampled_pairs) * (1 - test_split))
-    train_pairs = sampled_pairs[:split_idx]
-    test_pairs = sampled_pairs[split_idx:]
+    split_idx = int(len(skew_pairs) * (1 - test_split))
+    train_pairs = skew_pairs[:split_idx]
+    test_pairs = skew_pairs[split_idx:]
 
     # if provided, filter out pairs from train and test pairs that contain systems
     # that are not in the train or test sets, then recombine to update valid train/test pairs
-    logger.info(f"Filtering {len(train_pairs)} train and {len(test_pairs)} test pairs")
-
     def is_valid_pair(pair: tuple[str, str], filter_list: list[str] | None) -> bool:
         return (
             True
@@ -175,13 +179,8 @@ def sample_skew_systems(
     train_pairs = list(valid_train_pairs) + list(invalid_test_pairs)
     test_pairs = list(valid_test_pairs) + list(invalid_train_pairs)
 
-    logger.info(
-        f"""Splitting {len(sampled_pairs)}/{len(system_pairs)} skew pairs into """
-        f"""{len(train_pairs)} train and {len(test_pairs)} test pairs after filtering"""
-    )
-
     train_systems = [
-        init_skew_system(
+        init_additive_skew_system(
             driver,
             response,
             1.0 if scale_cache is None else scale_cache[driver],
@@ -191,7 +190,7 @@ def sample_skew_systems(
         for driver, response in train_pairs
     ]
     test_systems = [
-        init_skew_system(
+        init_additive_skew_system(
             driver,
             response,
             1.0 if scale_cache is None else scale_cache[driver],
@@ -205,7 +204,7 @@ def sample_skew_systems(
 
 
 def _compute_system_scale(
-    system: str, n: int, num_periods: int, transient: int
+    system: str, n: int, num_periods: int, transient: int, stiffness: float = 1.0
 ) -> tuple[str, float]:
     """Compute RMS scale in flow spacefor a single system"""
     sys = getattr(flows, system)()
@@ -217,8 +216,7 @@ def _compute_system_scale(
             [np.max(sys(x, t)) ** 2 for x, t in zip(traj[transient:], ts[transient:])]
         )
     )
-    stiffness_factor = 0.1
-    return system, stiffness_factor * flow_rms
+    return system, stiffness * flow_rms
 
 
 def init_trajectory_scale_cache(
@@ -241,11 +239,20 @@ def main(cfg):
     systems = get_attractor_list(sys_class=cfg.sampling.sys_class)
 
     # events for solve_ivp
-    time_limit_event = TimeLimitEvent(max_duration=cfg.events.max_duration)
-    instability_event = InstabilityEvent(threshold=cfg.events.instability_threshold)
-    time_step_event = TimeStepEvent(min_step=cfg.events.min_step)
-    events = [time_limit_event, instability_event, time_step_event]
+    time_limit_event = TimeLimitEvent(
+        max_duration=cfg.events.max_duration, verbose=cfg.events.verbose
+    )
+    instability_event = partial(
+        InstabilityEvent,
+        threshold=cfg.events.instability_threshold,
+        verbose=cfg.events.verbose,
+    )
+    time_step_event = TimeStepEvent(
+        min_step=cfg.events.min_step, verbose=cfg.events.verbose
+    )
+    event_fns = [time_limit_event, instability_event, time_step_event]
 
+    # initialize samplers for perturbing systems
     param_sampler = SignedGaussianParamSampler(
         random_seed=cfg.sampling.rseed,
         scale=cfg.sampling.param_scale,
@@ -255,13 +262,10 @@ def main(cfg):
         reference_traj_length=cfg.sampling.reference_traj_length,
         reference_traj_transient=cfg.sampling.reference_traj_transient,
         recompute_standardization=cfg.sampling.standardize,  # Important (if standardize=True)
-        events=events,
+        events=event_fns,
         silence_integration_errors=cfg.sampling.silence_integration_errors,
         verbose=1,
     )
-
-    split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
-
     sys_sampler = DynSysSampler(
         rseed=cfg.sampling.rseed,
         num_periods=cfg.sampling.num_periods,
@@ -270,7 +274,7 @@ def main(cfg):
         num_param_perturbations=cfg.sampling.num_param_perturbations,
         param_sampler=param_sampler,
         ic_sampler=ic_sampler,
-        events=events,
+        events=event_fns,
         verbose=cfg.sampling.verbose,
         split_coords=cfg.sampling.split_coords,
         attractor_tests=default_attractor_tests(),
@@ -282,6 +286,9 @@ def main(cfg):
         save_failed_trajs=cfg.validator.save_failed_trajs,
     )
 
+    ###########################################################################
+    # optionally plot a single skew system for debugging, and exit after
+    ###########################################################################
     if cfg.sampling.debug_system:
         driver, response = cfg.sampling.debug_system.split("_")
         logger.info(f"Initializing trajectory scale cache for {driver} and {response}")
@@ -291,56 +298,81 @@ def main(cfg):
             cfg.sampling.num_periods,
             cfg.sampling.reference_traj_transient,
         )
-        system = init_skew_system(
+        system = init_additive_skew_system(
             driver, response, scale_cache[driver], scale_cache[response]
         )
         plot_single_system(system, sys_sampler, cfg)
+        exit()
+
+    # sample skew system train/test splits
+    skew_pairs = sample_skew_systems(
+        systems, cfg.skew.num_pairs, random_seed=cfg.sampling.rseed
+    )
+    logger.info(
+        f"Sampled {cfg.skew.num_pairs}/{len(systems)*(len(systems)-1)} system pair candidates"
+    )
+
+    base_systems = set(sys for pair in skew_pairs for sys in pair)
+    logger.info(f"Initializing trajectory scale cache for {len(base_systems)} systems")
+    scale_cache = init_trajectory_scale_cache(
+        list(base_systems),
+        cfg.sampling.num_points,
+        cfg.sampling.num_periods,
+        cfg.sampling.reference_traj_transient,
+    )
+
+    logger.info(
+        f"Attempting to split {len(skew_pairs)} skew pairs into a "
+        f"{1-cfg.sampling.test_split:.2f}/{cfg.sampling.test_split:.2f} train/test split"
+    )
+    train_systems, test_systems = filter_and_split_skew_systems(
+        skew_pairs,
+        scale_cache=scale_cache,
+        test_split=cfg.sampling.test_split,
+        random_seed=cfg.sampling.rseed,
+    )
+    train_prop = len(train_systems) / len(skew_pairs)
+    test_prop = len(test_systems) / len(skew_pairs)
+    logger.info(
+        f"Achieved {len(train_systems)}/{len(test_systems)} = {train_prop:.2f}/{test_prop:.2f}"
+        " train/test split after filtering"
+    )
+
+    split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
+
+    if cfg.sampling.save_params:
+        param_dir = os.path.join(cfg.sampling.data_dir, "parameters")
     else:
-        logger.info(f"Initializing trajectory scale cache for {len(systems)} systems")
-        scale_cache = init_trajectory_scale_cache(
-            systems,
-            cfg.sampling.num_points,
-            cfg.sampling.num_periods,
-            cfg.sampling.reference_traj_transient,
-        )
-        train_systems, test_systems = sample_skew_systems(
-            cfg.skew.num_pairs,
-            systems,
-            scale_cache=scale_cache,
-            test_split=cfg.sampling.test_split,
-            random_seed=cfg.sampling.rseed,
-        )
+        param_dir = None
 
-        split_prefix = (
-            cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
-        )
+    sys_sampler.sample_ensembles(
+        systems=train_systems,
+        split=f"{split_prefix}train",
+        split_failures=f"{split_prefix}failed_attractors_train",
+        samples_process_interval=1,
+        save_dir=cfg.sampling.data_dir,
+        save_params_dir=f"{param_dir}/train" if param_dir else None,
+        standardize=cfg.sampling.standardize,
+        use_multiprocessing=cfg.sampling.multiprocessing,
+    )
+    sys_sampler.save_summary(
+        os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
+    )
 
-        sys_sampler.sample_ensembles(
-            systems=train_systems,
-            split=f"{split_prefix}train",
-            split_failures=f"{split_prefix}failed_attractors_train",
-            samples_process_interval=1,
-            save_dir=cfg.sampling.data_dir,
-            standardize=cfg.sampling.standardize,
-            use_multiprocessing=cfg.sampling.multiprocessing,
-        )
-        sys_sampler.save_summary(
-            os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
-        )
-
-        sys_sampler.sample_ensembles(
-            systems=test_systems,
-            split=f"{split_prefix}test",
-            split_failures=f"{split_prefix}failed_attractors_test",
-            samples_process_interval=1,
-            save_dir=cfg.sampling.data_dir,
-            standardize=cfg.sampling.standardize,
-            reset_attractor_validator=True,  # save validator results separately for test
-            use_multiprocessing=cfg.sampling.multiprocessing,
-        )
-        sys_sampler.save_summary(
-            os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
-        )
+    sys_sampler.sample_ensembles(
+        systems=test_systems,
+        split=f"{split_prefix}test",
+        split_failures=f"{split_prefix}failed_attractors_test",
+        samples_process_interval=1,
+        save_dir=cfg.sampling.data_dir,
+        save_params_dir=f"{param_dir}/test" if param_dir else None,
+        standardize=cfg.sampling.standardize,
+        reset_attractor_validator=True,  # save validator results separately for test
+        use_multiprocessing=cfg.sampling.multiprocessing,
+    )
+    sys_sampler.save_summary(
+        os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
+    )
 
 
 if __name__ == "__main__":
