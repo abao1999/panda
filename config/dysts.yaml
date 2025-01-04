@@ -18,7 +18,7 @@ sampling:
   multiprocessing: true
   debug_system: null
   silence_integration_errors: false
-  save_params: false
+  save_params: true
   ignore_probability: 0.1
   sign_match_probability: 0.5
 

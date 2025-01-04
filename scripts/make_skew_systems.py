@@ -217,7 +217,8 @@ def _compute_system_scale(
             [np.max(sys(x, t)) ** 2 for x, t in zip(traj[transient:], ts[transient:])]
         )
     )
-    return system, 1 / flow_rms
+    stiffness_factor = 0.1
+    return system, stiffness_factor * flow_rms
 
 
 def init_trajectory_scale_cache(

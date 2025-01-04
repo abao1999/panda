@@ -46,7 +46,7 @@ class DynSysSampler:
     num_param_perturbations: int = 1
 
     split_coords: bool = True  # by default save trajectories compatible with Chronos
-    events: list | None = None
+    events: list[Callable[[float, np.ndarray], float]] | None = None
     attractor_validator_kwargs: dict[str, Any] = field(default_factory=dict)
     attractor_tests: list[Callable] | None = None
 
@@ -118,8 +118,8 @@ class DynSysSampler:
             sys_names
         ), "Cannot have duplicate system names"
         logger.info(
-            f"""Making {split} split with {len(systems)} dynamical systems
-            (showing first 10): \n {sys_names[:10]}"""
+            f"Making {split} split with {len(systems)} dynamical systems"
+            f" (showing first 10): \n {sys_names[:10]}"
         )
 
         if self.attractor_validator is not None and reset_attractor_validator:

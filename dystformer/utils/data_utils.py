@@ -13,13 +13,6 @@ from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
 
 
-def filter_skew_pairs(pairs: list[str], system_dir: str | os.PathLike) -> list[str]:
-    """
-    Filter skew pairs based on the system directory
-    """
-    pass
-
-
 def demote_from_numpy(param: float | np.ndarray) -> float | list[float]:
     """
     Demote a float or numpy array to a float or list of floats
