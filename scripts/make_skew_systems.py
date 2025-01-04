@@ -354,6 +354,7 @@ def main(cfg):
         save_params_dir=f"{param_dir}/train" if param_dir else None,
         standardize=cfg.sampling.standardize,
         use_multiprocessing=cfg.sampling.multiprocessing,
+        _silent_errors=cfg.sampling.silence_integration_errors,
     )
     sys_sampler.save_summary(
         os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
@@ -369,6 +370,7 @@ def main(cfg):
         standardize=cfg.sampling.standardize,
         reset_attractor_validator=True,  # save validator results separately for test
         use_multiprocessing=cfg.sampling.multiprocessing,
+        _silent_errors=cfg.sampling.silence_integration_errors,
     )
     sys_sampler.save_summary(
         os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
