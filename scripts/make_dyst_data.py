@@ -7,6 +7,7 @@ import os
 from functools import partial
 from typing import Callable
 
+import dysts.flows as flows
 import hydra
 import numpy as np
 
@@ -18,14 +19,13 @@ from dystformer.attractor import (
     check_not_linear,
     check_power_spectrum,
 )
+from dystformer.dyst_data import DynSysSampler
 from dystformer.sampling import (
-    DynSysSampler,
     InstabilityEvent,
     OnAttractorInitCondSampler,
     SignedGaussianParamSampler,
     TimeLimitEvent,
     TimeStepEvent,
-    flows,
 )
 from dystformer.utils import plot_trajs_multivariate, split_systems
 

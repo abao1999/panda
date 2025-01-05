@@ -62,13 +62,17 @@ def default_attractor_tests() -> list[Callable]:
 def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     """Plot a single skew system and its ensembles for debugging"""
     logger.info(f"Generating default trajectory for {system.name}")
+    events = [
+        _resolve_event_signature(system, event_fn)
+        for event_fn in sys_sampler.events or []
+    ]
+    logger.info(f"Events: {events}")
     default_traj = system.make_trajectory(
         cfg.sampling.num_points,
         pts_per_period=cfg.sampling.num_points // cfg.sampling.num_periods,
-        events=[
-            _resolve_event_signature(system, event_fn)
-            for event_fn in sys_sampler.events or []
-        ],
+        events=events,
+        atol=cfg.sampling.atol,
+        rtol=cfg.sampling.rtol,
     )
     print(f"Default traj shape: {default_traj.shape}")
     logger.info(f"Generating ensembles for {system.name}")
@@ -76,7 +80,9 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         systems=[system],
         use_multiprocessing=cfg.sampling.multiprocessing,
         _silent_errors=cfg.sampling.silence_integration_errors,
-        atol=1e-6,
+        events=events,
+        atol=cfg.sampling.atol,
+        rtol=cfg.sampling.rtol,
     )
     logger.info(f"Ensembles: {ensembles}")
     samples = np.array(
@@ -146,10 +152,11 @@ def filter_and_split_skew_systems(
     Args:
         skew_pairs: List of skew system pairs to sample from
         test_split: Fraction of systems to use for testing
+        random_seed: Random seed for reproducibility
         scale_cache: Optional dictionary mapping system names to their RMS flow scales.
             If None, scales are set to 1.0
-        test_split: Fraction of systems to use for testing
-        random_seed: Random seed for reproducibility
+        train_systems: Optional list of system names to use for training
+        test_systems: Optional list of system names to use for testing
 
     Returns:
         Tuple of (train_systems, test_systems) where each is a list of initialized
@@ -208,12 +215,18 @@ def filter_and_split_skew_systems(
 
 
 def _compute_system_scale(
-    system: str, n: int, num_periods: int, transient: int, stiffness: float = 1.0
+    system: str,
+    n: int,
+    num_periods: int,
+    transient: int,
+    atol: float,
+    rtol: float,
+    stiffness: float = 1.0,
 ) -> tuple[str, float]:
     """Compute RMS scale in flow spacefor a single system"""
     sys = getattr(flows, system)()
     ts, traj = sys.make_trajectory(
-        n, pts_per_period=n // num_periods, return_times=True
+        n, pts_per_period=n // num_periods, return_times=True, atol=atol, rtol=rtol
     )
     flow_rms = np.sqrt(
         np.mean(
@@ -224,7 +237,12 @@ def _compute_system_scale(
 
 
 def init_trajectory_scale_cache(
-    systems: list[str], traj_length: int, num_periods: int, traj_transient: float
+    systems: list[str],
+    traj_length: int,
+    num_periods: int,
+    traj_transient: float,
+    atol: float,
+    rtol: float,
 ) -> dict[str, float]:
     """Initialize a cache of vector field RMS scales for each system using multiprocessing"""
     _compute_scale_worker = partial(
@@ -232,6 +250,8 @@ def init_trajectory_scale_cache(
         n=traj_length,
         num_periods=num_periods,
         transient=int(traj_length * traj_transient),
+        atol=atol,
+        rtol=rtol,
     )
     with Pool() as pool:
         results = pool.map(_compute_scale_worker, systems)
@@ -265,6 +285,8 @@ def main(cfg):
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=cfg.sampling.reference_traj_length,
         reference_traj_transient=cfg.sampling.reference_traj_transient,
+        reference_traj_atol=cfg.sampling.atol,
+        reference_traj_rtol=cfg.sampling.rtol,
         recompute_standardization=cfg.sampling.standardize,  # Important (if standardize=True)
         events=event_fns,
         silence_integration_errors=cfg.sampling.silence_integration_errors,
@@ -301,10 +323,12 @@ def main(cfg):
             cfg.sampling.num_points,
             cfg.sampling.num_periods,
             cfg.sampling.reference_traj_transient,
-        )
+            atol=cfg.sampling.atol,
+            rtol=cfg.sampling.rtol,
+        )  # type: ignore
         logger.info(f"Scale cache: {scale_cache}")
         logger.info("Initializing skew system")
-        system = init_skew_system(
+        system = init_additive_skew_system(
             driver, response, scale_cache[driver], scale_cache[response]
         )
         logger.info(f"Skew system: {system}")
@@ -326,6 +350,8 @@ def main(cfg):
         cfg.sampling.num_points,
         cfg.sampling.num_periods,
         cfg.sampling.reference_traj_transient,
+        atol=cfg.sampling.atol,
+        rtol=cfg.sampling.rtol,
     )
 
     logger.info(
@@ -345,43 +371,30 @@ def main(cfg):
         " train/test split after filtering"
     )
 
+    param_dir = (
+        os.path.join(cfg.sampling.data_dir, "parameters")
+        if cfg.sampling.save_params
+        else None
+    )
+
     split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
-
-    if cfg.sampling.save_params:
-        param_dir = os.path.join(cfg.sampling.data_dir, "parameters")
-    else:
-        param_dir = None
-
-    sys_sampler.sample_ensembles(
-        systems=train_systems,
-        split=f"{split_prefix}train",
-        split_failures=f"{split_prefix}failed_attractors_train",
-        samples_process_interval=1,
-        save_dir=cfg.sampling.data_dir,
-        save_params_dir=f"{param_dir}/train" if param_dir else None,
-        standardize=cfg.sampling.standardize,
-        use_multiprocessing=cfg.sampling.multiprocessing,
-        _silent_errors=cfg.sampling.silence_integration_errors,
-    )
-    sys_sampler.save_summary(
-        os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
-    )
-
-    sys_sampler.sample_ensembles(
-        systems=test_systems,
-        split=f"{split_prefix}test",
-        split_failures=f"{split_prefix}failed_attractors_test",
-        samples_process_interval=1,
-        save_dir=cfg.sampling.data_dir,
-        save_params_dir=f"{param_dir}/test" if param_dir else None,
-        standardize=cfg.sampling.standardize,
-        reset_attractor_validator=True,  # save validator results separately for test
-        use_multiprocessing=cfg.sampling.multiprocessing,
-        _silent_errors=cfg.sampling.silence_integration_errors,
-    )
-    sys_sampler.save_summary(
-        os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
-    )
+    for split, split_systems in [("train", train_systems), ("test", test_systems)]:
+        sys_sampler.sample_ensembles(
+            systems=split_systems,
+            split=f"{split_prefix}{split}",
+            split_failures=f"{split_prefix}failed_attractors_{split}",
+            samples_process_interval=1,
+            save_dir=cfg.sampling.data_dir,
+            save_params_dir=f"{param_dir}/{split}" if param_dir else None,
+            standardize=cfg.sampling.standardize,
+            use_multiprocessing=cfg.sampling.multiprocessing,
+            _silent_errors=cfg.sampling.silence_integration_errors,
+            atol=cfg.sampling.atol,
+            rtol=cfg.sampling.rtol,
+        )
+        sys_sampler.save_summary(
+            os.path.join("outputs", f"{split_prefix}{split}_attractor_checks.json"),
+        )
 
 
 if __name__ == "__main__":
