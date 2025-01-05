@@ -21,15 +21,16 @@ checkpoint_dir=$WORK/checkpoints
 #     eval.metrics_names=null \
 #     use_quadratic_embedding=false \
 #     fixed_dim=3 \
+#     eval.seed=42 \
 #     "$@"
 
 
 # forecast eval
 python scripts/patchtst/evaluate.py \
     eval.mode=predict \
-    eval.checkpoint_path=$WORK/checkpoints/run-324/checkpoint-final \
-    eval.data_path=$WORK/data/flow_run2_skew_systems \
-    eval.num_systems=20 \
+    eval.checkpoint_path=$WORK/checkpoints/run-343/checkpoint-final \
+    eval.data_path=$WORK/data/test_zero_shot \
+    eval.num_systems=10 \
     eval.num_test_instances=1 \
     eval.window_style=sampled \
     eval.batch_size=64 \
@@ -42,6 +43,7 @@ python scripts/patchtst/evaluate.py \
     eval.metrics_names=null \
     use_quadratic_embedding=false \
     fixed_dim=3 \
+    eval.seed=99 \
     "$@"
 
 

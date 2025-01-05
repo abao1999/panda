@@ -38,7 +38,6 @@ def evaluate_mlm_model(
     return_completions: bool = False,
     return_processed_past_values: bool = False,
     return_masks: bool = False,
-    num_systems: Optional[int] = None,
 ) -> Tuple[
     Optional[Dict[str, np.ndarray]],
     Optional[Dict[str, np.ndarray]],
@@ -56,10 +55,7 @@ def evaluate_mlm_model(
     system_timestep_masks = {}
     system_metrics = {system: defaultdict(float) for system in systems}
 
-    for idx, system in tqdm(enumerate(systems), desc="Evaluating MLM pretrain model"):
-        if num_systems is not None and idx >= num_systems:
-            break
-
+    for system in tqdm(systems, desc="Evaluating MLM pretrain model"):
         dataset = systems[system]  # IterableDataset
         log_on_main(f"Evaluating {system}", logger)
         all_completions = []
@@ -358,17 +354,29 @@ def main(cfg):
     # get test data paths
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
-    for system_dir in Path(test_data_dir).iterdir():
-        if system_dir.is_dir():
-            system_name = system_dir.name
-            system_files = list(system_dir.glob("*"))
-            test_data_dict[system_name] = [
-                FileDataset(path=Path(file_path), freq="h", one_dim_target=False)
-                for file_path in system_files
-                if file_path.is_file()
-            ]
-            if len(list(test_data_dict.keys())) == cfg.eval.num_systems:
-                break
+
+    # Get all system directories and randomly sample num_systems of them
+    system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
+    # if cfg.eval.num_systems and cfg.eval.num_systems < len(system_dirs):
+    #     rng = np.random.default_rng(cfg.eval.seed)
+    #     system_dirs = rng.choice(
+    #         np.array(system_dirs, dtype=object),
+    #         size=cfg.eval.num_systems,
+    #         replace=False,
+    #     ).tolist()
+    # print(system_dirs)
+    # print(len(system_dirs))
+
+    for i, system_dir in enumerate(system_dirs):
+        if i >= cfg.eval.num_systems:
+            break
+        system_name = system_dir.name
+        system_files = list(system_dir.glob("*"))
+        test_data_dict[system_name] = [
+            FileDataset(path=Path(file_path), freq="h", one_dim_target=False)
+            for file_path in system_files
+            if file_path.is_file()
+        ]
 
     log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
 

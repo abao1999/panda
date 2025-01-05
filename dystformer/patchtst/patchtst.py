@@ -606,11 +606,12 @@ class PatchTSTNoiser(nn.Module):
         Returns:
             `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
         """
-        return torch.clamp(
-            timeseries + torch.randn_like(timeseries) * noise_scale,
-            min=self.low,
-            max=self.high,
-        )
+        # return torch.clamp(
+        #     timeseries + torch.randn_like(timeseries) * noise_scale,
+        #     min=self.low,
+        #     max=self.high,
+        # )
+        return timeseries + torch.randn_like(timeseries) * noise_scale
 
 
 class PatchTSTQuantizer(nn.Module):

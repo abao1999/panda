@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import warnings
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from dystformer.utils import (
@@ -111,7 +112,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    dyst_names_lst = args.dysts_names
+    if args.dysts_names == ["all"]:
+        dyst_names_lst = [
+            d.name
+            for d in Path(os.path.join(DATA_DIR, args.split_forecasts)).iterdir()
+            if d.is_dir()
+        ]
+    else:
+        dyst_names_lst = args.dysts_names
     print(f"dyst names: {dyst_names_lst}")
 
     samples_subset_dict = None  # default to plotting all samples sequentially

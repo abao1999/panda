@@ -61,16 +61,21 @@ def default_attractor_tests() -> list[Callable]:
 
 def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     """Plot a single skew system and its ensembles for debugging"""
+    logger.info(f"Generating default trajectory for {system.name}")
     default_traj = system.make_trajectory(
         cfg.sampling.num_points,
         pts_per_period=cfg.sampling.num_points // cfg.sampling.num_periods,
+        atol=1e-6,
     )
+    print(f"Default traj shape: {default_traj.shape}")
+    logger.info(f"Generating ensembles for {system.name}")
     ensembles = sys_sampler._generate_ensembles(
         systems=[system],
         use_multiprocessing=cfg.sampling.multiprocessing,
         _silent_errors=cfg.sampling.silence_integration_errors,
+        atol=1e-6,
     )
-
+    logger.info(f"Ensembles: {ensembles}")
     samples = np.array(
         [default_traj]
         + [ensemble[system.name] for ensemble in ensembles if len(ensemble) > 0]
@@ -120,7 +125,7 @@ def sample_skew_systems(
     random_seed: int = 0,
     train_systems: list[str] | None = None,
     test_systems: list[str] | None = None,
-) -> tuple[list[DynSys], list[DynSys]]:
+) -> tuple[list[str], list[str]]:
     """Sample skew systems from all pairs of non-skew systems and split into train/test
 
     TODO: filter skew systems based on non-skew train and test sets, optionally
@@ -132,6 +137,9 @@ def sample_skew_systems(
             If None, scales are set to 1.0
         test_split: Fraction of systems to use for testing
         random_seed: Random seed for reproducibility
+
+        train_systems: Optional list of system names to use for training
+        test_systems: Optional list of system names to use for testing
 
     Returns:
         Tuple of (train_systems, test_systems) where each is a list of initialized
@@ -189,7 +197,7 @@ def sample_skew_systems(
             seed=random_seed,
         )
         for driver, response in train_pairs
-    ]
+    ]  # type: ignore
     test_systems = [
         init_skew_system(
             driver,
@@ -199,9 +207,9 @@ def sample_skew_systems(
             seed=random_seed,
         )
         for driver, response in test_pairs
-    ]
+    ]  # type: ignore
 
-    return train_systems, test_systems
+    return train_systems, test_systems  # type: ignore
 
 
 def _compute_system_scale(
@@ -291,9 +299,12 @@ def main(cfg):
             cfg.sampling.num_periods,
             cfg.sampling.reference_traj_transient,
         )
+        logger.info(f"Scale cache: {scale_cache}")
+        logger.info("Initializing skew system")
         system = init_skew_system(
             driver, response, scale_cache[driver], scale_cache[response]
         )
+        logger.info(f"Skew system: {system}")
         plot_single_system(system, sys_sampler, cfg)
     else:
         logger.info(f"Initializing trajectory scale cache for {len(systems)} systems")
