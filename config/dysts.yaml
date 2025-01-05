@@ -33,6 +33,7 @@ events:
   max_duration: 300
   instability_threshold: 1e8
   min_step: 1e-16
+  verbose: true
 
 skew:
   num_pairs: 5000

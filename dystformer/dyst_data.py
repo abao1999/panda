@@ -2,7 +2,9 @@ import json
 import logging
 import os
 from collections import defaultdict
+from contextlib import nullcontext
 from dataclasses import dataclass, field
+from itertools import starmap
 from multiprocessing import Pool
 from typing import Any, Callable
 
@@ -149,7 +151,7 @@ class DynSysSampler:
             self.num_points,
             subset=systems,
             pts_per_period=self.num_points // self.num_periods,
-            events=self.events,
+            event_fns=self.events,
             use_multiprocessing=use_multiprocessing,
             **kwargs,
         )
@@ -211,6 +213,7 @@ class DynSysSampler:
         systems: list[str | BaseDyn],
         ic_rng: np.random.Generator | None = None,
         param_rng: np.random.Generator | None = None,
+        use_multiprocessing: bool = True,
     ) -> list[BaseDyn]:
         """
         Pre-initialize the perturbed dyst objects for generation
@@ -222,28 +225,23 @@ class DynSysSampler:
         if param_rng is not None:
             param_rng_stream = param_rng.spawn(len(systems))
 
-        with Pool() as pool:
-            transformed_systems = pool.starmap(
-                self._transform_params_and_ics,
-                [
-                    (
-                        system,
-                        self.ic_sampler,
-                        self.param_sampler,
-                        ic_rng,
-                        param_rng,
-                    )
-                    for system, ic_rng, param_rng in zip(
-                        systems, ic_rng_stream, param_rng_stream
-                    )
-                ],
+        args = [
+            (system, self.ic_sampler, self.param_sampler, ic_rng, param_rng)
+            for system, ic_rng, param_rng in zip(
+                systems, ic_rng_stream, param_rng_stream
             )
+        ]
+
+        with Pool() if use_multiprocessing else nullcontext() as pool:
+            map_fn = pool.starmap if use_multiprocessing else starmap  # type: ignore
+            transformed_systems = list(map_fn(self._transform_params_and_ics, args))
 
         return transformed_systems
 
     def _generate_ensembles(
         self,
         systems: list[str | BaseDyn],
+        use_multiprocessing: bool = True,
         postprocessing_callbacks: list[Callable] | None = None,
         **kwargs,
     ) -> list[dict[str, np.ndarray]]:
@@ -273,7 +271,9 @@ class DynSysSampler:
                 pbar.set_postfix({"param_idx": i, "ic_idx": j})
 
                 # perturb and initialize the system ensemble
-                unfiltered_systems = self._init_perturbations(systems, ic_rng=ic_rng)
+                unfiltered_systems = self._init_perturbations(
+                    systems, ic_rng=ic_rng, use_multiprocessing=use_multiprocessing
+                )
                 excluded_systems = [
                     systems[i] if isinstance(systems[i], str) else systems[i].name  # type: ignore
                     for i in range(len(systems))
@@ -293,7 +293,7 @@ class DynSysSampler:
                     subset=perturbed_systems,
                     use_tqdm=True,
                     pts_per_period=self.num_points // self.num_periods,
-                    events=self.events,
+                    event_fns=self.events,
                     **kwargs,
                 )
 
