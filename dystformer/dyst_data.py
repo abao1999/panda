@@ -6,7 +6,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from itertools import starmap
 from multiprocessing import Pool
-from typing import Any, Callable
+from typing import Any, Callable, Tuple
 
 import dysts.flows as flows
 import numpy as np
@@ -81,7 +81,7 @@ class DynSysSampler:
         save_dir: str | None,
         split: str,
         split_failures: str = "failed_attractors",
-    ) -> tuple[str | None, str | None]:
+    ) -> Tuple[str | None, str | None]:
         if save_dir is not None:
             save_dyst_dir = os.path.join(save_dir, split)
             os.makedirs(save_dyst_dir, exist_ok=True)
@@ -110,7 +110,7 @@ class DynSysSampler:
         use_multiprocessing: bool = True,
         reset_attractor_validator: bool = False,
         **kwargs,
-    ) -> list[dict[str, np.ndarray]]:
+    ) -> Tuple[list[dict[str, np.ndarray]], dict[str, np.ndarray]]:
         """
         Sample perturbed ensembles for a given set of dynamical systems. Optionally,
         save the ensembles to disk and save the parameters to a json file.
@@ -171,7 +171,7 @@ class DynSysSampler:
             use_multiprocessing=use_multiprocessing,
             **kwargs,
         )
-        return ensembles
+        return ensembles, default_ensemble
 
     def _transform_params_and_ics(
         self,

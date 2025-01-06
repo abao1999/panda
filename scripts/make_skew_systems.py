@@ -2,6 +2,7 @@
 Search for valid skew-product dynamical sytems and generate trajectory datasets
 """
 
+import json
 import logging
 import os
 from functools import partial
@@ -61,42 +62,48 @@ def default_attractor_tests() -> list[Callable]:
 
 def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     """Plot a single skew system and its ensembles for debugging"""
-    logger.info(f"Generating default trajectory for {system.name}")
     events = [
         _resolve_event_signature(system, event_fn)
         for event_fn in sys_sampler.events or []
     ]
     logger.info(f"Events: {events}")
-    default_traj = system.make_trajectory(
-        cfg.sampling.num_points,
-        pts_per_period=cfg.sampling.num_points // cfg.sampling.num_periods,
-        events=events,
-        atol=cfg.sampling.atol,
-        rtol=cfg.sampling.rtol,
-    )
-    print(f"Default traj shape: {default_traj.shape}")
+
     logger.info(f"Generating ensembles for {system.name}")
-    ensembles = sys_sampler._generate_ensembles(
+    ensembles, default_ensemble = sys_sampler.sample_ensembles(
         systems=[system],
+        save_dir=None,  # NOTE: do not save trajectories in debug mode!
+        standardize=cfg.sampling.standardize,
         use_multiprocessing=cfg.sampling.multiprocessing,
         _silent_errors=cfg.sampling.silence_integration_errors,
         events=events,
         atol=cfg.sampling.atol,
         rtol=cfg.sampling.rtol,
     )
-    logger.info(f"Ensembles: {ensembles}")
-    samples = np.array(
-        [default_traj]
-        + [ensemble[system.name] for ensemble in ensembles if len(ensemble) > 0]
-    ).transpose(0, 2, 1)
-    plot_trajs_multivariate(
-        samples,
-        save_dir="figures",
-        plot_name=f"{system.name}_debug",
-        plot_2d_slice=True,
-        plot_projections=True,
-        max_samples=len(ensembles),
-    )
+    ensembles = [default_ensemble] + ensembles
+
+    summary_json_path = os.path.join("outputs", "debug_attractor_checks.json")
+    logger.info(f"Saving summary for {system.name} to {summary_json_path}")
+    sys_sampler.save_summary(summary_json_path)
+
+    with open(summary_json_path, "r") as f:
+        summary = json.load(f)
+
+    for subset_name in ["valid_samples", "failed_samples"]:
+        samples_subset = summary[subset_name][system.name]
+        coords = np.array(
+            [ensembles[i][system.name] for i in samples_subset]
+        ).transpose(0, 2, 1)
+
+        plot_trajs_multivariate(
+            coords,
+            samples_subset=samples_subset,
+            save_dir="figures",
+            plot_name=f"{system.name}_debug_{subset_name}",
+            plot_2d_slice=True,
+            plot_projections=True,
+            plot_standardized_trajs=True if not cfg.sampling.standardize else False,
+            max_samples=len(coords),
+        )
 
 
 def init_additive_skew_system(
@@ -326,12 +333,9 @@ def main(cfg):
             atol=cfg.sampling.atol,
             rtol=cfg.sampling.rtol,
         )  # type: ignore
-        logger.info(f"Scale cache: {scale_cache}")
-        logger.info("Initializing skew system")
         system = init_additive_skew_system(
             driver, response, scale_cache[driver], scale_cache[response]
         )
-        logger.info(f"Skew system: {system}")
         plot_single_system(system, sys_sampler, cfg)
         exit()
 

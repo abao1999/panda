@@ -17,6 +17,7 @@ def plot_trajs_multivariate(
     n_samples_plot: int | None = None,
     plot_2d_slice: bool = False,
     plot_projections: bool = False,
+    plot_standardized_trajs: bool = False,
     dims_3d: list[int] = [0, 1, 2],
     figsize: tuple[int, int] = (6, 6),
     max_samples: int = 6,
@@ -32,6 +33,7 @@ def plot_trajs_multivariate(
         n_samples_plot (int | None): Number of samples to plot. If None, all samples are plotted. Defaults to None.
         plot_2d_slice (bool): Whether to plot a 2D slice of the first two dimensions. Defaults to True.
         plot_projections (bool): Whether to plot 2D projections on the coordinate planes
+        plot_standardized_trajs (bool): Whether to plot the standardized trajectories
         dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
         figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
         max_samples (int): Maximum number of samples to plot. Defaults to 6.
@@ -50,6 +52,11 @@ def plot_trajs_multivariate(
             )
             n_samples_plot = len(samples_subset)
 
+    if plot_standardized_trajs:
+        dyst_data = (dyst_data - dyst_data.mean(axis=-1)[:, :, None]) / dyst_data.std(
+            axis=-1
+        )[:, :, None]
+
     if plot_2d_slice:
         save_path = os.path.join(save_dir, f"{plot_name}.png")
         print("Plotting 2D trajectories and saving to ", save_path)
@@ -59,7 +66,7 @@ def plot_trajs_multivariate(
                 samples_subset[sample_idx] if samples_subset is not None else sample_idx
             )
             label = f"Sample {label_sample_idx}"
-            curr_color = COLORS[label_sample_idx % len(COLORS)]
+            curr_color = COLORS[sample_idx % len(COLORS)]
 
             xy = dyst_data[sample_idx, :2, :]
             plt.plot(*xy, alpha=0.5, linewidth=1, color=curr_color, label=label)
@@ -87,7 +94,7 @@ def plot_trajs_multivariate(
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
         )
         label = f"Sample {label_sample_idx}"
-        curr_color = COLORS[label_sample_idx % len(COLORS)]
+        curr_color = COLORS[sample_idx % len(COLORS)]
 
         xyz = dyst_data[sample_idx, dims_3d, :]
         ax.plot(*xyz, alpha=0.5, linewidth=1, color=curr_color, label=label)
@@ -108,7 +115,7 @@ def plot_trajs_multivariate(
             label_sample_idx = (
                 samples_subset[sample_idx] if samples_subset is not None else sample_idx
             )
-            curr_color = COLORS[label_sample_idx % len(COLORS)]
+            curr_color = COLORS[sample_idx % len(COLORS)]
             xyz = dyst_data[sample_idx, dims_3d, :]
             ic_pt = xyz[:, 0]
             end_pt = xyz[:, -1]
