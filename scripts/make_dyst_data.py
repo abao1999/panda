@@ -88,6 +88,8 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
 
     for subset_name in ["valid_samples", "failed_samples"]:
         samples_subset = summary[subset_name][system.name]
+        if samples_subset == []:
+            continue
         coords = np.array(
             [ensembles[i][system.name] for i in samples_subset]
         ).transpose(0, 2, 1)
@@ -166,47 +168,33 @@ def main(cfg):
     # Run save_dyst_ensemble on a single system in debug mode
     ###########################################################################
     if cfg.sampling.debug_system:
-        system = getattr(flows, cfg.sampling.debug_system)
+        system = getattr(flows, cfg.sampling.debug_system)()
         plot_single_system(system, sys_sampler, cfg)
         exit()
-
-    split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
 
     if cfg.sampling.save_params:
         param_dir = os.path.join(cfg.sampling.data_dir, "parameters")
     else:
         param_dir = None
 
-    _ = sys_sampler.sample_ensembles(
-        systems=train_systems,
-        split=f"{split_prefix}train",
-        split_failures=f"{split_prefix}failed_attractors_train",
-        samples_process_interval=1,
-        save_dir=cfg.sampling.data_dir,
-        save_params_dir=f"{param_dir}/train" if param_dir else None,
-        standardize=cfg.sampling.standardize,
-        use_multiprocessing=cfg.sampling.multiprocessing,
-        _silent_errors=cfg.sampling.silence_integration_errors,
-    )
-    sys_sampler.save_summary(
-        os.path.join("outputs", f"{split_prefix}train_attractor_checks.json"),
-    )
-
-    _ = sys_sampler.sample_ensembles(
-        systems=test_systems,
-        split=f"{split_prefix}test",
-        split_failures=f"{split_prefix}failed_attractors_test",
-        samples_process_interval=1,
-        save_dir=cfg.sampling.data_dir,
-        save_params_dir=f"{param_dir}/test" if param_dir else None,
-        standardize=cfg.sampling.standardize,
-        reset_attractor_validator=True,  # save validator results separately for test
-        use_multiprocessing=cfg.sampling.multiprocessing,
-        _silent_errors=cfg.sampling.silence_integration_errors,
-    )
-    sys_sampler.save_summary(
-        os.path.join("outputs", f"{split_prefix}test_attractor_checks.json"),
-    )
+    split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
+    for split, systems in [("train", train_systems), ("test", test_systems)]:
+        _ = sys_sampler.sample_ensembles(
+            systems=systems,
+            split=f"{split_prefix}{split}",
+            split_failures=f"{split_prefix}failed_attractors_{split}",
+            samples_process_interval=1,
+            save_dir=cfg.sampling.data_dir,
+            save_params_dir=f"{param_dir}/{split}" if param_dir else None,
+            standardize=cfg.sampling.standardize,
+            use_multiprocessing=cfg.sampling.multiprocessing,
+            _silent_errors=cfg.sampling.silence_integration_errors,
+            atol=cfg.sampling.atol,
+            rtol=cfg.sampling.rtol,
+        )
+        sys_sampler.save_summary(
+            os.path.join("outputs", f"{split_prefix}{split}_attractor_checks.json"),
+        )
 
 
 if __name__ == "__main__":

@@ -90,12 +90,18 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
 
     for subset_name in ["valid_samples", "failed_samples"]:
         samples_subset = summary[subset_name][system.name]
+        if samples_subset == []:
+            continue
         coords = np.array(
             [ensembles[i][system.name] for i in samples_subset]
         ).transpose(0, 2, 1)
+        # NOTE: this is the patch that grabs the response coordinates
+        coords_response = coords[
+            :, system.driver_dim : system.driver_dim + system.response_dim, :
+        ]
 
         plot_trajs_multivariate(
-            coords,
+            coords_response,
             samples_subset=samples_subset,
             save_dir="figures",
             plot_name=f"{system.name}_{subset_name}",
@@ -382,9 +388,9 @@ def main(cfg):
     )
 
     split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
-    for split, split_systems in [("train", train_systems), ("test", test_systems)]:
+    for split, systems in [("train", train_systems), ("test", test_systems)]:
         sys_sampler.sample_ensembles(
-            systems=split_systems,
+            systems=systems,
             split=f"{split_prefix}{split}",
             split_failures=f"{split_prefix}failed_attractors_{split}",
             samples_process_interval=1,
