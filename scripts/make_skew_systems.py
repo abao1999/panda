@@ -81,7 +81,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     )
     ensembles = [default_ensemble] + ensembles
 
-    summary_json_path = os.path.join("outputs", "debug_attractor_checks.json")
+    summary_json_path = os.path.join("outputs", "debug_skew_attractor_checks.json")
     logger.info(f"Saving summary for {system.name} to {summary_json_path}")
     sys_sampler.save_summary(summary_json_path)
 
@@ -98,7 +98,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
             coords,
             samples_subset=samples_subset,
             save_dir="figures",
-            plot_name=f"{system.name}_debug_{subset_name}",
+            plot_name=f"{system.name}_{subset_name}",
             plot_2d_slice=True,
             plot_projections=True,
             plot_standardized_trajs=True if not cfg.sampling.standardize else False,

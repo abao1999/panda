@@ -205,7 +205,7 @@ def plot_completions_evaluation(
         label_sample_idx = (
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
         )
-        curr_color = COLORS[label_sample_idx % len(COLORS)]
+        curr_color = COLORS[sample_idx % len(COLORS)]
 
         # Plot context in 3D
         (line1,) = ax1.plot(
@@ -357,7 +357,7 @@ def plot_forecast_evaluation(
         label_sample_idx = (
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
         )
-        curr_color = COLORS[label_sample_idx % len(COLORS)]
+        curr_color = COLORS[sample_idx % len(COLORS)]
 
         # Plot context in 3D
         (line1,) = ax1.plot(

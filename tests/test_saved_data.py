@@ -55,6 +55,9 @@ def plot_saved_data(
             save_dir=plot_save_dir,
             plot_name=plot_name,
             samples_subset=samples_subset,
+            plot_standardized_trajs=True,
+            plot_2d_slice=True,
+            plot_projections=True,
         )
 
 
