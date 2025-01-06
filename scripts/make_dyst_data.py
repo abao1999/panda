@@ -136,11 +136,14 @@ def main(cfg):
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=cfg.sampling.reference_traj_length,
         reference_traj_transient=cfg.sampling.reference_traj_transient,
-        recompute_standardization=True,  # Important!
+        reference_traj_n_periods=cfg.sampling.reference_traj_n_periods,
+        reference_traj_atol=cfg.sampling.atol,
+        reference_traj_rtol=cfg.sampling.rtol,
+        recompute_standardization=cfg.sampling.standardize,  # Important!
         events=event_fns,
-        verbose=cfg.sampling.verbose,
         random_seed=cfg.sampling.rseed,
         silence_integration_errors=cfg.sampling.silence_integration_errors,
+        verbose=1,
     )
 
     sys_sampler = DynSysSampler(
@@ -191,6 +194,7 @@ def main(cfg):
             _silent_errors=cfg.sampling.silence_integration_errors,
             atol=cfg.sampling.atol,
             rtol=cfg.sampling.rtol,
+            use_tqdm=False,
         )
         sys_sampler.save_summary(
             os.path.join("outputs", f"{split_prefix}{split}_attractor_checks.json"),

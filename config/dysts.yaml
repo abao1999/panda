@@ -19,7 +19,7 @@ sampling:
   debug_system: null
   silence_integration_errors: false
   save_params: true
-  ignore_probability: 0.1
+  ignore_probability: 0.0
   sign_match_probability: 0.5
   atol: 1e-10
   rtol: 1e-10
@@ -33,7 +33,7 @@ validator:
 
 events:
   max_duration: 300
-  instability_threshold: 1e8
+  instability_threshold: 1e4
   min_step: 1e-16
   verbose: true
 

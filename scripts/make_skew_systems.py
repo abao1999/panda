@@ -293,10 +293,12 @@ def main(cfg):
     )
     ic_sampler = OnAttractorInitCondSampler(
         reference_traj_length=cfg.sampling.reference_traj_length,
+        reference_traj_n_periods=cfg.sampling.reference_traj_n_periods,
         reference_traj_transient=cfg.sampling.reference_traj_transient,
         reference_traj_atol=cfg.sampling.atol,
         reference_traj_rtol=cfg.sampling.rtol,
         recompute_standardization=cfg.sampling.standardize,  # Important (if standardize=True)
+        random_seed=cfg.sampling.rseed,
         events=event_fns,
         silence_integration_errors=cfg.sampling.silence_integration_errors,
         verbose=1,
