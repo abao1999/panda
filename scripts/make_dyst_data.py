@@ -67,7 +67,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     logger.info(f"Events: {events}")
 
     logger.info(f"Generating ensembles for {system.name}")
-    ensembles, default_ensemble = sys_sampler.sample_ensembles(
+    ensembles = sys_sampler.sample_ensembles(
         systems=[system],
         save_dir=None,  # NOTE: do not save trajectories in debug mode!
         standardize=cfg.sampling.standardize,
@@ -77,7 +77,6 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         atol=cfg.sampling.atol,
         rtol=cfg.sampling.rtol,
     )
-    ensembles = [default_ensemble] + ensembles
 
     summary_json_path = os.path.join("outputs", "debug_attractor_checks.json")
     logger.info(f"Saving summary for {system.name} to {summary_json_path}")
@@ -101,7 +100,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
             plot_name=f"{system.name}_{subset_name}",
             plot_2d_slice=True,
             plot_projections=True,
-            plot_standardized_trajs=True if not cfg.sampling.standardize else False,
+            standardize=cfg.sampling.standardize,
             max_samples=len(coords),
         )
 
@@ -188,6 +187,7 @@ def main(cfg):
             save_params_dir=f"{param_dir}/{split}" if param_dir else None,
             standardize=cfg.sampling.standardize,
             use_multiprocessing=cfg.sampling.multiprocessing,
+            reset_attractor_validator=True,
             _silent_errors=cfg.sampling.silence_integration_errors,
             atol=cfg.sampling.atol,
             rtol=cfg.sampling.rtol,

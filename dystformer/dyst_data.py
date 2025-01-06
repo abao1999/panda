@@ -6,7 +6,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from itertools import starmap
 from multiprocessing import Pool
-from typing import Any, Callable, Tuple
+from typing import Any, Callable
 
 import dysts.flows as flows
 import numpy as np
@@ -81,7 +81,7 @@ class DynSysSampler:
         save_dir: str | None,
         split: str,
         split_failures: str = "failed_attractors",
-    ) -> Tuple[str | None, str | None]:
+    ) -> tuple[str | None, str | None]:
         if save_dir is not None:
             save_dyst_dir = os.path.join(save_dir, split)
             os.makedirs(save_dyst_dir, exist_ok=True)
@@ -110,7 +110,7 @@ class DynSysSampler:
         use_multiprocessing: bool = True,
         reset_attractor_validator: bool = False,
         **kwargs,
-    ) -> Tuple[list[dict[str, np.ndarray]], dict[str, np.ndarray]]:
+    ) -> list[dict[str, np.ndarray]]:
         """
         Sample perturbed ensembles for a given set of dynamical systems. Optionally,
         save the ensembles to disk and save the parameters to a json file.
@@ -171,7 +171,9 @@ class DynSysSampler:
             use_multiprocessing=use_multiprocessing,
             **kwargs,
         )
-        return ensembles, default_ensemble
+        ensembles.insert(0, default_ensemble)
+
+        return ensembles
 
     def _transform_params_and_ics(
         self,
@@ -267,9 +269,6 @@ class DynSysSampler:
             for j, ic_rng in enumerate(ic_rng_stream):
                 sample_idx = i * len(ic_rng_stream) + j + 1
 
-                pbar.update(1)
-                pbar.set_postfix({"param_idx": i, "ic_idx": j})
-
                 # perturb and initialize the system ensemble
                 unfiltered_systems = self._init_perturbations(
                     systems, ic_rng=ic_rng, use_multiprocessing=use_multiprocessing
@@ -291,7 +290,6 @@ class DynSysSampler:
                 ensemble = make_trajectory_ensemble(
                     self.num_points,
                     subset=perturbed_systems,
-                    use_tqdm=True,
                     pts_per_period=self.num_points // self.num_periods,
                     event_fns=self.events,
                     **kwargs,
@@ -317,6 +315,9 @@ class DynSysSampler:
                         excluded_keys=excluded_systems,
                         perturbed_systems=perturbed_systems,
                     )
+
+                pbar.update(1)
+                pbar.set_postfix({"param_idx": i, "ic_idx": j})
 
         return ensembles
 

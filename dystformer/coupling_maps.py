@@ -31,26 +31,15 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
 
     driver_scale: float = 1
     response_scale: float = 1
+    randomize_driver_indices: bool = True
 
     random_seed: int | None = None
-
-    # only randomize when transform_params is called
-    # this allows the default behavior to be deterministic
-    _randomize_on_transform: bool = True
 
     def __post_init__(self) -> None:
         if self.random_seed is not None:
             self.rng = np.random.default_rng(self.random_seed)
 
-        # generate the indices from the driver to be coupled to the response
-        if self.random_seed is not None and not self._randomize_on_transform:
-            self.driver_indices = self.rng.choice(
-                max(self.driver_dim, self.response_dim),
-                self.response_dim,
-                replace=False,
-            )
-        else:
-            self.driver_indices = np.arange(self.response_dim)
+        self.driver_indices = np.arange(self.response_dim)
 
     @property
     def n_params(self) -> int:
@@ -61,7 +50,7 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         self.driver_scale = param_transform("driver_scale", self.driver_scale)
         self.response_scale = param_transform("response_scale", self.response_scale)
 
-        if self.random_seed is not None and self._randomize_on_transform:
+        if self.random_seed is not None and self.randomize_driver_indices:
             self.driver_indices = self.rng.choice(
                 max(self.driver_dim, self.response_dim),
                 self.response_dim,

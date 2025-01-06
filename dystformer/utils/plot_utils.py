@@ -10,14 +10,14 @@ COLORS = list(TABLEAU_COLORS.values())
 
 
 def plot_trajs_multivariate(
-    dyst_data: np.ndarray,
+    trajectories: np.ndarray,
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
     n_samples_plot: int | None = None,
     plot_2d_slice: bool = False,
     plot_projections: bool = False,
-    plot_standardized_trajs: bool = False,
+    standardize: bool = False,
     dims_3d: list[int] = [0, 1, 2],
     figsize: tuple[int, int] = (6, 6),
     max_samples: int = 6,
@@ -26,24 +26,24 @@ def plot_trajs_multivariate(
     Plot multivariate timeseries from dyst_data
 
     Args:
-        dyst_data (np.ndarray): Array of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
+        trajectories (np.ndarray): Array of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
         save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
         plot_name (str, optional): Base name for the saved plot files. Defaults to "dyst".
         samples_subset (list[int] | None): Subset of sample indices to plot. If None, all samples are used. Defaults to None.
         n_samples_plot (int | None): Number of samples to plot. If None, all samples are plotted. Defaults to None.
         plot_2d_slice (bool): Whether to plot a 2D slice of the first two dimensions. Defaults to True.
         plot_projections (bool): Whether to plot 2D projections on the coordinate planes
-        plot_standardized_trajs (bool): Whether to plot the standardized trajectories
+        standardize (bool): Whether to standardize the trajectories
         dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
         figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
         max_samples (int): Maximum number of samples to plot. Defaults to 6.
     """
     os.makedirs(save_dir, exist_ok=True)
     assert (
-        dyst_data.shape[1] >= len(dims_3d)
-    ), f"Data has {dyst_data.shape[1]} dimensions, but {len(dims_3d)} dimensions were requested for plotting"
+        trajectories.shape[1] >= len(dims_3d)
+    ), f"Data has {trajectories.shape[1]} dimensions, but {len(dims_3d)} dimensions were requested for plotting"
 
-    n_samples_plot = min(max_samples, n_samples_plot or dyst_data.shape[0])
+    n_samples_plot = min(max_samples, n_samples_plot or trajectories.shape[0])
 
     if samples_subset is not None:
         if n_samples_plot > len(samples_subset):
@@ -52,10 +52,9 @@ def plot_trajs_multivariate(
             )
             n_samples_plot = len(samples_subset)
 
-    if plot_standardized_trajs:
-        dyst_data = (dyst_data - dyst_data.mean(axis=-1)[:, :, None]) / dyst_data.std(
-            axis=-1
-        )[:, :, None]
+    if standardize:
+        trajectories -= trajectories.mean(axis=-1)[:, :, None]
+        trajectories /= trajectories.std(axis=-1)[:, :, None]
 
     if plot_2d_slice:
         save_path = os.path.join(save_dir, f"{plot_name}.png")
@@ -68,13 +67,13 @@ def plot_trajs_multivariate(
             label = f"Sample {label_sample_idx}"
             curr_color = COLORS[sample_idx % len(COLORS)]
 
-            xy = dyst_data[sample_idx, :2, :]
+            xy = trajectories[sample_idx, :2, :]
             plt.plot(*xy, alpha=0.5, linewidth=1, color=curr_color, label=label)
 
-            ic_point = dyst_data[sample_idx, :2, 0]
+            ic_point = trajectories[sample_idx, :2, 0]
             plt.scatter(*ic_point, marker="*", s=100, alpha=0.5, color=curr_color)
 
-            final_point = dyst_data[sample_idx, :2, -1]
+            final_point = trajectories[sample_idx, :2, -1]
             plt.scatter(*final_point, marker="x", s=100, alpha=0.5, color=curr_color)
 
         plt.xlabel("X")
@@ -96,7 +95,7 @@ def plot_trajs_multivariate(
         label = f"Sample {label_sample_idx}"
         curr_color = COLORS[sample_idx % len(COLORS)]
 
-        xyz = dyst_data[sample_idx, dims_3d, :]
+        xyz = trajectories[sample_idx, dims_3d, :]
         ax.plot(*xyz, alpha=0.5, linewidth=1, color=curr_color, label=label)
 
         ic_pt = xyz[:, 0]
@@ -109,14 +108,14 @@ def plot_trajs_multivariate(
         x_min, x_max = ax.get_xlim3d()  # type: ignore
         y_min, y_max = ax.get_ylim3d()  # type: ignore
         z_min, z_max = ax.get_zlim3d()  # type: ignore
-        palpha = 0.1
+        palpha = 0.1  # whatever
 
         for sample_idx in range(n_samples_plot):
             label_sample_idx = (
                 samples_subset[sample_idx] if samples_subset is not None else sample_idx
             )
             curr_color = COLORS[sample_idx % len(COLORS)]
-            xyz = dyst_data[sample_idx, dims_3d, :]
+            xyz = trajectories[sample_idx, dims_3d, :]
             ic_pt = xyz[:, 0]
             end_pt = xyz[:, -1]
 

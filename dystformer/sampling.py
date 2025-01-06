@@ -55,7 +55,7 @@ class InstabilityEvent:
         if np.any(bounded_coords > self.threshold) or np.any(np.isnan(y)):
             if self.verbose:
                 logger.warning(
-                    f"Instability in {self.system.name} @ t={t} | {np.abs(y)}\n"
+                    f"Instability in {self.system.name} @ t={t}:  {np.abs(y)}\n"
                 )
             return 0
         return 1
@@ -76,7 +76,7 @@ class TimeStepEvent:
         t_diff = abs(t - self.last_t)
         if t_diff < self.min_step:
             if self.verbose:
-                logger.warning(f"Time step too small! {t_diff}")
+                logger.warning(f"Time step too small: {t_diff}")
             return 0
 
         self.last_t = t
@@ -235,9 +235,8 @@ class OnAttractorInitCondSampler(BaseSampler):
             reference_traj = reference_traj[self.transient :]
             self.trajectory_cache[system.name] = reference_traj
 
-        trajectory = self.trajectory_cache[system.name]
-
         # Sample a new initial condition from the attractor
+        trajectory = self.trajectory_cache[system.name]
         new_ic = self.rng.choice(trajectory)
 
         if self.verbose > 1:

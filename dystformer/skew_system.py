@@ -20,6 +20,7 @@ class SkewProduct(DynSys):
         response: DynSys,
         coupling_map: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
         _default_random_seed: int | None = None,
+        _postprocess_response_only: bool = False,
         **kwargs,
     ):
         """A skew-product dynamical system composed of a driver and response system.
@@ -61,6 +62,8 @@ class SkewProduct(DynSys):
             },
             **kwargs,
         )
+
+        self._postprocess_response_only = _postprocess_response_only
 
         # hack: set a dummy param list for param count checks
         n_params = len(driver.parameters) + len(response.parameters)
@@ -119,21 +122,12 @@ class SkewProduct(DynSys):
     def __call__(self, X: np.ndarray, t: float) -> np.ndarray:
         return self.rhs(X, t)
 
-    # def _postprocessing(self, *X: np.ndarray) -> np.ndarray:
-    #     # TODO: need to come up with a scheme to use the driver.unbounded_indices and response.unbounded_indices
-    #     # to determine which dimensions are unbounded and which are bounded
-    #     # but this is a bit tricky bc driver_i + response_j may be bounded even if one is unbounded
-    #     # likewise, driver_i + response_j may be unbounded even if both are bounded
-    #     #
-    #     #
-    #     # one solution is to place all responsibility for managing unbounded indices on the coupling map
-    #     # then if the coupling map has an attribute for unbounded indices, we'll use it here
-    #     if hasattr(self.driver, "_postprocessing") and hasattr(
-    #         self.response, "_postprocessing"
-    #     ):
-    #         driver, response = X[: self.driver_dim], X[self.driver_dim :]
-    #         driver_unbounded = self.driver._postprocess(driver)
-    #         response_unbounded = self.response._postprocess(response)
-    #         return np.concatenate([driver_unbounded, response_unbounded])
-
-    #     return np.asarray(X)
+    def _postprocessing(self, *X: np.ndarray) -> np.ndarray:
+        driver, response = X[: self.driver_dim], X[self.driver_dim :]
+        if hasattr(self.driver, "_postprocessing"):
+            driver = self.driver._postprocessing(*driver)
+        if hasattr(self.response, "_postprocessing"):
+            response = self.response._postprocessing(*response)
+        if self._postprocess_response_only:
+            return np.asarray(response)
+        return np.concatenate([driver, response])

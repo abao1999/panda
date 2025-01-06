@@ -21,8 +21,8 @@ sampling:
   save_params: true
   ignore_probability: 0.1
   sign_match_probability: 0.5
-  atol: 1e-6
-  rtol: 1e-6
+  atol: 1e-10
+  rtol: 1e-10
 
 validator:
   enable: true

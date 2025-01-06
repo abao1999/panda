@@ -66,10 +66,9 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         _resolve_event_signature(system, event_fn)
         for event_fn in sys_sampler.events or []
     ]
-    logger.info(f"Events: {events}")
 
     logger.info(f"Generating ensembles for {system.name}")
-    ensembles, default_ensemble = sys_sampler.sample_ensembles(
+    ensembles = sys_sampler.sample_ensembles(
         systems=[system],
         save_dir=None,  # NOTE: do not save trajectories in debug mode!
         standardize=cfg.sampling.standardize,
@@ -79,7 +78,6 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         atol=cfg.sampling.atol,
         rtol=cfg.sampling.rtol,
     )
-    ensembles = [default_ensemble] + ensembles
 
     summary_json_path = os.path.join("outputs", "debug_skew_attractor_checks.json")
     logger.info(f"Saving summary for {system.name} to {summary_json_path}")
@@ -95,10 +93,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         coords = np.array(
             [ensembles[i][system.name] for i in samples_subset]
         ).transpose(0, 2, 1)
-        # NOTE: this is the patch that grabs the response coordinates
-        coords_response = coords[
-            :, system.driver_dim : system.driver_dim + system.response_dim, :
-        ]
+        coords_response = coords[:, system.driver_dim :]
 
         plot_trajs_multivariate(
             coords_response,
@@ -107,7 +102,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
             plot_name=f"{system.name}_{subset_name}",
             plot_2d_slice=True,
             plot_projections=True,
-            plot_standardized_trajs=True if not cfg.sampling.standardize else False,
+            standardize=cfg.sampling.standardize,
             max_samples=len(coords),
         )
 
@@ -118,6 +113,7 @@ def init_additive_skew_system(
     driver_scale: float,
     response_scale: float,
     seed: int | None = None,
+    **kwargs,
 ) -> DynSys:
     """Initialize a skew-product dynamical system with a driver and response system"""
     driver = getattr(flows, driver_name)()
@@ -129,13 +125,10 @@ def init_additive_skew_system(
         driver_scale=driver_scale,
         response_scale=response_scale,
         random_seed=seed,
-        _randomize_on_transform=True,
     )
 
     return SkewProduct(
-        driver=driver,
-        response=response,
-        coupling_map=coupling_map,
+        driver=driver, response=response, coupling_map=coupling_map, **kwargs
     )
 
 
@@ -157,6 +150,7 @@ def filter_and_split_skew_systems(
     scale_cache: dict[str, float] | None = None,
     train_systems: list[str] | None = None,
     test_systems: list[str] | None = None,
+    **skew_system_kwargs,
 ) -> tuple[list[str], list[str]]:
     """Sample skew systems from all pairs of non-skew systems and split into train/test
 
@@ -210,9 +204,10 @@ def filter_and_split_skew_systems(
             1.0 if scale_cache is None else scale_cache[driver],
             1.0 if scale_cache is None else scale_cache[response],
             seed=random_seed,
+            **skew_system_kwargs,
         )
         for driver, response in train_pairs
-    ]  # type: ignore
+    ]
     test_systems = [
         init_additive_skew_system(
             driver,
@@ -220,11 +215,12 @@ def filter_and_split_skew_systems(
             1.0 if scale_cache is None else scale_cache[driver],
             1.0 if scale_cache is None else scale_cache[response],
             seed=random_seed,
+            **skew_system_kwargs,
         )
         for driver, response in test_pairs
-    ]  # type: ignore
+    ]
 
-    return train_systems, test_systems  # type: ignore
+    return train_systems, test_systems
 
 
 def _compute_system_scale(
@@ -388,7 +384,7 @@ def main(cfg):
     )
 
     split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
-    for split, systems in [("train", train_systems), ("test", test_systems)]:
+    for split, systems in [("train", train_systems)]:  # , ("test", test_systems)]:
         sys_sampler.sample_ensembles(
             systems=systems,
             split=f"{split_prefix}{split}",
@@ -398,9 +394,11 @@ def main(cfg):
             save_params_dir=f"{param_dir}/{split}" if param_dir else None,
             standardize=cfg.sampling.standardize,
             use_multiprocessing=cfg.sampling.multiprocessing,
+            reset_attractor_validator=True,
             _silent_errors=cfg.sampling.silence_integration_errors,
             atol=cfg.sampling.atol,
             rtol=cfg.sampling.rtol,
+            use_tqdm=False,
         )
         sys_sampler.save_summary(
             os.path.join("outputs", f"{split_prefix}{split}_attractor_checks.json"),
