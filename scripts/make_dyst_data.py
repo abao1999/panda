@@ -87,7 +87,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         summary = json.load(f)
 
     for subset_name in ["valid_samples", "failed_samples"]:
-        samples_subset = summary[subset_name][system.name]
+        samples_subset = summary[subset_name].get(system.name, [])
         if samples_subset == []:
             continue
         coords = np.array(
