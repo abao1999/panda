@@ -14,7 +14,6 @@ from dysts.analysis import max_lyapunov_exponent_rosenstein
 from scipy.fft import rfft
 from scipy.signal import find_peaks
 from scipy.spatial.distance import cdist
-from sklearn.decomposition import PCA
 
 
 @dataclass
@@ -310,22 +309,13 @@ def check_not_limit_cycle(
     Returns:
         bool: True if the trajectory is not collapsing to a limit cycle, False otherwise.
     """
-    num_dims, n = traj.shape
+    n = traj.shape[1]
 
-    # Step 1: Dimensionality Reduction using PCA (if more than 3 dimensions)
-    if num_dims > 3:
-        pca = PCA(n_components=3)
-        reduced_traj = pca.fit_transform(traj)
-    else:
-        reduced_traj = traj
-
-    # Step 2: Calculate the pairwise distance matrix, shape should be (N, N)
-    dist_matrix = cdist(reduced_traj.T, reduced_traj.T, metric="euclidean").astype(
-        np.float16
-    )
+    # Step 1: Calculate the pairwise distance matrix, shape should be (N, N)
+    dist_matrix = cdist(traj.T, traj.T, metric="euclidean").astype(np.float16)
     dist_matrix = np.triu(dist_matrix, k=1)
 
-    # Step 3: Get recurrence times from thresholding distance matrix
+    # Step 2: Get recurrence times from thresholding distance matrix
     recurrence_indices = np.asarray(
         (dist_matrix < tolerance) & (dist_matrix > 0)
     ).nonzero()

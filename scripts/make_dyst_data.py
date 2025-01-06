@@ -195,6 +195,7 @@ def main(cfg):
             atol=cfg.sampling.atol,
             rtol=cfg.sampling.rtol,
             use_tqdm=False,
+            logger=logger,
         )
         sys_sampler.save_summary(
             os.path.join("outputs", f"{split_prefix}{split}_attractor_checks.json"),

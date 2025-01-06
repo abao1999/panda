@@ -121,7 +121,7 @@ class DynSysSampler:
         ), "Cannot have duplicate system names"
         logger.info(
             f"Making {split} split with {len(systems)} dynamical systems"
-            f" (showing first 10): \n {sys_names[:10]}"
+            f" (showing first {min(5, len(sys_names))}): \n {sys_names[:5]}"
         )
 
         if self.attractor_validator is not None and reset_attractor_validator:

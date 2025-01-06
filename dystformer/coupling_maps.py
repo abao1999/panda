@@ -44,7 +44,9 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
     @property
     def n_params(self) -> int:
         # 2 params for the scales + self.response_dim params for the indices
-        return 2 + (self.response_dim) * (self.random_seed is not None)
+        return 2 + (self.response_dim) * (
+            self.random_seed is not None and self.randomize_driver_indices
+        )
 
     def transform_params(self, param_transform: Callable) -> bool:
         self.driver_scale = param_transform("driver_scale", self.driver_scale)

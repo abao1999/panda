@@ -136,7 +136,7 @@ class OnAttractorInitCondSampler(BaseSampler):
                 )
             except Exception as e:
                 if self.verbose > 0:
-                    logger.warning(f"Error integrating {system.name}: {str(e)}")
+                    logger.error(f"Error integrating {system.name}: {str(e)}")
                 if not self.silence_integration_errors:
                     raise e
                 return None
