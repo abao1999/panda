@@ -22,13 +22,8 @@ from dystformer.attractor import (
     check_power_spectrum,
 )
 from dystformer.dyst_data import DynSysSampler
-from dystformer.sampling import (
-    InstabilityEvent,
-    OnAttractorInitCondSampler,
-    SignedGaussianParamSampler,
-    TimeLimitEvent,
-    TimeStepEvent,
-)
+from dystformer.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
+from dystformer.sampling import OnAttractorInitCondSampler, SignedGaussianParamSampler
 from dystformer.utils import plot_trajs_multivariate, split_systems
 
 
@@ -113,16 +108,21 @@ def main(cfg):
         sys_class=cfg.sampling.sys_class,
     )
 
-    time_limit_event = TimeLimitEvent(
-        max_duration=cfg.events.max_duration, verbose=cfg.events.verbose
+    # solve_ivp events
+    time_limit_event = partial(
+        TimeLimitEvent,
+        max_duration=cfg.events.max_duration,
+        verbose=cfg.events.verbose,
     )
     instability_event = partial(
         InstabilityEvent,
         threshold=cfg.events.instability_threshold,
         verbose=cfg.events.verbose,
     )
-    time_step_event = TimeStepEvent(
-        min_step=cfg.events.min_step, verbose=cfg.events.verbose
+    time_step_event = partial(
+        TimeStepEvent,
+        min_step=cfg.events.min_step,
+        verbose=cfg.events.verbose,
     )
     event_fns = [time_limit_event, time_step_event, instability_event]
 

@@ -25,13 +25,8 @@ from dystformer.attractor import (
 )
 from dystformer.coupling_maps import RandomAdditiveCouplingMap
 from dystformer.dyst_data import DynSysSampler
-from dystformer.sampling import (
-    InstabilityEvent,
-    OnAttractorInitCondSampler,
-    SignedGaussianParamSampler,
-    TimeLimitEvent,
-    TimeStepEvent,
-)
+from dystformer.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
+from dystformer.sampling import OnAttractorInitCondSampler, SignedGaussianParamSampler
 from dystformer.skew_system import SkewProduct
 from dystformer.utils import plot_trajs_multivariate
 
@@ -237,6 +232,7 @@ def _compute_system_scale(
     ts, traj = sys.make_trajectory(
         n, pts_per_period=n // num_periods, return_times=True, atol=atol, rtol=rtol
     )
+    assert traj is not None, f"{system} should be integrable"
     flow_rms = np.sqrt(
         np.mean(
             [np.max(sys(x, t)) ** 2 for x, t in zip(traj[transient:], ts[transient:])]
@@ -272,16 +268,20 @@ def main(cfg):
     systems = get_attractor_list(sys_class=cfg.sampling.sys_class)
 
     # events for solve_ivp
-    time_limit_event = TimeLimitEvent(
-        max_duration=cfg.events.max_duration, verbose=cfg.events.verbose
+    time_limit_event = partial(
+        TimeLimitEvent,
+        max_duration=cfg.events.max_duration,
+        verbose=cfg.events.verbose,
     )
     instability_event = partial(
         InstabilityEvent,
         threshold=cfg.events.instability_threshold,
         verbose=cfg.events.verbose,
     )
-    time_step_event = TimeStepEvent(
-        min_step=cfg.events.min_step, verbose=cfg.events.verbose
+    time_step_event = partial(
+        TimeStepEvent,
+        min_step=cfg.events.min_step,
+        verbose=cfg.events.verbose,
     )
     event_fns = [time_limit_event, instability_event, time_step_event]
 
