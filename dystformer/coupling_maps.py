@@ -29,8 +29,8 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
     NOTE: the dimensions are fixed to the response system
     """
 
-    driver_scale: float = 1.0
-    response_scale: float = 1.0
+    driver_scale: float | np.ndarray = 1.0
+    response_scale: float | np.ndarray = 1.0
 
     transform_scales: bool = True
     randomize_driver_indices: bool = True
@@ -38,6 +38,14 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
     random_seed: int | None = None
 
     def __post_init__(self) -> None:
+        assert isinstance(self.driver_scale, (float, np.ndarray))
+        assert isinstance(self.response_scale, (float, np.ndarray))
+
+        if isinstance(self.driver_scale, np.ndarray):
+            assert self.driver_scale.shape == (self.driver_dim,)
+        if isinstance(self.response_scale, np.ndarray):
+            assert self.response_scale.shape == (self.response_dim,)
+
         if self.random_seed is not None:
             self.rng = np.random.default_rng(self.random_seed)
 
@@ -46,14 +54,34 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
     @property
     def n_params(self) -> int:
         # 2 params for the scales + self.response_dim params for the indices
-        return 2 + (self.response_dim) * (
+        return 2 * (self.transform_scales) + (self.response_dim) * (
             self.random_seed is not None and self.randomize_driver_indices
         )
 
     def transform_params(self, param_transform: Callable) -> bool:
         if self.transform_scales:
-            self.driver_scale = param_transform("driver_scale", self.driver_scale)
-            self.response_scale = param_transform("response_scale", self.response_scale)
+            if isinstance(self.driver_scale, float) and isinstance(
+                self.response_scale, float
+            ):
+                self.driver_scale = param_transform("driver_scale", self.driver_scale)
+                self.response_scale = param_transform(
+                    "response_scale", self.response_scale
+                )
+            elif isinstance(self.driver_scale, np.ndarray) and isinstance(
+                self.response_scale, np.ndarray
+            ):
+                self.driver_scale = np.asarray(
+                    [
+                        param_transform(f"driver_scale_{p}", self.driver_scale[p])
+                        for p in range(self.driver_dim)
+                    ]
+                )
+                self.response_scale = np.asarray(
+                    [
+                        param_transform(f"response_scale_{p}", self.response_scale[p])
+                        for p in range(self.response_dim)
+                    ]
+                )
 
         if self.random_seed is not None and self.randomize_driver_indices:
             self.driver_indices = self.rng.choice(
@@ -64,22 +92,39 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
 
         return True
 
+    def _pad_and_index_driver(
+        self, driver: np.ndarray, pad_jac: bool = False
+    ) -> np.ndarray:
+        """Pad and index driver to match the response dimension"""
+        pad_spec = (0, max(self.response_dim - self.driver_dim, 0))
+        if pad_jac:
+            pad_spec = (pad_spec, (0, 0))
+        return np.pad(driver, pad_spec)[self.driver_indices]
+
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
-        padded_driver = np.pad(driver, (0, max(self.response_dim - self.driver_dim, 0)))
-        return (
-            self.driver_scale * padded_driver[self.driver_indices]
-            + self.response_scale * response
-        )
+        padded_driver = self._pad_and_index_driver(driver)
+
+        if isinstance(self.driver_scale, np.ndarray):
+            # reuse padding and indexing from driver
+            driver_scale = self._pad_and_index_driver(self.driver_scale)
+        else:
+            driver_scale = self.driver_scale
+
+        return driver_scale * padded_driver + self.response_scale * response
 
     def jac(
         self, driver: np.ndarray, response: np.ndarray, wrt: str = "driver"
     ) -> np.ndarray:
         if wrt == "driver":
-            djac = np.pad(
-                np.eye(self.driver_dim),
-                ((0, max(self.response_dim - self.driver_dim, 0)), (0, 0)),
-            )
-            return self.driver_scale * djac[self.driver_indices]
+            if isinstance(self.driver_scale, np.ndarray):
+                # reuse padding and indexing from driver
+                driver_scale = self._pad_and_index_driver(self.driver_scale)
+                driver_scale = driver_scale[:, np.newaxis]
+            else:
+                driver_scale = self.driver_scale
+
+            djac = self._pad_and_index_driver(np.eye(self.driver_dim), pad_jac=True)
+            return driver_scale * djac
         elif wrt == "response":
             rjac = np.eye(self.response_dim)
             return self.response_scale * rjac

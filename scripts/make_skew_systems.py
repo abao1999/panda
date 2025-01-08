@@ -99,8 +99,8 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
 def init_additive_skew_system(
     driver_name: str,
     response_name: str,
-    driver_stats: dict[str, float],
-    response_stats: dict[str, float],
+    driver_stats: dict[str, np.ndarray],
+    response_stats: dict[str, np.ndarray],
     normalization_strategy: str = "flow_rms",
     transform_scales: bool = True,
     randomize_driver_indices: bool = True,
@@ -144,7 +144,7 @@ def filter_and_split_skew_systems(
     skew_pairs: list[tuple[str, str]],
     test_split: float = 0.2,
     random_seed: int | None = None,
-    stats_cache: dict[str, dict[str, float]] = {},
+    stats_cache: dict[str, dict[str, np.ndarray]] = {},
     train_systems: list[str] | None = None,
     test_systems: list[str] | None = None,
     **skew_system_kwargs,
@@ -216,7 +216,7 @@ def _compute_system_stats(
     atol: float,
     rtol: float,
     stiffness: float = 1.0,
-) -> tuple[str, dict[str, float]]:
+) -> tuple[str, dict[str, np.ndarray]]:
     """Compute RMS scale and amplitude for a single system's trajectory"""
     sys = getattr(flows, system)()
     ts, traj = sys.make_trajectory(
@@ -224,8 +224,10 @@ def _compute_system_stats(
     )
     assert traj is not None, f"{system} should be integrable"
     ts, traj = ts[transient:], traj[transient:]
-    flow_rms = np.sqrt(np.mean([np.max(sys(x, t)) ** 2 for x, t in zip(traj, ts)]))
-    amplitude = np.mean(np.abs(traj))
+    flow_rms = np.sqrt(
+        np.mean([np.asarray(sys(x, t)) ** 2 for x, t in zip(traj, ts)], axis=0)
+    )
+    amplitude = np.mean(np.abs(traj), axis=0)
     system_stats = {
         "flow_rms": stiffness / flow_rms,
         "amplitude": stiffness / amplitude,
@@ -240,7 +242,7 @@ def init_trajectory_stats_cache(
     traj_transient: float,
     atol: float,
     rtol: float,
-) -> dict[str, dict[str, float]]:
+) -> dict[str, dict[str, np.ndarray]]:
     """Initialize a cache of vector field RMS scales and amplitudes for each system using multiprocessing"""
     _compute_stats_worker = partial(
         _compute_system_stats,
