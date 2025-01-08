@@ -107,12 +107,32 @@ def init_additive_skew_system(
     seed: int | None = None,
     **kwargs,
 ) -> DynSys:
-    """Initialize a skew-product dynamical system with a driver and response system"""
+    """
+    Initialize a skew-product dynamical system with a driver and response system
+
+    Args:
+        driver_stats: reciprocals of computed stats, "flow_rms" and "amplitude", for the driver system
+        response_stats: reciprocals of computed stats, "flow_rms" and "amplitude", for the response system
+        normalization_strategy: strategy for normalizing the driver and response systems
+            - "flow_rms": normalize by the flow RMS scale
+            - "mean_amp": normalize by the mean amplitude
+            - "mean_amp_response": normalize the driver to the mean response amplitude
+                    i.e. driver_scale = mean_amp_response / mean_amp_driver; response_scale = 1.0
+        transform_scales: whether to pass the driver_scale and response_scale through the transform used for parameter perturbations
+        randomize_driver_indices: wheter to shuffle the driver indices in coupling map
+    """
     driver = getattr(flows, driver_name)()
     response = getattr(flows, response_name)()
 
-    driver_scale = driver_stats.get(normalization_strategy, 1.0)
-    response_scale = response_stats.get(normalization_strategy, 1.0)
+    if normalization_strategy == "mean_amp_response":
+        # NOTE: response_stats actually returns reciprocals of stats i.e. stiffness / amplitude
+        mean_amp_response = 1 / response_stats.get("mean_amp", 1.0)
+        inv_mean_amp_driver = driver_stats.get("mean_amp", 1.0)
+        driver_scale = mean_amp_response * inv_mean_amp_driver
+        response_scale = 1.0
+    else:
+        driver_scale = driver_stats.get(normalization_strategy, 1.0)
+        response_scale = response_stats.get(normalization_strategy, 1.0)
 
     coupling_map = RandomAdditiveCouplingMap(
         driver_dim=driver.dimension,
@@ -217,7 +237,10 @@ def _compute_system_stats(
     rtol: float,
     stiffness: float = 1.0,
 ) -> tuple[str, dict[str, np.ndarray]]:
-    """Compute RMS scale and amplitude for a single system's trajectory"""
+    """
+    Compute RMS scale and amplitude for a single system's trajectory.
+    Returns the reciprocals of the computed stats, with a stiffness factor applied
+    """
     sys = getattr(flows, system)()
     ts, traj = sys.make_trajectory(
         n, pts_per_period=n // num_periods, return_times=True, atol=atol, rtol=rtol
@@ -227,10 +250,10 @@ def _compute_system_stats(
     flow_rms = np.sqrt(
         np.mean([np.asarray(sys(x, t)) ** 2 for x, t in zip(traj, ts)], axis=0)
     )
-    amplitude = np.mean(np.abs(traj), axis=0)
+    mean_amp = np.mean(np.abs(traj), axis=0)
     system_stats = {
         "flow_rms": stiffness / flow_rms,
-        "amplitude": stiffness / amplitude,
+        "mean_amp": stiffness / mean_amp,
     }
     return system, system_stats
 
@@ -337,7 +360,7 @@ def main(cfg):
             driver_stats=stats_cache[driver],
             response_stats=stats_cache[response],
             normalization_strategy=cfg.skew.normalization_strategy,
-            perturb_stats=cfg.skew.perturb_stats,
+            transform_scales=cfg.skew.transform_scales,
             random_seed=cfg.sampling.rseed,
         )
         plot_single_system(system, sys_sampler, cfg)
@@ -388,16 +411,25 @@ def main(cfg):
         if cfg.sampling.save_params
         else None
     )
+    traj_stats_dir = (
+        os.path.join(cfg.sampling.data_dir, "trajectory_stats")
+        if cfg.sampling.save_traj_stats
+        else None
+    )
 
     split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
     for split, systems in [("train", train_systems), ("test", test_systems)]:
+        split_name = f"{split_prefix}{split}"
         sys_sampler.sample_ensembles(
             systems=systems,
-            split=f"{split_prefix}{split}",
+            split=split_name,
             split_failures=f"{split_prefix}failed_attractors_{split}",
             samples_process_interval=1,
             save_dir=cfg.sampling.data_dir,
-            save_params_dir=f"{param_dir}/{split}" if param_dir else None,
+            save_params_dir=f"{param_dir}/{split_name}" if param_dir else None,
+            save_traj_stats_dir=f"{traj_stats_dir}/{split_name}"
+            if traj_stats_dir
+            else None,
             standardize=cfg.sampling.standardize,
             use_multiprocessing=cfg.sampling.multiprocessing,
             reset_attractor_validator=True,

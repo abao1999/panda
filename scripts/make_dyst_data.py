@@ -167,20 +167,30 @@ def main(cfg):
         plot_single_system(system, sys_sampler, cfg)
         exit()
 
-    if cfg.sampling.save_params:
-        param_dir = os.path.join(cfg.sampling.data_dir, "parameters")
-    else:
-        param_dir = None
+    param_dir = (
+        os.path.join(cfg.sampling.data_dir, "parameters")
+        if cfg.sampling.save_params
+        else None
+    )
+    traj_stats_dir = (
+        os.path.join(cfg.sampling.data_dir, "trajectory_stats")
+        if cfg.sampling.save_traj_stats
+        else None
+    )
 
     split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
     for split, systems in [("train", train_systems), ("test", test_systems)]:
-        _ = sys_sampler.sample_ensembles(
+        split_name = f"{split_prefix}{split}"
+        sys_sampler.sample_ensembles(
             systems=systems,
-            split=f"{split_prefix}{split}",
+            split=split_name,
             split_failures=f"{split_prefix}failed_attractors_{split}",
             samples_process_interval=1,
             save_dir=cfg.sampling.data_dir,
-            save_params_dir=f"{param_dir}/{split}" if param_dir else None,
+            save_params_dir=f"{param_dir}/{split_name}" if param_dir else None,
+            save_traj_stats_dir=f"{traj_stats_dir}/{split_name}"
+            if traj_stats_dir
+            else None,
             standardize=cfg.sampling.standardize,
             use_multiprocessing=cfg.sampling.multiprocessing,
             reset_attractor_validator=True,

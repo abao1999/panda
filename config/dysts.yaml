@@ -19,6 +19,7 @@ sampling:
   debug_system: null
   silence_integration_errors: false
   save_params: true
+  save_traj_stats: true
   ignore_probability: 0.0
   sign_match_probability: 0.5
   atol: 1e-10
