@@ -13,6 +13,12 @@ hydra:
   run:
     dir: logs
 
+  job_logging:
+    handlers:
+      file:
+        mode: w
+
+
 # string identifier for wandb runs and generic I/O
 run_name: null
 

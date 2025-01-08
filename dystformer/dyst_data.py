@@ -108,6 +108,7 @@ class DynSysSampler:
         save_params_dir: str | None = None,
         standardize: bool = False,
         use_multiprocessing: bool = True,
+        silent_errors: bool = False,
         reset_attractor_validator: bool = False,
         **kwargs,
     ) -> list[dict[str, np.ndarray]]:
@@ -153,6 +154,8 @@ class DynSysSampler:
             pts_per_period=self.num_points // self.num_periods,
             event_fns=self.events,
             use_multiprocessing=use_multiprocessing,
+            silent_errors=silent_errors,
+            logger=logger,
             **kwargs,
         )
         default_ensemble = {
@@ -169,6 +172,7 @@ class DynSysSampler:
             postprocessing_callbacks=callbacks,
             standardize=standardize,
             use_multiprocessing=use_multiprocessing,
+            silent_errors=silent_errors,
             **kwargs,
         )
         ensembles.insert(0, default_ensemble)
@@ -245,6 +249,7 @@ class DynSysSampler:
         systems: list[str | BaseDyn],
         use_multiprocessing: bool = True,
         postprocessing_callbacks: list[Callable] | None = None,
+        silent_errors: bool = False,
         **kwargs,
     ) -> list[dict[str, np.ndarray]]:
         """
@@ -292,6 +297,8 @@ class DynSysSampler:
                     subset=perturbed_systems,
                     pts_per_period=self.num_points // self.num_periods,
                     event_fns=self.events,
+                    silent_errors=silent_errors,
+                    logger=logger,
                     **kwargs,
                 )
 

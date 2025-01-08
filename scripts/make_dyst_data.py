@@ -191,11 +191,10 @@ def main(cfg):
             standardize=cfg.sampling.standardize,
             use_multiprocessing=cfg.sampling.multiprocessing,
             reset_attractor_validator=True,
-            _silent_errors=cfg.sampling.silence_integration_errors,
+            silent_errors=cfg.sampling.silence_integration_errors,
             atol=cfg.sampling.atol,
             rtol=cfg.sampling.rtol,
             use_tqdm=False,
-            logger=logger,
         )
         sys_sampler.save_summary(
             os.path.join("outputs", f"{split_prefix}{split}_attractor_checks.json"),

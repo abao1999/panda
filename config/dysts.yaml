@@ -22,7 +22,7 @@ sampling:
   ignore_probability: 0.0
   sign_match_probability: 0.5
   atol: 1e-10
-  rtol: 1e-10
+  rtol: 1e-9
 
 validator:
   enable: true
@@ -34,7 +34,7 @@ validator:
 events:
   max_duration: 300
   instability_threshold: 1e4
-  min_step: 1e-16
+  min_step: 1e-10
   verbose: true
 
 skew:
