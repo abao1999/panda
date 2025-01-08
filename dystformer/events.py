@@ -76,7 +76,7 @@ class TimeStepEvent:
         t_diff = abs(t - self.last_t)
         if t_diff < self.min_step:
             if self.verbose:
-                logger.warning(f"{self.system.name} time step too small: {t_diff:.3f}s")
+                logger.warning(f"{self.system.name} time step too small: {t_diff:.2e}")
             return 0
 
         self.last_t = t
