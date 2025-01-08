@@ -232,8 +232,7 @@ def _compute_system_scale(
             [np.max(sys(x, t)) ** 2 for x, t in zip(traj[transient:], ts[transient:])]
         )
     )
-    # amplitude = np.mean(np.abs(traj[transient:]))
-    return system, stiffness * flow_rms
+    return system, stiffness / flow_rms
 
 
 def init_trajectory_scale_cache(
