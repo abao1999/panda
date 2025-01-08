@@ -28,13 +28,15 @@ class DynSysSampler:
     Args:
         rseed: random seed for reproducibility
         num_periods: number of periods to generate for each system
-        num_points: number of points to generate for each system
-        num_ics: number of initial conditions to generate for each system
-        num_param_perturbations: number of parameter perturbations to generate for each system
-        split_coords: whether to split the coordinates into two dimensions
-        events: events to pass to solve_ivp
+        num_points: number of time points to generate for each system
+        param_sampler: parameter sampler, samples parameters for each system
+        ic_sampler: initial condition sampler, samples initial conditions for each system
+        num_ics: number of initial conditions to sample for each system
+        num_param_perturbations: number of parameter perturbations to sample for each system
+        split_coords: whether to split the coordinates by dimension (univariate) or not (multivariate)
+        events: list of solve_ivp events to use for numerical integration
         attractor_validator_kwargs: kwargs for the attractor validator
-        verbose: whether to print verbose output
+        attractor_tests: list of tests to use for attractor validator
         save_failed_trajs: flag to save failed trajectory ensembles for debugging
     """
 

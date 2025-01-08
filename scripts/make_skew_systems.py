@@ -8,7 +8,7 @@ import os
 from functools import partial
 from itertools import permutations
 from multiprocessing import Pool
-from typing import Callable
+from typing import Callable, Literal
 
 import dysts.flows as flows
 import hydra
@@ -101,18 +101,40 @@ def init_additive_skew_system(
     response_name: str,
     driver_stats: dict[str, float],
     response_stats: dict[str, float],
-    normalization_strategy: str = "flow_rms",
+    normalization_strategy: Literal[
+        "flow_rms", "amplitude", "amp_response"
+    ] = "flow_rms",
     transform_scales: bool = True,
     randomize_driver_indices: bool = True,
     seed: int | None = None,
     **kwargs,
 ) -> DynSys:
-    """Initialize a skew-product dynamical system with a driver and response system"""
+    """
+    Initialize a skew-product dynamical system with a driver and response system
+
+    Args:
+        driver_stats: reciprocals of computed stats, "flow_rms" and "amplitude", for the driver system
+        response_stats: reciprocals of computed stats, "flow_rms" and "amplitude", for the response system
+        normalization_strategy: strategy for normalizing the driver and response systems
+            - "flow_rms": normalize by the flow RMS scale
+            - "amplitude": normalize by the amplitude
+            - "amp_response": normalize the driver to the response amplitude
+                    i.e. driver_scale = amp_response / amp_driver; response_scale = 1.0
+        transform_scales: whether to pass the driver_scale and response_scale through the transform used for parameter perturbations
+        randomize_driver_indices: wheter to shuffle the driver indices in coupling map
+    """
     driver = getattr(flows, driver_name)()
     response = getattr(flows, response_name)()
 
-    driver_scale = driver_stats.get(normalization_strategy, 1.0)
-    response_scale = response_stats.get(normalization_strategy, 1.0)
+    if normalization_strategy == "amp_response":
+        # NOTE: response_stats actually returns reciprocals of stats i.e. stiffness / amplitude
+        amp_response = 1 / response_stats.get("amplitude", 1.0)
+        inv_amp_driver = driver_stats.get("amplitude", 1.0)
+        driver_scale = amp_response * inv_amp_driver
+        response_scale = 1.0
+    else:
+        driver_scale = driver_stats.get(normalization_strategy, 1.0)
+        response_scale = response_stats.get(normalization_strategy, 1.0)
 
     coupling_map = RandomAdditiveCouplingMap(
         driver_dim=driver.dimension,
@@ -217,7 +239,10 @@ def _compute_system_stats(
     rtol: float,
     stiffness: float = 1.0,
 ) -> tuple[str, dict[str, float]]:
-    """Compute RMS scale and amplitude for a single system's trajectory"""
+    """
+    Compute RMS scale and amplitude for a single system's trajectory.
+    Returns the reciprocals of the computed stats, with a stiffness factor applied
+    """
     sys = getattr(flows, system)()
     ts, traj = sys.make_trajectory(
         n, pts_per_period=n // num_periods, return_times=True, atol=atol, rtol=rtol
@@ -335,7 +360,7 @@ def main(cfg):
             driver_stats=stats_cache[driver],
             response_stats=stats_cache[response],
             normalization_strategy=cfg.skew.normalization_strategy,
-            perturb_stats=cfg.skew.perturb_stats,
+            transform_scales=cfg.skew.transform_scales,
             random_seed=cfg.sampling.rseed,
         )
         plot_single_system(system, sys_sampler, cfg)
