@@ -8,7 +8,7 @@ import os
 from functools import partial
 from itertools import permutations
 from multiprocessing import Pool
-from typing import Callable
+from typing import Callable, Literal
 
 import dysts.flows as flows
 import hydra
@@ -99,8 +99,10 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
 def init_additive_skew_system(
     driver_name: str,
     response_name: str,
-    driver_scale: float,
-    response_scale: float,
+    driver_stats: dict[str, float],
+    response_stats: dict[str, float],
+    normalization_strategy: Literal["Amplitude", "RMS"] | None = None,
+    perturb_stats: bool = False,
     seed: int | None = None,
     **kwargs,
 ) -> DynSys:
@@ -111,8 +113,10 @@ def init_additive_skew_system(
     coupling_map = RandomAdditiveCouplingMap(
         driver_dim=driver.dimension,
         response_dim=response.dimension,
-        driver_scale=driver_scale,
-        response_scale=response_scale,
+        driver_stats=driver_stats,
+        response_stats=response_stats,
+        normalization_strategy=normalization_strategy,
+        perturb_stats=perturb_stats,
         random_seed=seed,
     )
 
@@ -136,7 +140,7 @@ def filter_and_split_skew_systems(
     skew_pairs: list[tuple[str, str]],
     test_split: float = 0.2,
     random_seed: int | None = None,
-    scale_cache: dict[str, float] | None = None,
+    stats_cache: dict[str, dict[str, float]] = {},
     train_systems: list[str] | None = None,
     test_systems: list[str] | None = None,
     **skew_system_kwargs,
@@ -149,7 +153,7 @@ def filter_and_split_skew_systems(
         skew_pairs: List of skew system pairs to sample from
         test_split: Fraction of systems to use for testing
         random_seed: Random seed for reproducibility
-        scale_cache: Optional dictionary mapping system names to their RMS flow scales.
+        stats_cache: Optional dictionary mapping system names to their RMS flow scales.
             If None, scales are set to 1.0
         train_systems: Optional list of system names to use for training
         test_systems: Optional list of system names to use for testing
@@ -159,8 +163,7 @@ def filter_and_split_skew_systems(
         skew product systems
     """
     split_idx = int(len(skew_pairs) * (1 - test_split))
-    train_pairs = skew_pairs[:split_idx]
-    test_pairs = skew_pairs[split_idx:]
+    train_pairs, test_pairs = skew_pairs[:split_idx], skew_pairs[split_idx:]
 
     # if provided, filter out pairs from train and test pairs that contain systems
     # that are not in the train or test sets, then recombine to update valid train/test pairs
@@ -186,33 +189,24 @@ def filter_and_split_skew_systems(
     train_pairs = list(valid_train_pairs) + list(invalid_test_pairs)
     test_pairs = list(valid_test_pairs) + list(invalid_train_pairs)
 
-    train_systems = [
-        init_additive_skew_system(
-            driver,
-            response,
-            1.0 if scale_cache is None else scale_cache[driver],
-            1.0 if scale_cache is None else scale_cache[response],
-            seed=random_seed,
-            **skew_system_kwargs,
-        )
-        for driver, response in train_pairs
-    ]
-    test_systems = [
-        init_additive_skew_system(
-            driver,
-            response,
-            1.0 if scale_cache is None else scale_cache[driver],
-            1.0 if scale_cache is None else scale_cache[response],
-            seed=random_seed,
-            **skew_system_kwargs,
-        )
-        for driver, response in test_pairs
-    ]
+    systems = {}
+    for split, skew_pairs in [("train", train_pairs), ("test", test_pairs)]:
+        systems[split] = [
+            init_additive_skew_system(
+                driver,
+                response,
+                driver_stats=stats_cache.get(driver, {}),
+                response_stats=stats_cache.get(response, {}),
+                seed=random_seed,
+                **skew_system_kwargs,
+            )
+            for driver, response in skew_pairs
+        ]
 
-    return train_systems, test_systems
+    return systems["train"], systems["test"]
 
 
-def _compute_system_scale(
+def _compute_system_stats(
     system: str,
     n: int,
     num_periods: int,
@@ -220,8 +214,8 @@ def _compute_system_scale(
     atol: float,
     rtol: float,
     stiffness: float = 1.0,
-) -> tuple[str, float]:
-    """Compute RMS scale in flow spacefor a single system"""
+) -> tuple[str, dict[str, float]]:
+    """Compute RMS scale and amplitude for a single system's trajectory"""
     sys = getattr(flows, system)()
     ts, traj = sys.make_trajectory(
         n, pts_per_period=n // num_periods, return_times=True, atol=atol, rtol=rtol
@@ -232,21 +226,25 @@ def _compute_system_scale(
             [np.max(sys(x, t)) ** 2 for x, t in zip(traj[transient:], ts[transient:])]
         )
     )
-    # amplitude = np.mean(np.abs(traj[transient:]))
-    return system, stiffness * flow_rms
+    amplitude = np.mean(np.abs(traj[transient:]))
+    system_stats = {
+        "flow_rms": stiffness * flow_rms,
+        "amplitude": amplitude,
+    }
+    return system, system_stats
 
 
-def init_trajectory_scale_cache(
+def init_trajectory_stats_cache(
     systems: list[str],
     traj_length: int,
     num_periods: int,
     traj_transient: float,
     atol: float,
     rtol: float,
-) -> dict[str, float]:
-    """Initialize a cache of vector field RMS scales for each system using multiprocessing"""
-    _compute_scale_worker = partial(
-        _compute_system_scale,
+) -> dict[str, dict[str, float]]:
+    """Initialize a cache of vector field RMS scales and amplitudes for each system using multiprocessing"""
+    _compute_stats_worker = partial(
+        _compute_system_stats,
         n=traj_length,
         num_periods=num_periods,
         transient=int(traj_length * traj_transient),
@@ -254,7 +252,7 @@ def init_trajectory_scale_cache(
         rtol=rtol,
     )
     with Pool() as pool:
-        results = pool.map(_compute_scale_worker, systems)
+        results = pool.map(_compute_stats_worker, systems)
     return dict(results)
 
 
@@ -324,7 +322,7 @@ def main(cfg):
     if cfg.sampling.debug_system:
         driver, response = cfg.sampling.debug_system.split("_")
         logger.info(f"Initializing trajectory scale cache for {driver} and {response}")
-        scale_cache = init_trajectory_scale_cache(
+        stats_cache = init_trajectory_stats_cache(
             [driver, response],
             cfg.sampling.num_points,
             cfg.sampling.num_periods,
@@ -333,7 +331,13 @@ def main(cfg):
             rtol=cfg.sampling.rtol,
         )  # type: ignore
         system = init_additive_skew_system(
-            driver, response, scale_cache[driver], scale_cache[response]
+            driver,
+            response,
+            driver_stats=stats_cache[driver],
+            response_stats=stats_cache[response],
+            normalization_strategy=cfg.skew.normalization_strategy,
+            perturb_stats=cfg.skew.perturb_stats,
+            random_seed=cfg.sampling.rseed,
         )
         plot_single_system(system, sys_sampler, cfg)
         exit()
@@ -349,7 +353,7 @@ def main(cfg):
 
     base_systems = set(sys for pair in skew_pairs for sys in pair)
     logger.info(f"Initializing trajectory scale cache for {len(base_systems)} systems")
-    scale_cache = init_trajectory_scale_cache(
+    stats_cache = init_trajectory_stats_cache(
         list(base_systems),
         cfg.sampling.num_points,
         cfg.sampling.num_periods,
@@ -364,9 +368,11 @@ def main(cfg):
     )
     train_systems, test_systems = filter_and_split_skew_systems(
         skew_pairs,
-        scale_cache=scale_cache,
+        stats_cache=stats_cache,
         test_split=cfg.sampling.test_split,
         random_seed=cfg.sampling.rseed,
+        normalization_strategy=cfg.skew.normalization_strategy,
+        perturb_stats=cfg.skew.perturb_stats,
     )
     train_prop = len(train_systems) / len(skew_pairs)
     test_prop = len(test_systems) / len(skew_pairs)
