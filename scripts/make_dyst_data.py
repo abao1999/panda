@@ -11,7 +11,7 @@ from typing import Callable
 import dysts.flows as flows
 import hydra
 import numpy as np
-from dysts.systems import DynSys, _resolve_event_signature
+from dysts.systems import DynSys
 
 from dystformer.attractor import (
     check_boundedness,
@@ -55,12 +55,6 @@ def default_attractor_tests() -> list[Callable]:
 
 def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
     """Plot a single skew system and its ensembles for debugging"""
-    events = [
-        _resolve_event_signature(system, event_fn)
-        for event_fn in sys_sampler.events or []
-    ]
-    logger.info(f"Events: {events}")
-
     logger.info(f"Generating ensembles for {system.name}")
     ensembles = sys_sampler.sample_ensembles(
         systems=[system],
@@ -68,7 +62,6 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         standardize=cfg.sampling.standardize,
         use_multiprocessing=cfg.sampling.multiprocessing,
         _silent_errors=cfg.sampling.silence_integration_errors,
-        events=events,
         atol=cfg.sampling.atol,
         rtol=cfg.sampling.rtol,
     )
@@ -95,7 +88,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
             plot_name=f"{system.name}_{subset_name}",
             plot_2d_slice=True,
             plot_projections=True,
-            standardize=cfg.sampling.standardize,
+            standardize=True if not cfg.sampling.standardize else False,
             max_samples=len(coords),
         )
 

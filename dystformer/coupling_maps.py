@@ -63,10 +63,9 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
 
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
         padded_driver = np.pad(driver, (0, max(self.response_dim - self.driver_dim, 0)))
-        return (
-            self.driver_scale * padded_driver[self.driver_indices]
-            + self.response_scale * response
-        )
+        return (1 / self.driver_scale) * padded_driver[self.driver_indices] + (
+            1 / self.response_scale
+        ) * response
 
     def jac(
         self, driver: np.ndarray, response: np.ndarray, wrt: str = "driver"
@@ -76,10 +75,10 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
                 np.eye(self.driver_dim),
                 ((0, max(self.response_dim - self.driver_dim, 0)), (0, 0)),
             )
-            return self.driver_scale * djac[self.driver_indices]
+            return (1 / self.driver_scale) * djac[self.driver_indices]
         elif wrt == "response":
             rjac = np.eye(self.response_dim)
-            return self.response_scale * rjac
+            return (1 / self.response_scale) * rjac
         else:
             raise ValueError(f"Invalid wrt argument: {wrt}")
 
