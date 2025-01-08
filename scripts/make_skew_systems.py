@@ -8,7 +8,7 @@ import os
 from functools import partial
 from itertools import permutations
 from multiprocessing import Pool
-from typing import Callable, Literal
+from typing import Callable
 
 import dysts.flows as flows
 import hydra
@@ -101,8 +101,9 @@ def init_additive_skew_system(
     response_name: str,
     driver_stats: dict[str, float],
     response_stats: dict[str, float],
-    normalization_strategy: Literal["Amplitude", "RMS"] | None = None,
-    perturb_stats: bool = False,
+    normalization_strategy: str = "flow_rms",
+    transform_scales: bool = True,
+    randomize_driver_indices: bool = True,
     seed: int | None = None,
     **kwargs,
 ) -> DynSys:
@@ -110,13 +111,16 @@ def init_additive_skew_system(
     driver = getattr(flows, driver_name)()
     response = getattr(flows, response_name)()
 
+    driver_scale = driver_stats.get(normalization_strategy, 1.0)
+    response_scale = response_stats.get(normalization_strategy, 1.0)
+
     coupling_map = RandomAdditiveCouplingMap(
         driver_dim=driver.dimension,
         response_dim=response.dimension,
-        driver_stats=driver_stats,
-        response_stats=response_stats,
-        normalization_strategy=normalization_strategy,
-        perturb_stats=perturb_stats,
+        driver_scale=driver_scale,
+        response_scale=response_scale,
+        transform_scales=transform_scales,
+        randomize_driver_indices=randomize_driver_indices,
         random_seed=seed,
     )
 
@@ -146,8 +150,6 @@ def filter_and_split_skew_systems(
     **skew_system_kwargs,
 ) -> tuple[list[str], list[str]]:
     """Sample skew systems from all pairs of non-skew systems and split into train/test
-
-    TODO: filter skew systems based on non-skew train and test sets, optionally
 
     Args:
         skew_pairs: List of skew system pairs to sample from
@@ -221,15 +223,12 @@ def _compute_system_stats(
         n, pts_per_period=n // num_periods, return_times=True, atol=atol, rtol=rtol
     )
     assert traj is not None, f"{system} should be integrable"
-    flow_rms = np.sqrt(
-        np.mean(
-            [np.max(sys(x, t)) ** 2 for x, t in zip(traj[transient:], ts[transient:])]
-        )
-    )
-    amplitude = np.mean(np.abs(traj[transient:]))
+    ts, traj = ts[transient:], traj[transient:]
+    flow_rms = np.sqrt(np.mean([np.max(sys(x, t)) ** 2 for x, t in zip(traj, ts)]))
+    amplitude = np.mean(np.abs(traj))
     system_stats = {
-        "inv_flow_rms": stiffness / flow_rms,
-        "amplitude": amplitude,
+        "flow_rms": stiffness / flow_rms,
+        "amplitude": stiffness / amplitude,
     }
     return system, system_stats
 
@@ -372,7 +371,8 @@ def main(cfg):
         test_split=cfg.sampling.test_split,
         random_seed=cfg.sampling.rseed,
         normalization_strategy=cfg.skew.normalization_strategy,
-        perturb_stats=cfg.skew.perturb_stats,
+        transform_scales=cfg.skew.transform_scales,
+        randomize_driver_indices=cfg.skew.randomize_driver_indices,
     )
     train_prop = len(train_systems) / len(skew_pairs)
     test_prop = len(test_systems) / len(skew_pairs)

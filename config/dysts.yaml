@@ -39,9 +39,9 @@ events:
 
 skew:
   num_pairs: 5000
-  normalization_strategy: RMS
-  perturb_stats: true
+  normalization_strategy: flow_rms
   randomize_driver_indices: true
+  transform_scales: true
 
   # paths to train and test sets of non-skew systems for filtering
   # skew system samples into train/test sets
