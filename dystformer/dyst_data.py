@@ -108,6 +108,7 @@ class DynSysSampler:
         samples_process_interval: int = 1,
         save_dir: str | None = None,
         save_params_dir: str | None = None,
+        save_traj_stats_dir: str | None = None,
         standardize: bool = False,
         use_multiprocessing: bool = True,
         silent_errors: bool = False,
@@ -144,6 +145,7 @@ class DynSysSampler:
                 save_dyst_dir,
                 failed_dyst_dir,
                 save_params_dir,
+                save_traj_stats_dir,
             ),
             self.save_failed_integrations_callback,
         ]
@@ -349,6 +351,7 @@ class DynSysSampler:
         save_dyst_dir: str | None = None,
         failed_dyst_dir: str | None = None,
         save_params_dir: str | None = None,
+        save_traj_stats_dir: str | None = None,
     ):
         """
         Callback to process and save ensembles and parameters
@@ -373,6 +376,7 @@ class DynSysSampler:
                     save_dyst_dir=save_dyst_dir,
                     failed_dyst_dir=failed_dyst_dir,
                     save_params_dir=save_params_dir,
+                    save_traj_stats_dir=save_traj_stats_dir,
                 )
                 ensemble_list.clear()
 
@@ -386,6 +390,7 @@ class DynSysSampler:
         save_dyst_dir: str | None = None,
         failed_dyst_dir: str | None = None,
         save_params_dir: str | None = None,
+        save_traj_stats_dir: str | None = None,
     ) -> None:
         """
         Process the ensemble list by checking for valid attractors and filtering out invalid ones.
@@ -437,13 +442,16 @@ class DynSysSampler:
             self._save_parameters(
                 failed_systems, os.path.join(save_params_dir, "failures.json")
             )
+            # only save system stats for successful samples, and if we also save parameters
+            if save_traj_stats_dir is not None:
+                self._save_traj_stats(ensemble, save_dir=save_traj_stats_dir)
 
     def _save_parameters(
         self, perturbed_systems: list[BaseDyn], save_path: str | None = None
     ) -> None:
         if save_path is None or len(perturbed_systems) == 0:
             return
-
+        logger.info(f"Saving parameters to {save_path}")
         if os.path.exists(save_path):
             with open(save_path, "r") as f:
                 param_dict = json.load(f)
@@ -467,6 +475,51 @@ class DynSysSampler:
 
         with open(save_path, "w") as f:
             json.dump(param_dict, f, indent=4)
+
+    def _save_traj_stats(
+        self,
+        ensemble: dict[str, np.ndarray],
+        save_dir: str | None = None,
+    ) -> None:
+        system_names = list(ensemble.keys())
+        if save_dir is None or len(system_names) == 0:
+            return
+        save_path = os.path.join(save_dir, "traj_stats.json")
+        logger.info(f"Saving trajectory stats to {save_path}")
+        if os.path.exists(save_path):
+            with open(save_path, "r") as f:
+                traj_stats = json.load(f)
+        else:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            traj_stats = {}
+
+        for sys_name, trajectories in ensemble.items():
+            # NOTE: while we can get ic, mean, and std from system attributes, the latter two are only computed if standardize=True
+            if sys_name not in traj_stats:
+                traj_stats[sys_name] = {
+                    "ic": [],
+                    "mean": [],
+                    "std": [],
+                    "mean_amp": [],
+                }
+
+            init_conds = []
+            means = []
+            stds = []
+            mean_amps = []
+            for _, traj in enumerate(trajectories):
+                init_conds.append(traj[:, 0].tolist())
+                means.append(traj.mean(axis=1).tolist())
+                stds.append(traj.std(axis=1).tolist())
+                mean_amps.append(np.mean(np.abs(traj), axis=1).tolist())
+
+            traj_stats[sys_name]["ic"].extend(init_conds)
+            traj_stats[sys_name]["mean"].extend(means)
+            traj_stats[sys_name]["std"].extend(stds)
+            traj_stats[sys_name]["mean_amp"].extend(mean_amps)
+
+        with open(save_path, "w") as f:
+            json.dump(traj_stats, f, indent=4)
 
     def save_summary(self, save_json_path: str):
         """
