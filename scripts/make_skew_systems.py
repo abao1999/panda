@@ -228,7 +228,7 @@ def _compute_system_stats(
     )
     amplitude = np.mean(np.abs(traj[transient:]))
     system_stats = {
-        "flow_rms": stiffness * flow_rms,
+        "inv_flow_rms": stiffness / flow_rms,
         "amplitude": amplitude,
     }
     return system, system_stats
