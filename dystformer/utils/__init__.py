@@ -2,6 +2,7 @@ from .data_utils import (
     accumulate_coords,
     convert_to_arrow,
     demote_from_numpy,
+    dict_demote_from_numpy,
     get_system_filepaths,
     make_ensemble_from_arrow_dir,
     process_trajs,

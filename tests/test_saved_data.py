@@ -9,6 +9,8 @@ import warnings
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import dysts.flows as flows
+
 from dystformer.utils import (
     accumulate_coords,
     get_system_filepaths,
@@ -24,6 +26,8 @@ def plot_saved_data(
     split: str,
     one_dim_target: bool = False,
     samples_subset_dict: Optional[Dict[str, List[int]]] = None,
+    n_samples_plot: int = 1,
+    plot_default_sample: bool = True,
     plot_name_suffix: Optional[str] = None,
     plot_save_dir: str = "tests/figs",
 ) -> None:
@@ -41,24 +45,47 @@ def plot_saved_data(
                 samples_subset = samples_subset_dict[dyst_name]
                 print(f"Plotting samples subset {samples_subset} for {dyst_name}")
 
-        filepaths = get_system_filepaths(dyst_name, DATA_DIR, split)
+        start_sample_idx = 1 if plot_default_sample else 0
+        end_sample_idx = n_samples_plot + 1 if plot_default_sample else n_samples_plot
+        filepaths = get_system_filepaths(dyst_name, DATA_DIR, split)[
+            start_sample_idx:end_sample_idx
+        ]
         print(f"{dyst_name} filepaths: ", filepaths)
 
         dyst_coords_samples = accumulate_coords(filepaths, one_dim_target)
-        # # cut off only first 512 time steps
-        # dyst_coords_samples = dyst_coords_samples[:, :, :512]
 
         # plot the trajectories
         plot_name = f"{dyst_name}_{plot_name_suffix}" if plot_name_suffix else dyst_name
-        plot_trajs_multivariate(
-            dyst_coords_samples,
-            save_dir=plot_save_dir,
-            plot_name=plot_name,
-            samples_subset=samples_subset,
-            standardize=True,
-            plot_2d_slice=True,
-            plot_projections=True,
-        )
+
+        is_skew = "_" in dyst_name
+        if is_skew:
+            driver_name, _ = dyst_name.split("_")
+            driver_dim = getattr(flows, driver_name)().dimension
+            driver_coords = dyst_coords_samples[:, :driver_dim, :]
+            response_coords = dyst_coords_samples[:, driver_dim:, :]
+            for name, coords in [
+                ("driver", driver_coords),
+                ("response", response_coords),
+            ]:
+                plot_trajs_multivariate(
+                    coords,
+                    save_dir=plot_save_dir,
+                    plot_name=f"{plot_name}_{name}",
+                    samples_subset=samples_subset,
+                    standardize=True,
+                    plot_2d_slice=False,
+                    plot_projections=True,
+                )
+        else:
+            plot_trajs_multivariate(
+                dyst_coords_samples,
+                save_dir=plot_save_dir,
+                plot_name=plot_name,
+                samples_subset=samples_subset,
+                standardize=True,
+                plot_2d_slice=True,
+                plot_projections=True,
+            )
 
 
 if __name__ == "__main__":
@@ -89,6 +116,17 @@ if __name__ == "__main__":
         type=str,
         default="tests/figs",
     )
+    parser.add_argument(
+        "--n_samples_plot",
+        help="Number of samples to plot",
+        type=int,
+        default=6,
+    )
+    parser.add_argument(
+        "--skip_default_sample",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     args = parser.parse_args()
 
     if args.split is None:
@@ -118,6 +156,8 @@ if __name__ == "__main__":
         split=args.split,
         one_dim_target=args.one_dim_target,
         samples_subset_dict=samples_subset_dict,
+        n_samples_plot=args.n_samples_plot,
+        plot_default_sample=not args.skip_default_sample,
         plot_name_suffix="failures"
         if args.samples_subset == "failed_samples"
         else None,

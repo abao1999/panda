@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from dystformer.attractor import AttractorValidator
 from dystformer.skew_system import SkewProduct
-from dystformer.utils import demote_from_numpy, process_trajs, timeit
+from dystformer.utils import dict_demote_from_numpy, process_trajs, timeit
 
 logger = logging.getLogger(__name__)
 
@@ -476,12 +476,8 @@ class DynSysSampler:
                 # save a fat chunk of metadata sufficient for reconstructing the system
                 serialized_params = {
                     "sample_idx": sample_idx,
-                    "driver_params": list(
-                        map(demote_from_numpy, sys.driver.param_list)
-                    ),
-                    "response_params": list(
-                        map(demote_from_numpy, sys.response.param_list)
-                    ),
+                    "driver_params": dict_demote_from_numpy(sys.driver.params),
+                    "response_params": dict_demote_from_numpy(sys.response.params),
                     "driver_dim": sys.driver_dim,
                     "response_dim": sys.response_dim,
                     "coupling_map": sys.coupling_map._serialize(),  # requried for now
@@ -489,7 +485,7 @@ class DynSysSampler:
             else:
                 serialized_params = {
                     "sample_idx": sample_idx,
-                    "params": list(map(demote_from_numpy, sys.param_list)),
+                    "params": dict_demote_from_numpy(sys.params),
                     "dim": sys.dimension,
                 }
 
@@ -503,6 +499,11 @@ class DynSysSampler:
         ensemble: dict[str, np.ndarray],
         save_dir: str | None = None,
     ) -> None:
+        """
+        Save trajectory statistics to a json file.
+        We do this for downstream analysis and re-initialization without depending on loading trajectories from Arrow files
+        TODO: pass in systems: List[DynSys] so we can also use it to save flow_rms
+        """
         system_names = list(ensemble.keys())
         if save_dir is None or len(system_names) == 0:
             return

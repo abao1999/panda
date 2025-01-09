@@ -177,7 +177,21 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         driver_unbounded_indices: list[int] = [],
     ) -> np.ndarray:
         """
-        TODO
+        Dynamical systems can have unbounded coordinates e.g. time-like drivers or exponential growth dimensions
+        Postprocessing is used to bound these coordinates, for instance by making them periodic
+        For skew systems, this postprocessing is complicated by two considerations:
+            a. Our feature to allow randomized shuffling of driver dimensions
+            b. The driver and response systems live in different spaces.
+        Therefore, a roadmap of the postprocessing is as follows:
+            1. Keep track of the unbounded indices for the driver and response systems
+            2. Map the driver system into the driver space and apply the driver's postprocessing
+            3. Apply the response's postprocessing to the response system
+            4. Map the postprocessed driver back into the response space
+            5. Enforce consistency between the separately postprocessed driver and response
+                This is done by a heuristic scheme that aggregates the driver and response postprocessed coordinates:
+                    + If two indices are both unbounded, the average of the two is returned
+                    + If only one is unbounded, the unbounded index is returned (via the mask)
+                    + If neither is unbounded, theyre the same and the average is either one of them
         """
         inds = np.arange(self.response_dim)
         driver_ub_inds = self._permuted_driver_unbounded_indices(
@@ -220,6 +234,7 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         return 0.5 * (driver * driver_mask + response * response_mask)
 
     def _serialize(self) -> dict:
+        """Serialize (JSON compatible) coupling map parameters for saving params"""
         driver_scale = (
             self.driver_scale.tolist()
             if isinstance(self.driver_scale, np.ndarray)
@@ -247,11 +262,11 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
 
     @classmethod
     def _deserialize(cls, data: dict) -> "RandomAdditiveCouplingMap":
+        """Deserialize (JSON compatible) coupling map parameters for reconstructing coupling map"""
         preinit_data = data["preinit"]
-        if isinstance(preinit_data["driver_scale"], list):
-            preinit_data["driver_scale"] = np.array(preinit_data["driver_scale"])
-        if isinstance(preinit_data["response_scale"], list):
-            preinit_data["response_scale"] = np.array(preinit_data["response_scale"])
+        for key in ["driver_scale", "response_scale"]:
+            if isinstance(preinit_data[key], list):
+                preinit_data[key] = np.array(preinit_data[key])
 
         obj = cls(**preinit_data)
         obj.driver_indices = np.array(data["postinit"]["driver_indices"])

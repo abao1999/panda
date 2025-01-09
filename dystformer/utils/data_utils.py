@@ -23,6 +23,13 @@ def demote_from_numpy(param: float | np.ndarray) -> float | list[float]:
     return param
 
 
+def dict_demote_from_numpy(param_dict: dict) -> dict:
+    """
+    Demote a dictionary of parameters to a dictionary of floats or list of floats
+    """
+    return {k: demote_from_numpy(v) for k, v in param_dict.items()}
+
+
 def timeit(logger: logging.Logger | None = None) -> Callable:
     """Decorator that measures and logs execution time of a function.
 
