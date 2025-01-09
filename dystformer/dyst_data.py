@@ -3,10 +3,10 @@ import logging
 import os
 from collections import defaultdict
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from itertools import starmap
 from multiprocessing import Pool
-from typing import Any, Callable
+from typing import Callable
 
 import dysts.flows as flows
 import numpy as np
@@ -16,6 +16,7 @@ from dysts.systems import make_trajectory_ensemble
 from tqdm import tqdm
 
 from dystformer.attractor import AttractorValidator
+from dystformer.skew_system import SkewProduct
 from dystformer.utils import demote_from_numpy, process_trajs, timeit
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,8 @@ class DynSysSampler:
 
     split_coords: bool = True  # by default save trajectories compatible with Chronos
     events: list[Callable[[float, np.ndarray], float]] | None = None
-    attractor_validator_kwargs: dict[str, Any] = field(default_factory=dict)
+
+    validator_transient_frac: float = 0.05
     attractor_tests: list[Callable] | None = None
 
     verbose: bool = True
@@ -73,7 +75,7 @@ class DynSysSampler:
             )
         elif self.attractor_tests is not None:
             self.attractor_validator = AttractorValidator(
-                **self.attractor_validator_kwargs,
+                transient_time_frac=self.validator_transient_frac,
                 tests=self.attractor_tests,
             )
 
@@ -122,10 +124,11 @@ class DynSysSampler:
         assert len(set(sys_names)) == len(
             sys_names
         ), "Cannot have duplicate system names"
-        logger.info(
-            f"Making {split} split with {len(systems)} dynamical systems"
-            f" (showing first {min(5, len(sys_names))}): \n {sys_names[:5]}"
-        )
+        if save_dir is not None:
+            logger.info(
+                f"Making {split} split with {len(systems)} dynamical systems"
+                f" (showing first {min(5, len(sys_names))}): \n {sys_names[:5]}"
+            )
 
         if self.attractor_validator is not None and reset_attractor_validator:
             self.attractor_validator.reset()
@@ -158,16 +161,20 @@ class DynSysSampler:
             event_fns=self.events,
             use_multiprocessing=use_multiprocessing,
             silent_errors=silent_errors,
-            logger=logger,
             **kwargs,
         )
+        failed_integrations = [
+            key
+            for key, value in default_ensemble.items()
+            if value is None or np.isnan(value).any()
+        ]
         default_ensemble = {
             key: value
             for key, value in default_ensemble.items()
-            if value is not None and not np.isnan(value).any()
+            if key not in failed_integrations
         }
         for callback in callbacks[:-1]:  # ignore failed integrations
-            callback(0, default_ensemble)
+            callback(0, default_ensemble, excluded_keys=failed_integrations)
 
         logger.info("Generating perturbed ensembles...")
         ensembles = self._generate_ensembles(
@@ -301,7 +308,6 @@ class DynSysSampler:
                     pts_per_period=self.num_points // self.num_periods,
                     event_fns=self.events,
                     silent_errors=silent_errors,
-                    logger=logger,
                     **kwargs,
                 )
 
@@ -435,18 +441,22 @@ class DynSysSampler:
             failed_systems = [
                 sys for sys in perturbed_systems if sys.name in failed_ensemble.keys()
             ]
-            self._save_parameters(
-                successful_systems, os.path.join(save_params_dir, "successes.json")
-            )
-            self._save_parameters(
-                failed_systems, os.path.join(save_params_dir, "failures.json")
-            )
+
+            success_dir = os.path.join(save_params_dir, "successes.json")
+            self._save_parameters(sample_idx, successful_systems, success_dir)
+
+            fail_dir = os.path.join(save_params_dir, "failures.json")
+            self._save_parameters(sample_idx, failed_systems, fail_dir)
+
             # only save system stats for successful samples, and if we also save parameters
             if save_traj_stats_dir is not None:
                 self._save_traj_stats(ensemble, save_dir=save_traj_stats_dir)
 
     def _save_parameters(
-        self, perturbed_systems: list[BaseDyn], save_path: str | None = None
+        self,
+        sample_idx: int,
+        perturbed_systems: list[BaseDyn],
+        save_path: str | None = None,
     ) -> None:
         if save_path is None or len(perturbed_systems) == 0:
             return
@@ -462,13 +472,29 @@ class DynSysSampler:
             if sys.name not in param_dict:
                 param_dict[sys.name] = []
 
-            if "_" in sys.name:  # hack: for skew systems
-                serialized_params = [
-                    list(map(demote_from_numpy, sys.driver.param_list)),
-                    list(map(demote_from_numpy, sys.response.param_list)),
-                ]
+            if isinstance(sys, SkewProduct):
+                # save a fat chunk of metadata sufficient for reconstructing the system
+                serialized_params = {
+                    "sample_idx": sample_idx,
+                    "driver_scale": sys.driver_scale,
+                    "response_scale": sys.response_scale,
+                    "driver_indices": sys.driver_indices,
+                    "unbounded_indices": sys.unbounded_indices,
+                    "driver_params": list(
+                        map(demote_from_numpy, sys.driver.param_list)
+                    ),
+                    "response_params": list(
+                        map(demote_from_numpy, sys.response.param_list)
+                    ),
+                    "driver_dim": sys.driver_dim,
+                    "response_dim": sys.response_dim,
+                }
             else:
-                serialized_params = list(map(demote_from_numpy, sys.param_list))
+                serialized_params = {
+                    "sample_idx": sample_idx,
+                    "params": list(map(demote_from_numpy, sys.param_list)),
+                    "dim": sys.dimension,
+                }
 
             param_dict[sys.name].append(serialized_params)
 
@@ -495,17 +521,9 @@ class DynSysSampler:
         for sys_name, trajectories in ensemble.items():
             # NOTE: while we can get ic, mean, and std from system attributes, the latter two are only computed if standardize=True
             if sys_name not in traj_stats:
-                traj_stats[sys_name] = {
-                    "ic": [],
-                    "mean": [],
-                    "std": [],
-                    "mean_amp": [],
-                }
+                traj_stats[sys_name] = {"ic": [], "mean": [], "std": [], "mean_amp": []}
 
-            init_conds = []
-            means = []
-            stds = []
-            mean_amps = []
+            init_conds, means, stds, mean_amps = [], [], [], []
             for _, traj in enumerate(trajectories):
                 init_conds.append(traj[:, 0].tolist())
                 means.append(traj.mean(axis=1).tolist())

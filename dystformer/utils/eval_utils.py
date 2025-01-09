@@ -5,31 +5,25 @@ utils for Chronos Pipeline (evaluation) and evaluation scripts
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import torch
-from git import Union
 from gluonts.dataset.common import FileDataset
 from gluonts.dataset.split import TestData, split
-from gluonts.itertools import batcher
-from gluonts.model.forecast import Forecast, SampleForecast
-from tqdm.auto import tqdm
 
 from dystformer.utils import process_trajs
 
 logger = logging.getLogger(__name__)
-if TYPE_CHECKING:
-    from dystformer.chronos.pipeline import ChronosPipeline
 
 
 def rolling_prediction_window_indices(
-    datasets: Dict[str, List],
+    datasets: dict[str, list],
     window_stride: int,
     context_length: int,
     prediction_length: int,
-) -> Dict[str, List[List[int]]]:
+) -> dict[str, list[list[int]]]:
     """
     Get the indices of individual windows for each timeseries in each system
     in the stacked prediction window array from a rolling sampler.
@@ -64,9 +58,9 @@ def rolling_prediction_window_indices(
 
 
 def sampled_prediction_window_indices(
-    datasets: Dict[str, List],
+    datasets: dict[str, list],
     num_samples: int,
-) -> Dict[str, List[List[int]]]:
+) -> dict[str, list[list[int]]]:
     """
     Get the indices of individual windows for each timeseries in each system
     in the stacked prediction window array from a sampled sampler.
@@ -101,14 +95,14 @@ def sampled_prediction_window_indices(
 
 
 def save_evaluation_results(
-    metrics: Dict[str, Dict[str, float]],
-    window_indices: Optional[Dict[str, List[List[int]]]] = None,
+    metrics: dict[str, dict[str, float]],
+    window_indices: dict[str, list[list[int]]] | None = None,
     window_dim: int = 0,
-    coords: Optional[Dict[str, np.ndarray]] = None,
+    coords: dict[str, np.ndarray] | None = None,
     metrics_save_dir: str = "results",
-    metrics_fname: Optional[str] = None,
+    metrics_fname: str | None = None,
     overwrite: bool = False,
-    coords_save_dir: Optional[str] = None,
+    coords_save_dir: str | None = None,
     split_coords: bool = False,
     verbose: bool = False,
 ):
@@ -182,7 +176,7 @@ def save_evaluation_results(
 
 
 ### OLD CHRONOS UTILS (TODO: delete eventually, once we refactor Chronos code more) ###
-def left_pad_and_stack_1D(tensors: List[torch.Tensor]) -> torch.Tensor:
+def left_pad_and_stack_1D(tensors: list[torch.Tensor]) -> torch.Tensor:
     """
     Left pad a list of 1D tensors to the same length and stack them.
     Used in pipeline, if given context is a list of tensors.
@@ -203,7 +197,7 @@ def load_and_split_dataset_from_arrow(
     prediction_length: int,
     offset: int,
     num_rolls: int,
-    filepath: Union[str, Path],
+    filepath: str | Path,
     one_dim_target: bool = False,
     verbose: bool = False,
 ) -> TestData:
@@ -240,53 +234,9 @@ def load_and_split_dataset_from_arrow(
     return test_data
 
 
-def generate_sample_forecasts(
-    test_data_input: Iterable,
-    pipeline: "ChronosPipeline",
-    prediction_length: int,
-    batch_size: int,
-    num_samples: int,
-    limit_prediction_length: bool = True,
-    save_path: Optional[str] = None,
-    **predict_kwargs,
-) -> Iterable[Forecast]:
-    """
-    Generates forecast samples using GluonTS batcher to batch the test instances generated from FileDataset
-    Returns Forecast object https://ts.gluon.ai/stable/api/gluonts/gluonts.model.forecast.html#gluonts.model.forecast.Forecast
-    """
-    forecast_samples = []
-    for batch in tqdm(batcher(test_data_input, batch_size=batch_size)):
-        context = [torch.tensor(entry["target"]) for entry in batch]
-        forecast_samples.append(
-            pipeline.predict(
-                context,
-                prediction_length=prediction_length,
-                num_samples=num_samples,
-                limit_prediction_length=limit_prediction_length,
-                **predict_kwargs,
-            ).numpy()
-        )
-    forecast_samples = np.concatenate(forecast_samples)
-    print("Forecast Samples shape: ", forecast_samples.shape)
-    if save_path is not None:
-        print(f"Saving forecast samples to {save_path}")
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        np.save(save_path, forecast_samples)
-
-    sample_forecasts = []
-    for item, ts in zip(forecast_samples, test_data_input):
-        forecast_start_date = ts["start"] + len(ts["target"])
-        sample_forecasts.append(
-            # see https://ts.gluon.ai/stable/api/gluonts/gluonts.model.forecast.html#gluonts.model.forecast.SampleForecast
-            SampleForecast(samples=item, start_date=forecast_start_date)
-        )
-
-    return sample_forecasts
-
-
 def average_nested_dict(
-    data: Dict[Any, Dict[Any, List[float]]],
-) -> Dict[Any, Dict[Any, float]]:
+    data: dict[Any, dict[Any, list[float]]],
+) -> dict[Any, dict[Any, float]]:
     return {
         outer_key: {
             inner_key: sum(values) / len(values)

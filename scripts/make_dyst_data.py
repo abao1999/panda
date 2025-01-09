@@ -61,7 +61,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         save_dir=None,  # NOTE: do not save trajectories in debug mode!
         standardize=cfg.sampling.standardize,
         use_multiprocessing=cfg.sampling.multiprocessing,
-        _silent_errors=cfg.sampling.silence_integration_errors,
+        silent_errors=cfg.sampling.silence_integration_errors,
         atol=cfg.sampling.atol,
         rtol=cfg.sampling.rtol,
     )
@@ -150,12 +150,8 @@ def main(cfg):
         events=event_fns,
         verbose=cfg.sampling.verbose,
         split_coords=cfg.sampling.split_coords,
-        attractor_validator_kwargs={
-            "verbose": cfg.validator.verbose,
-            "transient_time_frac": cfg.validator.transient_time_frac,
-            "plot_save_dir": cfg.validator.plot_save_dir,
-        },
         attractor_tests=default_attractor_tests(),
+        validator_transient_frac=cfg.validator.transient_time_frac,
         save_failed_trajs=cfg.validator.save_failed_trajs,
     )
 
