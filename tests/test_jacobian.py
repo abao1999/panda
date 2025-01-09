@@ -17,6 +17,8 @@ WORK_DIR = os.getenv("WORK", "")
 DATA_DIR = os.path.join(WORK_DIR, "data")
 PARAMS_DIR = os.path.join(DATA_DIR, "parameters")
 
+logger = logging.getLogger(__name__)
+
 
 def compute_jac_fd(
     rhs: Callable[[np.ndarray, float], np.ndarray],
@@ -67,6 +69,8 @@ def init_skew_system_from_params(
     sys = SkewProduct(
         driver=driver, response=response, coupling_map=coupling_map, **kwargs
     )
+    # logger.info(f"param dict for {system_name}: \n {param_dict}")
+    # logger.info(f"coupling map for {system_name}: \n {coupling_map}")
 
     return sys
 
@@ -98,6 +102,9 @@ def test_system_jacobian(
 
         assert sys.dimension == param_dict["dim"], "Dimension mismatch!"
 
+    # set initial condition
+    sys.ic = np.array(param_dict["ic"])
+
     if not sys.has_jacobian():
         return 2
 
@@ -120,7 +127,9 @@ def test_system_jacobian(
                 coords,
                 save_dir=save_traj_plot_dir,
                 plot_name=f"reconstructed_{system_name}_{name}",
-                n_samples_plot=1,
+                standardize=True,
+                plot_2d_slice=False,
+                plot_projections=True,
             )
 
     assert traj is not None, f"{system_name} should be integrable"

@@ -45,8 +45,8 @@ def plot_saved_data(
                 samples_subset = samples_subset_dict[dyst_name]
                 print(f"Plotting samples subset {samples_subset} for {dyst_name}")
 
-        start_sample_idx = 1 if plot_default_sample else 0
-        end_sample_idx = n_samples_plot + 1 if plot_default_sample else n_samples_plot
+        start_sample_idx = 0 if plot_default_sample else 1
+        end_sample_idx = n_samples_plot if plot_default_sample else n_samples_plot + 1
         filepaths = get_system_filepaths(dyst_name, DATA_DIR, split)[
             start_sample_idx:end_sample_idx
         ]
@@ -83,7 +83,7 @@ def plot_saved_data(
                 plot_name=plot_name,
                 samples_subset=samples_subset,
                 standardize=True,
-                plot_2d_slice=True,
+                plot_2d_slice=False,
                 plot_projections=True,
             )
 

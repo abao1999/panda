@@ -473,18 +473,20 @@ class DynSysSampler:
                 param_dict[sys.name] = []
 
             if isinstance(sys, SkewProduct):
-                # save a fat chunk of metadata sufficient for reconstructing the system
+                # save a fat chunk of metadata sufficient for reconstructing the skew system
                 serialized_params = {
                     "sample_idx": sample_idx,
+                    "ic": sys.ic.tolist(),
                     "driver_params": dict_demote_from_numpy(sys.driver.params),
                     "response_params": dict_demote_from_numpy(sys.response.params),
                     "driver_dim": sys.driver_dim,
                     "response_dim": sys.response_dim,
-                    "coupling_map": sys.coupling_map._serialize(),  # requried for now
+                    "coupling_map": sys.coupling_map._serialize(),  # required for now
                 }
             else:
                 serialized_params = {
                     "sample_idx": sample_idx,
+                    "ic": sys.ic.tolist(),
                     "params": dict_demote_from_numpy(sys.params),
                     "dim": sys.dimension,
                 }
