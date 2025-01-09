@@ -19,6 +19,15 @@ class BaseCouplingMap:
     def dim(self) -> int:
         raise NotImplementedError
 
+    def _serialize(self) -> dict:
+        """Serialize (JSON compatible) coupling map data for saving params"""
+        raise NotImplementedError
+
+    @staticmethod
+    def _deserialize(data: dict) -> None:
+        """Deserialize (JSON compatible) coupling map data for setting params"""
+        raise NotImplementedError
+
 
 @dataclass
 class RandomAdditiveCouplingMap(BaseCouplingMap):
@@ -210,11 +219,51 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         response_mask = response_ub_mask[..., np.newaxis, np.newaxis]
         return 0.5 * (driver * driver_mask + response * response_mask)
 
+    def _serialize(self) -> dict:
+        driver_scale = (
+            self.driver_scale.tolist()
+            if isinstance(self.driver_scale, np.ndarray)
+            else self.driver_scale
+        )
+        response_scale = (
+            self.response_scale.tolist()
+            if isinstance(self.response_scale, np.ndarray)
+            else self.response_scale
+        )
+        return {
+            "preinit": {
+                "driver_dim": self.driver_dim,
+                "response_dim": self.response_dim,
+                "driver_scale": driver_scale,
+                "response_scale": response_scale,
+                "random_seed": self.random_seed,
+                "randomize_driver_indices": self.randomize_driver_indices,
+                "transform_scales": self.transform_scales,
+            },
+            "postinit": {
+                "driver_indices": self.driver_indices.tolist(),
+            },
+        }
+
+    @classmethod
+    def _deserialize(cls, data: dict) -> "RandomAdditiveCouplingMap":
+        preinit_data = data["preinit"]
+        if isinstance(preinit_data["driver_scale"], list):
+            preinit_data["driver_scale"] = np.array(preinit_data["driver_scale"])
+        if isinstance(preinit_data["response_scale"], list):
+            preinit_data["response_scale"] = np.array(preinit_data["response_scale"])
+
+        obj = cls(**preinit_data)
+        obj.driver_indices = np.array(data["postinit"]["driver_indices"])
+        return obj
+
 
 @dataclass
 class RandomLinearCouplingMap(BaseCouplingMap):
     """
     Affine coupling map between driver and response flows
+
+    TODO: this is very outdated
     """
 
     random_seed: int = 0
