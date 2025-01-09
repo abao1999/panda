@@ -476,10 +476,10 @@ class DynSysSampler:
                 # save a fat chunk of metadata sufficient for reconstructing the system
                 serialized_params = {
                     "sample_idx": sample_idx,
-                    "driver_scale": sys.driver_scale,
-                    "response_scale": sys.response_scale,
-                    "driver_indices": sys.driver_indices,
-                    "unbounded_indices": sys.unbounded_indices,
+                    "driver_scale": sys.coupling_map.driver_scale,
+                    "response_scale": sys.coupling_map.response_scale,
+                    "driver_indices": sys.coupling_map.driver_indices,
+                    "unbounded_indices": sys.coupling_map.unbounded_indices,
                     "driver_params": list(
                         map(demote_from_numpy, sys.driver.param_list)
                     ),
