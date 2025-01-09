@@ -58,6 +58,33 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
             self.random_seed is not None and self.randomize_driver_indices
         )
 
+    def _permuted_driver_unbounded_indices(
+        self, driver_indices_ub: list[int]
+    ) -> list[int]:
+        """Gets the unbounded indices relative to the permutation of self.driver_indices"""
+        return [
+            i for i, ind in enumerate(self.driver_indices) if ind in driver_indices_ub
+        ]
+
+    def unbounded_indices(
+        self, driver_indices_ub: list[int], response_indices_ub: list[int]
+    ) -> list[int]:
+        """
+        Return indices of the coupling map shifted by the driver dimension
+
+        Indices are derived from overlapping driver and response unbounded indices
+        """
+        # get the subset of indices of self.driver_indices which have elements in driver_indices_ub
+        driver_inds_subset = self._permuted_driver_unbounded_indices(driver_indices_ub)
+
+        # it's impossible to tell which indices are unbounded without integrating the system
+        # so we loosely assume that the unbounded indices are the union of
+        #  1. the indices of self.driver_indices which have elements in driver_indices_ub
+        #  2. the response unbounded indices
+        # note that the post processing method can optionally selectively bound only a subset
+        # of these proposed unbounded indices, and need not adhere strictly to these
+        return list(set(driver_inds_subset) | set(response_indices_ub))
+
     def transform_params(self, param_transform: Callable) -> bool:
         if self.transform_scales:
             if isinstance(self.driver_scale, float) and isinstance(
@@ -130,6 +157,58 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
             return self.response_scale * rjac
         else:
             raise ValueError(f"Invalid wrt argument: {wrt}")
+
+    def _postprocessing(
+        self,
+        response: np.ndarray,
+        driver_postprocess_fn: Callable | None = None,
+        response_postprocess_fn: Callable | None = None,
+        response_unbounded_indices: list[int] = [],
+        driver_unbounded_indices: list[int] = [],
+    ) -> np.ndarray:
+        """
+        TODO
+        """
+        inds = np.arange(self.response_dim)
+        driver_ub_inds = self._permuted_driver_unbounded_indices(
+            driver_unbounded_indices
+        )
+
+        # get mask of indices that dont intersect with any unbounded indices
+        both_ub_inds = np.union1d(driver_ub_inds, response_unbounded_indices)
+        both_ub_mask = ~np.isin(inds, both_ub_inds)
+
+        # get mask of unbounded indices xored with
+        driver_ub_mask = np.isin(inds, driver_ub_inds) ^ both_ub_mask
+        response_ub_mask = np.isin(inds, response_unbounded_indices) ^ both_ub_mask
+
+        # this is pure indexing magic
+        # given the response, reorganizes the coords back into the driver space
+        # then applies postprocessing in the driver space
+        # then undoes the organization back into the response space
+        # Works for driver_dim > response_dim and driver_dim < response_dim cases
+        driver_coords = np.zeros(self.response_dim)
+        if driver_postprocess_fn is not None:
+            driver_coords = np.zeros(self.driver_dim)
+            sort_perm = np.argsort(self.driver_indices)
+            sorted_inds = self.driver_indices[sort_perm]
+            driver_coords[sorted_inds[: self.driver_dim]] = response[sort_perm][
+                : self.driver_dim
+            ]
+            driver_coords = driver_postprocess_fn(driver_coords)
+            driver_coords = self._pad_and_index_driver(driver_coords)
+
+        response_coords = np.zeros(self.response_dim)
+        if response_postprocess_fn is not None:
+            response_coords = response_postprocess_fn(response)
+
+        # combine the masked driver and response with an average
+        # if two indices are both unbounded, the average of the two is returned
+        # if only one is unbounded, the unbounded index is returned (via the mask)
+        # if neither is unbounded, theyre the same and the average is either one of them
+        return 0.5 * (
+            driver_coords * driver_ub_mask + response_coords * response_ub_mask
+        )
 
 
 @dataclass

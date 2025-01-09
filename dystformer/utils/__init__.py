@@ -11,7 +11,6 @@ from .data_utils import (
 )
 from .eval_utils import (
     average_nested_dict,
-    generate_sample_forecasts,
     left_pad_and_stack_1D,
     load_and_split_dataset_from_arrow,
     rolling_prediction_window_indices,

@@ -3,7 +3,6 @@ Suite of tests to determine if generated trajectories are valid attractors
 """
 
 import functools
-import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from multiprocessing import Pool
@@ -25,10 +24,8 @@ class AttractorValidator:
     """
 
     transient_time_frac: float = 0.05  # should be low, should be on attractor
-    plot_save_dir: Optional[str] = None
     verbose: bool = False
     tests: Optional[List[Callable]] = None
-    logger: logging.Logger | None = None
 
     def __post_init__(self):
         self.failed_checks = defaultdict(list)  # Dict[str, List[Tuple[int, str]]]
@@ -69,7 +66,7 @@ class AttractorValidator:
         status = test_fn(traj_sample[:, transient_time:])
         return status, func_name
 
-    def _filter_single_system(
+    def _filter_system_worker_fn(
         self,
         dyst_name: str,
         all_traj: np.ndarray,
@@ -77,10 +74,11 @@ class AttractorValidator:
     ) -> Tuple[np.ndarray, np.ndarray, List[Tuple[int, str]], List[int]]:
         """
         Multiprocessed version of self._filter_dyst without any verbose output
+
+        TODO: figure out how to log safely during multiprocessing
         """
         failed_checks_samples = []
         valid_samples = []
-
         valid_attractor_trajs = []
         failed_attractor_trajs = []
         for i, traj_sample in enumerate(all_traj):
@@ -91,10 +89,6 @@ class AttractorValidator:
                 if not status:
                     failed_check = (sample_idx, test_name)
                     failed_checks_samples.append(failed_check)
-                    if self.logger:
-                        self.logger.warning(
-                            f"Failed {test_name} test for {dyst_name} at sample {sample_idx}"
-                        )
                     break
             # if traj sample failed a test, move on to next trajectory sample for this dyst
             if not status:
@@ -130,7 +124,7 @@ class AttractorValidator:
                 failed_attractor_trajs,
                 failed_checks,
                 valid_samples,
-            ) = self._filter_single_system(dyst_name, all_traj, first_sample_idx)
+            ) = self._filter_system_worker_fn(dyst_name, all_traj, first_sample_idx)
 
             self.failed_checks[dyst_name].extend(failed_checks)
             self.failed_samples[dyst_name].extend([ind for ind, _ in failed_checks])
@@ -141,13 +135,8 @@ class AttractorValidator:
                 failed_attractor_ensemble[dyst_name] = failed_attractor_trajs
 
             if len(valid_attractor_trajs) == 0:
-                print(f"No valid attractor trajectories found for {dyst_name}")
                 continue
 
-            if self.verbose:
-                print(
-                    f"Found {len(valid_attractor_trajs)} valid attractor trajectories for {dyst_name}"
-                )
             valid_attractor_ensemble[dyst_name] = valid_attractor_trajs
 
         return valid_attractor_ensemble, failed_attractor_ensemble
@@ -160,7 +149,7 @@ class AttractorValidator:
         """
         with Pool() as pool:
             results = pool.starmap(
-                self._filter_single_system,
+                self._filter_system_worker_fn,
                 [
                     (dyst_name, all_traj, first_sample_idx)
                     for dyst_name, all_traj in ensemble.items()

@@ -20,7 +20,6 @@ class SkewProduct(DynSys):
         response: DynSys,
         coupling_map: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
         _default_random_seed: int | None = None,
-        _postprocess_response_only: bool = False,
         **kwargs,
     ):
         """A skew-product dynamical system composed of a driver and response system.
@@ -37,7 +36,7 @@ class SkewProduct(DynSys):
             _default_random_seed (int, optional):
                 Random seed for default coupling map initialization
         """
-        # default to additively forcing the response with the driver
+        # default to (randomly) additively forcing the response with the driver
         if coupling_map is None:
             self.coupling_map = RandomAdditiveCouplingMap(
                 driver.dimension, response.dimension, random_seed=_default_random_seed
@@ -50,8 +49,7 @@ class SkewProduct(DynSys):
             parameters={},  # dummy: parameters are handled in the overwritten methods below
             dt=min(driver.dt, response.dt),
             period=max(driver.period, response.period),
-            unbounded_indices=driver.unbounded_indices
-            + [i + driver.dimension for i in response.unbounded_indices],
+            unbounded_indices=self._update_unbounded_indices(),
             metadata={
                 "name": f"{driver.name}_{response.name}",
                 "dimension": driver.dimension + response.dimension,
@@ -62,8 +60,6 @@ class SkewProduct(DynSys):
             },
             **kwargs,
         )
-
-        self._postprocess_response_only = _postprocess_response_only
 
         # hack: set a dummy param list for param count checks
         n_params = len(driver.parameters) + len(response.parameters)
@@ -80,20 +76,43 @@ class SkewProduct(DynSys):
         self.mean = np.concatenate([self.driver.mean, self.response.mean])
         self.std = np.concatenate([self.driver.std, self.response.std])
 
-    def transform_params(self, param_transform: Callable):
+    def _update_unbounded_indices(self) -> list[int]:
+        """Update the unbounded indices (which may depend on the coupling map)"""
+        driver_inds = self.driver.unbounded_indices
+        if hasattr(self.coupling_map, "unbounded_indices") and callable(
+            self.coupling_map.unbounded_indices
+        ):
+            coupled_inds = self.coupling_map.unbounded_indices(
+                driver_inds, self.response.unbounded_indices
+            )
+            return driver_inds + [i + self.driver_dim for i in coupled_inds]
+        return driver_inds
+
+    def transform_params(self, param_transform: Callable) -> bool:
+        """Transform parameters of the driver & response systems and coupling map"""
         driver_success = self.driver.transform_params(param_transform)
         response_success = self.response.transform_params(param_transform)
         success = driver_success and response_success
 
         if hasattr(self.coupling_map, "transform_params"):
-            success &= self.coupling_map.transform_params(param_transform)
+            coupling_success = self.coupling_map.transform_params(param_transform)
+
+            if coupling_success:  # update upon successful coupling map transform
+                self.unbounded_indices = self._update_unbounded_indices()
+
+            success &= coupling_success
 
         return success
 
-    def has_jacobian(self):
+    def has_jacobian(self) -> bool:
         return self.driver.has_jacobian() and self.response.has_jacobian()
 
     def rhs(self, X: np.ndarray, t: float) -> np.ndarray:
+        """
+        Flow of the skew product system
+
+        NOTE: the coupled RHS is always assumed to have the dimension of the response system
+        """
         driver, response = X[: self.driver_dim], X[self.driver_dim :]
         driver_rhs = np.asarray(self.driver.rhs(driver, t))
         response_rhs = np.asarray(self.response.rhs(response, t))
@@ -101,6 +120,11 @@ class SkewProduct(DynSys):
         return np.concatenate([driver_rhs, coupled_rhs])
 
     def jac(self, X: np.ndarray, t: float) -> np.ndarray:
+        """
+        Jacobian of the skew product system, computed via chain rule
+
+        NOTE: the coupling map jacobian implements the jacobian wrt to the driver or the response flow
+        """
         driver, response = X[: self.driver_dim], X[self.driver_dim :]
 
         driver_jac = np.asarray(self.driver.jac(driver, t))
@@ -128,6 +152,4 @@ class SkewProduct(DynSys):
             driver = self.driver._postprocessing(*driver)
         if hasattr(self.response, "_postprocessing"):
             response = self.response._postprocessing(*response)
-        if self._postprocess_response_only:
-            return np.asarray(response)
         return np.concatenate([driver, response])
