@@ -119,14 +119,15 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
 
         return True
 
-    def _pad_and_index_driver(
-        self, driver: np.ndarray, pad_jac: bool = False
-    ) -> np.ndarray:
-        """Pad and index driver to match the response dimension"""
+    def _pad_and_index_driver(self, driver: np.ndarray, axis: int = 0) -> np.ndarray:
+        """Pad (append) and index driver to match the response dimension"""
+        assert (
+            axis < driver.ndim
+        ), f"axis {axis} must be less than driver.ndim {driver.ndim}"
         pad_spec = (0, max(self.response_dim - self.driver_dim, 0))
-        if pad_jac:
-            pad_spec = (pad_spec, (0, 0))
-        return np.pad(driver, pad_spec)[self.driver_indices]
+        pad_spec = ((0, 0),) * axis + (pad_spec,) + ((0, 0),) * (driver.ndim - axis - 1)
+        padded_driver = np.pad(driver, pad_spec)
+        return np.take(padded_driver, self.driver_indices, axis=axis)
 
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
         padded_driver = self._pad_and_index_driver(driver)
@@ -150,7 +151,7 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
             else:
                 driver_scale = self.driver_scale
 
-            djac = self._pad_and_index_driver(np.eye(self.driver_dim), pad_jac=True)
+            djac = self._pad_and_index_driver(np.eye(self.driver_dim))
             return driver_scale * djac
         elif wrt == "response":
             rjac = np.eye(self.response_dim)
@@ -187,28 +188,27 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         # then applies postprocessing in the driver space
         # then undoes the organization back into the response space
         # Works for driver_dim > response_dim and driver_dim < response_dim cases
-        driver_coords = np.zeros(self.response_dim)
+        driver = response.copy()
         if driver_postprocess_fn is not None:
-            driver_coords = np.zeros(self.driver_dim)
+            driver = np.zeros((self.driver_dim, *response.shape[1:]))
             sort_perm = np.argsort(self.driver_indices)
             sorted_inds = self.driver_indices[sort_perm]
-            driver_coords[sorted_inds[: self.driver_dim]] = response[sort_perm][
+            driver[sorted_inds[: self.driver_dim]] = response[sort_perm][
                 : self.driver_dim
             ]
-            driver_coords = driver_postprocess_fn(driver_coords)
-            driver_coords = self._pad_and_index_driver(driver_coords)
+            driver = np.asarray(driver_postprocess_fn(*driver))
+            driver = self._pad_and_index_driver(driver)
 
-        response_coords = np.zeros(self.response_dim)
         if response_postprocess_fn is not None:
-            response_coords = response_postprocess_fn(response)
+            response = np.asarray(response_postprocess_fn(*response))
 
         # combine the masked driver and response with an average
         # if two indices are both unbounded, the average of the two is returned
         # if only one is unbounded, the unbounded index is returned (via the mask)
         # if neither is unbounded, theyre the same and the average is either one of them
-        return 0.5 * (
-            driver_coords * driver_ub_mask + response_coords * response_ub_mask
-        )
+        driver_mask = driver_ub_mask[..., np.newaxis, np.newaxis]
+        response_mask = response_ub_mask[..., np.newaxis, np.newaxis]
+        return 0.5 * (driver * driver_mask + response * response_mask)
 
 
 @dataclass

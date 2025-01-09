@@ -24,7 +24,6 @@ class AttractorValidator:
     """
 
     transient_time_frac: float = 0.05  # should be low, should be on attractor
-    verbose: bool = False
     tests: Optional[List[Callable]] = None
 
     def __post_init__(self):

@@ -49,7 +49,6 @@ class SkewProduct(DynSys):
             parameters={},  # dummy: parameters are handled in the overwritten methods below
             dt=min(driver.dt, response.dt),
             period=max(driver.period, response.period),
-            unbounded_indices=self._update_unbounded_indices(),
             metadata={
                 "name": f"{driver.name}_{response.name}",
                 "dimension": driver.dimension + response.dimension,
@@ -71,6 +70,9 @@ class SkewProduct(DynSys):
             "Driver and response must have default initial conditions"
             "and must be of the same dimension"
         )
+
+        # manually set the unbounded indices derived from the coupling map
+        self.unbounded_indices = self._update_unbounded_indices()
 
         self.ic = np.concatenate([self.driver.ic, self.response.ic])
         self.mean = np.concatenate([self.driver.mean, self.response.mean])
@@ -162,4 +164,4 @@ class SkewProduct(DynSys):
                 self.response.unbounded_indices,
                 self.driver.unbounded_indices,
             )
-        return np.concatenate([driver, response])
+        return np.concatenate([np.asarray(driver), np.asarray(response)])

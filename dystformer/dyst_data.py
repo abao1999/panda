@@ -3,10 +3,10 @@ import logging
 import os
 from collections import defaultdict
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from itertools import starmap
 from multiprocessing import Pool
-from typing import Any, Callable
+from typing import Callable
 
 import dysts.flows as flows
 import numpy as np
@@ -52,7 +52,8 @@ class DynSysSampler:
 
     split_coords: bool = True  # by default save trajectories compatible with Chronos
     events: list[Callable[[float, np.ndarray], float]] | None = None
-    attractor_validator_kwargs: dict[str, Any] = field(default_factory=dict)
+
+    validator_transient_frac: float = 0.05
     attractor_tests: list[Callable] | None = None
 
     verbose: bool = True
@@ -74,9 +75,8 @@ class DynSysSampler:
             )
         elif self.attractor_tests is not None:
             self.attractor_validator = AttractorValidator(
-                **self.attractor_validator_kwargs,
+                transient_time_frac=self.validator_transient_frac,
                 tests=self.attractor_tests,
-                logger=logger,
             )
 
     def _prepare_save_directories(
@@ -124,10 +124,11 @@ class DynSysSampler:
         assert len(set(sys_names)) == len(
             sys_names
         ), "Cannot have duplicate system names"
-        logger.info(
-            f"Making {split} split with {len(systems)} dynamical systems"
-            f" (showing first {min(5, len(sys_names))}): \n {sys_names[:5]}"
-        )
+        if save_dir is not None:
+            logger.info(
+                f"Making {split} split with {len(systems)} dynamical systems"
+                f" (showing first {min(5, len(sys_names))}): \n {sys_names[:5]}"
+            )
 
         if self.attractor_validator is not None and reset_attractor_validator:
             self.attractor_validator.reset()
@@ -160,7 +161,6 @@ class DynSysSampler:
             event_fns=self.events,
             use_multiprocessing=use_multiprocessing,
             silent_errors=silent_errors,
-            logger=logger,
             **kwargs,
         )
         failed_integrations = [
@@ -173,7 +173,6 @@ class DynSysSampler:
             for key, value in default_ensemble.items()
             if key not in failed_integrations
         }
-        breakpoint()
         for callback in callbacks[:-1]:  # ignore failed integrations
             callback(0, default_ensemble, excluded_keys=failed_integrations)
 
@@ -309,7 +308,6 @@ class DynSysSampler:
                     pts_per_period=self.num_points // self.num_periods,
                     event_fns=self.events,
                     silent_errors=silent_errors,
-                    logger=logger,
                     **kwargs,
                 )
 
