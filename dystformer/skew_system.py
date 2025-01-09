@@ -150,6 +150,16 @@ class SkewProduct(DynSys):
         driver, response = X[: self.driver_dim], X[self.driver_dim :]
         if hasattr(self.driver, "_postprocessing"):
             driver = self.driver._postprocessing(*driver)
-        if hasattr(self.response, "_postprocessing"):
-            response = self.response._postprocessing(*response)
+        if hasattr(self.coupling_map, "_postprocessing"):
+            response = self.coupling_map._postprocessing(
+                np.asarray(response),
+                None
+                if not hasattr(self.driver, "_postprocessing")
+                else self.driver._postprocessing,
+                None
+                if not hasattr(self.response, "_postprocessing")
+                else self.response._postprocessing,
+                self.response.unbounded_indices,
+                self.driver.unbounded_indices,
+            )
         return np.concatenate([driver, response])
