@@ -3,7 +3,6 @@ Suite of tests to determine if generated trajectories are valid attractors
 """
 
 import functools
-import logging
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from multiprocessing import Pool
@@ -28,7 +27,6 @@ class AttractorValidator:
     plot_save_dir: Optional[str] = None
     verbose: bool = False
     tests: Optional[List[Callable]] = None
-    logger: logging.Logger | None = None
 
     def __post_init__(self):
         self.failed_checks = defaultdict(list)  # Dict[str, List[Tuple[int, str]]]
@@ -76,7 +74,7 @@ class AttractorValidator:
         first_sample_idx: int = 0,
     ) -> Tuple[np.ndarray, np.ndarray, List[Tuple[int, str]], List[int]]:
         """
-        Multiprocessed version of self._filter_dyst without any verbose output
+        Sequentially executes all attractor tests to filter out valid and failed samples for a single system
         """
         failed_checks_samples = []
         valid_samples = []
@@ -91,10 +89,6 @@ class AttractorValidator:
                 if not status:
                     failed_check = (sample_idx, test_name)
                     failed_checks_samples.append(failed_check)
-                    if self.logger:
-                        self.logger.warning(
-                            f"Failed {test_name} test for {dyst_name} at sample {sample_idx}"
-                        )
                     break
             # if traj sample failed a test, move on to next trajectory sample for this dyst
             if not status:

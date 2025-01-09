@@ -75,7 +75,6 @@ class DynSysSampler:
             self.attractor_validator = AttractorValidator(
                 **self.attractor_validator_kwargs,
                 tests=self.attractor_tests,
-                logger=logger,
             )
 
     def _prepare_save_directories(
