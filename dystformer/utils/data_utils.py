@@ -23,7 +23,9 @@ def demote_from_numpy(param: float | np.ndarray) -> float | list[float]:
     return param
 
 
-def dict_demote_from_numpy(param_dict: dict) -> dict:
+def dict_demote_from_numpy(
+    param_dict: dict[str, float | np.ndarray],
+) -> dict[str, float | list[float]]:
     """
     Demote a dictionary of parameters to a dictionary of floats or list of floats
     """
@@ -141,10 +143,11 @@ def accumulate_coords(
 
 def process_trajs(
     base_dir: str,
-    timeseries: Dict[str, np.ndarray],
+    timeseries: dict[str, np.ndarray],
     split_coords: bool = False,
     overwrite: bool = False,
     verbose: bool = False,
+    base_sample_idx: int = -1,
 ) -> None:
     """Saves each trajectory in timeseries ensemble to a separate directory"""
     for sys_name, trajectories in timeseries.items():
@@ -156,17 +159,15 @@ def process_trajs(
         system_folder = os.path.join(base_dir, sys_name)
         os.makedirs(system_folder, exist_ok=True)
 
-        # get the last sample index from the directory, so we can continue saving samples filenames with the correct index
-        max_existing_sample_idx = -1
-
         if not overwrite:
             for filename in os.listdir(system_folder):
                 if filename.endswith(".arrow"):
                     sample_idx = int(filename.split("_")[0])
-                    max_existing_sample_idx = max(max_existing_sample_idx, sample_idx)
+                    base_sample_idx = max(base_sample_idx, sample_idx)
 
         for i, trajectory in enumerate(trajectories):
-            curr_sample_idx = max_existing_sample_idx + i + 1
+            # very hacky, if there is only one trajectory, we can just use the base_sample_idx
+            curr_sample_idx = base_sample_idx + i + (trajectories.shape[0] != 1)
 
             if trajectory.ndim == 1:
                 trajectory = np.expand_dims(trajectory, axis=0)

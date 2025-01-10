@@ -76,13 +76,7 @@ class OnAttractorInitCondSampler(BaseSampler):
     """
     Sample points from the attractor of a system
 
-    Subtleties:
-        - This is slow, it requires integrating each system with its default
-          parameters before sampling from the attractor.
-        - The sampled initial conditions from this sampler are necessarily
-          tied to the attractor defined by the default parameters.
-        - Cache does not work in a multiprocessing setting, need to use a Manager
-          to share the cache across processes.
+    WARNING: This is multiprocessing-unsafe, use a Manager to share the cache across processes.
 
     Args:
         reference_traj_length: Length of the reference trajectory to use for sampling ic on attractor.
@@ -110,6 +104,7 @@ class OnAttractorInitCondSampler(BaseSampler):
         self.transient = int(self.reference_traj_length * self.reference_traj_transient)
 
     def clear_cache(self):
+        """Clear the trajectory cache. Creates new dict if previous was a managed dict."""
         self.trajectory_cache.clear()
 
     def __call__(self, ic: NDArray, system: BaseDyn) -> NDArray | None:
@@ -117,7 +112,8 @@ class OnAttractorInitCondSampler(BaseSampler):
             raise ValueError("System must have a name")
 
         # make reference trajectory if not already cached
-        if system.name not in self.trajectory_cache:
+        cache_traj = self.trajectory_cache.get(system.name)
+        if cache_traj is None:
             # resolve event signatures and reset events attributes if applicable
             events = [
                 _resolve_event_signature(system, event) for event in self.events or []
@@ -161,11 +157,11 @@ class OnAttractorInitCondSampler(BaseSampler):
                 system.std = reference_traj.std(axis=0)
 
             reference_traj = reference_traj[self.transient :]
-            self.trajectory_cache[system.name] = reference_traj
+            self.trajectory_cache[system.name] = reference_traj.copy()
+            cache_traj = reference_traj
 
-        # Sample a new initial condition from the attractor
-        trajectory = self.trajectory_cache[system.name]
-        new_ic = self.rng.choice(trajectory)
+        # Sample a new initial condition from the cached trajectory
+        new_ic = self.rng.choice(cache_traj)
 
         if self.verbose > 1:
             logger.info(f"System: {system.name} ic: {ic} -> {new_ic}")

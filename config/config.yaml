@@ -8,6 +8,9 @@ defaults:
   # - override hydra/job_logging: disabled 
   - override hydra/hydra_logging: disabled 
 
+# string identifier for wandb runs and generic I/O
+run_name: null
+
 hydra:
   output_subdir: null
   run:
@@ -17,10 +20,7 @@ hydra:
     handlers:
       file:
         mode: w
-
-
-# string identifier for wandb runs and generic I/O
-run_name: null
+        filename: ${hydra:run.dir}/${oc.select:run_name,${hydra:job.name}}.log
 
 # wandb parameters
 wandb:

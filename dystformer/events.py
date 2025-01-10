@@ -30,7 +30,7 @@ class TimeLimitEvent:
         if elapsed_time > self.max_duration:
             if self.verbose:
                 logger.warning(
-                    f"{self.system.name} exceeded time limit: {elapsed_time:.2f}s"
+                    f"{self.system.name} exceeded time limit: {elapsed_time:.2f}s > {self.max_duration:.2f}s"
                 )
             return 0
         return 1
@@ -54,7 +54,7 @@ class InstabilityEvent:
         if np.any(bounded_coords > self.threshold) or np.any(np.isnan(y)):
             if self.verbose:
                 logger.warning(
-                    f"Instability in {self.system.name} @ t={t:.3f}: {np.abs(y).max():.3f}"
+                    f"{self.system.name} instability @ t={t:.3f}: {np.abs(y).max():.3e} > {self.threshold:.3e}"
                 )
             return 0
         return 1
@@ -62,22 +62,23 @@ class InstabilityEvent:
 
 @dataclass
 class TimeStepEvent:
-    """
-    Event to check if the system time step is invalid
-    """
+    """Event that terminates integration when step size becomes too small"""
 
     system: BaseDyn
-    last_t: float = float("inf")
-    min_step: float = 1e-20
+    min_step: float = 1e-10  # Aligned with typical atol values
     terminal: bool = True
     verbose: bool = False
+
+    def __post_init__(self):
+        self.last_t = float("inf")
 
     def __call__(self, t, y):
         t_diff = abs(t - self.last_t)
         if t_diff < self.min_step:
             if self.verbose:
-                logger.warning(f"{self.system.name} time step too small: {t_diff:.2e}")
+                logger.warning(
+                    f"{self.system.name} integration terminated: step size {t_diff:.3e} < {self.min_step:.3e}"
+                )
             return 0
-
         self.last_t = t
         return 1

@@ -202,7 +202,7 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         both_ub_inds = np.union1d(driver_ub_inds, response_unbounded_indices)
         both_ub_mask = ~np.isin(inds, both_ub_inds)
 
-        # get mask of unbounded indices xored with
+        # get mask of unbounded indices xored with the both_ub_mask
         driver_ub_mask = np.isin(inds, driver_ub_inds) ^ both_ub_mask
         response_ub_mask = np.isin(inds, response_unbounded_indices) ^ both_ub_mask
 
@@ -210,7 +210,6 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         # given the response, reorganizes the coords back into the driver space
         # then applies postprocessing in the driver space
         # then undoes the organization back into the response space
-        # Works for driver_dim > response_dim and driver_dim < response_dim cases
         driver = response.copy()
         if driver_postprocess_fn is not None:
             driver = np.zeros((self.driver_dim, *response.shape[1:]))
@@ -228,7 +227,7 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         # combine the masked driver and response with an average
         # if two indices are both unbounded, the average of the two is returned
         # if only one is unbounded, the unbounded index is returned (via the mask)
-        # if neither is unbounded, theyre the same and the average is either one of them
+        # if neither is unbounded, theyre the same and the average is performs the identity
         driver_mask = driver_ub_mask[..., np.newaxis, np.newaxis]
         response_mask = response_ub_mask[..., np.newaxis, np.newaxis]
         return 0.5 * (driver * driver_mask + response * response_mask)

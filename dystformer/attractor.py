@@ -177,7 +177,7 @@ class AttractorValidator:
 
 
 def check_boundedness(
-    traj: np.ndarray, threshold: float = 1e4, max_zscore: float = 10
+    traj: np.ndarray, threshold: float = 1e4, max_zscore: float = 10, eps: float = 1e-10
 ) -> bool:
     """
     Check if a multi-dimensional trajectory is bounded (not diverging).
@@ -192,7 +192,11 @@ def check_boundedness(
     if np.any(np.abs(traj) > threshold):
         return False
 
-    standardized_traj = (traj - traj.mean(axis=1)[:, None]) / traj.std(axis=1)[:, None]
+    mean = np.nanmean(traj.T, axis=0)
+    std = np.nanstd(traj.T, axis=0)
+    std = np.where(std < eps, eps, std)
+
+    standardized_traj = (traj.T - mean) / std
     if np.max(np.abs(standardized_traj)) > max_zscore:
         return False
 
@@ -446,7 +450,7 @@ def check_not_linear(
 
     mean = np.nanmean(points, axis=0)
     std = np.nanstd(points, axis=0)
-    std = np.where(std < eps, 1.0, std)
+    std = np.where(std < eps, eps, std)
 
     standardized_points = (points - mean) / std
 
