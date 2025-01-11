@@ -47,6 +47,7 @@ def plot_saved_data(
 
         start_sample_idx = 0 if plot_default_sample else 1
         end_sample_idx = n_samples_plot if plot_default_sample else n_samples_plot + 1
+
         filepaths = get_system_filepaths(dyst_name, DATA_DIR, split)[
             start_sample_idx:end_sample_idx
         ]

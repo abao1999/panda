@@ -9,7 +9,7 @@
 #     sampling.num_param_perturbations=2 \
 #     sampling.param_scale=1.0 \
 #     sampling.atol=1e-10 \
-#     sampling.rtol=1e-9 \
+#     sampling.rtol=1e-8 \
 #     sampling.silence_integration_errors=true \
 #     sampling.split_prefix=debug_base \
 #     sampling.rseed=56
@@ -19,14 +19,20 @@ python -W ignore scripts/make_skew_systems.py \
     sampling.num_points=4096 \
     sampling.num_periods=10 \
     sampling.num_param_perturbations=2 \
+    sampling.param_scale=1.0 \
     sampling.atol=1e-10 \
-    sampling.rtol=1e-9 \
+    sampling.rtol=1e-8 \
     sampling.silence_integration_errors=true \
-    sampling.split_prefix=debug_skew \
+    sampling.data_dir=/stor/work/AMDG_Gilpin_Summer2024/data/skew_flowrms_run3 \
+    sampling.rseed=55 \
+    sampling.verbose=false \
+    events.verbose=false \
+    events.max_duration=120 \
     skew.normalization_strategy=flow_rms \
     skew.transform_scales=false \
-    skew.randomize_driver_indices=false \
-    skew.num_pairs=20 \
+    skew.randomize_driver_indices=true \
+    skew.num_pairs=1024 \
+
 
 # # base dysts
 # python -W ignore scripts/make_dyst_data.py \

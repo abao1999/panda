@@ -318,7 +318,7 @@ def main(cfg):
         random_seed=cfg.sampling.rseed,
         events=event_fns,
         silence_integration_errors=cfg.sampling.silence_integration_errors,
-        verbose=1,
+        verbose=int(cfg.sampling.verbosity),
     )
     sys_sampler = DynSysSampler(
         rseed=cfg.sampling.rseed,
@@ -368,7 +368,7 @@ def main(cfg):
     )
 
     logger.info(
-        f"Sampled {cfg.skew.num_pairs}/{len(systems)*(len(systems)-1)} system pair candidates"
+        f"Sampled {cfg.skew.num_pairs}/{len(systems) * (len(systems) - 1)} system pair candidates"
     )
 
     base_systems = set(sys for pair in skew_pairs for sys in pair)
@@ -384,7 +384,7 @@ def main(cfg):
 
     logger.info(
         f"Attempting to split {len(skew_pairs)} skew pairs into a "
-        f"{1-cfg.sampling.test_split:.2f}/{cfg.sampling.test_split:.2f} train/test split"
+        f"{1 - cfg.sampling.test_split:.2f}/{cfg.sampling.test_split:.2f} train/test split"
     )
     train_systems, test_systems = filter_and_split_skew_systems(
         skew_pairs,
