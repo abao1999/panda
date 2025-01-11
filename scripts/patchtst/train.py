@@ -131,12 +131,7 @@ class CustomTrainer(Trainer):
         super().__init__(model, args, **kwargs)
         self.noise_scale_scheduler = noise_scale_scheduler
 
-    def compute_loss(
-        self,
-        model,
-        inputs,
-        return_outputs=False,
-    ):
+    def compute_loss(self, model, inputs, return_outputs=False):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
         """
@@ -203,9 +198,6 @@ def main(cfg):
         train_data_paths.extend(
             filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
         )
-    # Reduce number of datasets for testing purposes
-    num_data_paths = len(train_data_paths)
-    train_data_paths = train_data_paths[: num_data_paths // 2]
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
 
@@ -235,7 +227,6 @@ def main(cfg):
     elif cfg.probability is None:
         probability = [1.0 / len(train_datasets)] * len(train_datasets)
     assert isinstance(probability, list)
-
     assert len(train_datasets) == len(probability)
 
     # adapt number of workers to the number of datasets if there are more workers than datasets
@@ -254,19 +245,13 @@ def main(cfg):
         RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
         RandomAffineTransform(out_dim=6, scale=1.0),
     ]
+    log_on_main(f"Using augmentations: {augmentations}", logger)
 
     transforms: list = [
         FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim)
     ]
     if cfg.use_quadratic_embedding:
         transforms.append(QuadraticEmbeddingTransform())
-    else:
-        if cfg.fixed_dim > 3:
-            raise ValueError(
-                "Quadratic embedding should be on for time delay embedding (fixed dim > 3)"
-            )
-
-    log_on_main(f"Using augmentations: {augmentations}", logger)
 
     shuffled_train_dataset = PatchTSTDataset(
         datasets=train_datasets,

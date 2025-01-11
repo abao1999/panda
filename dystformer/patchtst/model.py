@@ -35,6 +35,10 @@ def left_pad_and_stack_multivariate(tensors: List[torch.Tensor]) -> torch.Tensor
 
 
 class PatchTST(nn.Module):
+    """
+    This is an unecessary abstraction, remove it later
+    """
+
     def __init__(
         self,
         config: dict,
@@ -210,7 +214,6 @@ class PatchTST(nn.Module):
         self,
         context: Union[torch.Tensor, List[torch.Tensor]],
         past_observed_mask: Optional[torch.Tensor] = None,
-        num_bins: Optional[int] = None,
         noise_scale: float = 0.0,
     ) -> torch.Tensor:
         """
@@ -239,7 +242,6 @@ class PatchTST(nn.Module):
         completions_output = self.model.generate_completions(
             context_tensor,
             past_observed_mask=past_observed_mask,
-            num_bins=num_bins,
             noise_scale=noise_scale,
         )
         # TODO: need to check shapes
