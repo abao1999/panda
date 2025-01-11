@@ -136,6 +136,7 @@ class PatchTSTRopeAttention(nn.Module):
         is_decoder: bool = False,
         bias: bool = True,
         is_causal: bool = False,
+        use_rope: bool = True,
         max_wavelength: int = 10000,
         rope_percent: float = 0.5,
         config: Optional[PatchTSTConfig] = None,
@@ -147,6 +148,7 @@ class PatchTSTRopeAttention(nn.Module):
         self.head_dim = embed_dim // num_heads
         self.max_wavelength = max_wavelength
         self.rope_percent = rope_percent
+        self.use_rope = use_rope
         self.config = config
 
         if (self.head_dim * num_heads) != self.embed_dim:
@@ -233,19 +235,21 @@ class PatchTSTRopeAttention(nn.Module):
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
         key_states = key_states.reshape(*proj_shape)
         value_states = value_states.reshape(*proj_shape)
+        src_len = key_states.size(1)
 
         # apply rotary positional embeddings
-        src_len = key_states.size(1)
-        # TODO: add flag to disable rope
-        position_ids = self.get_seq_pos(src_len, key_states.device, key_states.dtype)
-        key_states, query_states = apply_p_rope_to_qk(
-            key_states,
-            query_states,
-            position_ids,
-            self.head_dim,
-            self.max_wavelength,
-            self.rope_percent,
-        )
+        if self.use_rope:
+            position_ids = self.get_seq_pos(
+                src_len, key_states.device, key_states.dtype
+            )
+            key_states, query_states = apply_p_rope_to_qk(
+                key_states,
+                query_states,
+                position_ids,
+                self.head_dim,
+                self.max_wavelength,
+                self.rope_percent,
+            )
 
         attn_weights = torch.bmm(query_states, key_states.transpose(1, 2))
 
@@ -338,6 +342,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             embed_dim=config.d_model,
             num_heads=config.num_attention_heads,
             dropout=config.attention_dropout,
+            use_rope=False,  # channels are not positional
             max_wavelength=config.max_wavelength,
             rope_percent=config.rope_percent,
         )
@@ -675,7 +680,6 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        num_bins: Optional[int] = None,
         noise_scale: float = 0.0,
     ) -> Union[Tuple, PatchTSTModelOutput]:
         r"""
@@ -719,23 +723,8 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         if past_observed_mask is None:
             past_observed_mask = torch.ones_like(past_values)
 
-        # 1. Apply scaler to instance-normalize the data
-        # timeseries: tensor [bs x sequence_length x num_input_channels]
         scaled_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
-
-        # 2. (Optional) Apply quantizer to partition phase space
-        # quantized timeseries: tensor [bs x sequence_length x num_input_channels]
-        if num_bins is not None:
-            scaled_past_values = self.quantizer(
-                scaled_past_values,
-                num_bins=num_bins,
-                device=scaled_past_values.device,
-            )
-
-        # 3. (Optional) Apply noiser to add noise to the data
         noised_past_values = self.noiser(scaled_past_values, noise_scale)
-
-        # patched_values: [bs x num_input_channels x num_patches x patch_length] for pretrain
         patched_values = self.patchifier(noised_past_values)
 
         if self.do_mask_input:
@@ -829,7 +818,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        num_bins: Optional[int] = None,
         noise_scale: float = 0.0,
     ) -> Union[Tuple, PatchTSTForPretrainingOutput]:
         r"""
@@ -847,7 +835,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             output_attentions (`bool`, *optional*):
                 Whether or not to return the output attention of all layers
             return_dict (`bool`, *optional*): Whether or not to return a `ModelOutput` instead of a plain tuple.
-            num_bins (`int`, *optional*): Number of bins to use for adaptive quantization.
 
         Returns:
             `PatchTSTForPretrainingOutput` or tuple of `torch.Tensor` (if `return_dict`=False or
@@ -867,7 +854,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
             return_dict=True,
-            num_bins=num_bins,
             noise_scale=noise_scale,
         )
 
@@ -905,7 +891,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         self,
         past_values: torch.Tensor,
         past_observed_mask: Optional[torch.Tensor] = None,
-        num_bins: Optional[int] = None,
         noise_scale: float = 0.0,
     ) -> CompletionsPatchTSTOutput:
         r"""
@@ -918,7 +903,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
 
                 - 1 for values that are **observed**,
                 - 0 for values that are **missing** (i.e. NaNs that were replaced by zeros).
-            num_bins (`int`, *optional*): Number of bins to use for adaptive quantization.
             noise_scale (`float`, *optional*): Scale factor for the noise added to the data.
 
         Returns:
@@ -932,7 +916,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             past_values=past_values,
             past_observed_mask=past_observed_mask,
             return_dict=True,
-            num_bins=num_bins,
             noise_scale=noise_scale,
         )
 
