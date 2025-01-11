@@ -80,13 +80,13 @@ class DynSysSampler:
         self.failed_integrations = defaultdict(list)
         self.rng = np.random.default_rng(self.rseed)
         if self.param_sampler is None:
-            assert self.num_param_perturbations == 1, (
-                "No parameter sampler provided, but num_param_perturbations > 1"
-            )
+            assert (
+                self.num_param_perturbations == 1
+            ), "No parameter sampler provided, but num_param_perturbations > 1"
         if self.ic_sampler is None:
-            assert self.num_ics == 1, (
-                "No initial condition sampler provided, but num_ics > 1"
-            )
+            assert (
+                self.num_ics == 1
+            ), "No initial condition sampler provided, but num_ics > 1"
         if self.attractor_tests is None and self.num_param_perturbations > 1:
             logger.warning(
                 "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
@@ -139,9 +139,9 @@ class DynSysSampler:
         save the ensembles to disk and save the parameters to a json file.
         """
         sys_names = [sys if isinstance(sys, str) else sys.name for sys in systems]
-        assert len(set(sys_names)) == len(sys_names), (
-            "Cannot have duplicate system names"
-        )
+        assert len(set(sys_names)) == len(
+            sys_names
+        ), "Cannot have duplicate system names"
         if save_dir is not None:
             logger.info(
                 f"Making {split} split with {len(systems)} dynamical systems"
@@ -452,6 +452,13 @@ class DynSysSampler:
             )
         else:
             failed_ensemble = {}
+
+        if perturbed_systems is not None:
+            dims = {sys.name: sys.driver_dim for sys in perturbed_systems}
+            ensemble = {sys: traj[..., dims[sys] :] for sys, traj in ensemble.items()}
+            failed_ensemble = {
+                sys: traj[..., dims[sys] :] for sys, traj in failed_ensemble.items()
+            }
 
         if save_dyst_dir is not None:
             process_trajs(
