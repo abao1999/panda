@@ -147,6 +147,7 @@ class DynSysSampler:
                 f"Making {split} split with {len(systems)} dynamical systems"
                 f" (showing first {min(5, len(sys_names))}): \n {sys_names[:5]}"
             )
+        is_all_basedyn = all(isinstance(sys, BaseDyn) for sys in systems)
 
         if self.attractor_validator is not None and reset_attractor_validator:
             self.attractor_validator.reset()
@@ -192,7 +193,12 @@ class DynSysSampler:
             if key not in failed_integrations
         }
         for callback in callbacks[:-1]:  # ignore failed integrations
-            callback(0, default_ensemble, excluded_keys=failed_integrations)
+            callback(
+                0,
+                default_ensemble,
+                excluded_keys=failed_integrations,
+                perturbed_systems=systems if is_all_basedyn else None,
+            )
 
         logger.info("Generating perturbed ensembles...")
         ensembles = self._generate_ensembles(
@@ -219,7 +225,6 @@ class DynSysSampler:
         Transform the parameters and initial conditions of a system.
 
         NOTE: If
-                    if perturb_params:
          - an IC transform or parameter transform is not successful
          - the system is parameterless (len(sys.param_list) == 0)
         the system is not returned (ignored downstream)
@@ -443,6 +448,11 @@ class DynSysSampler:
             for sys in ensemble_sys_names
         }
 
+        # TEMPORARY: remove driver dims from trajectories
+        if perturbed_systems is not None:
+            dims = {sys.name: sys.driver_dim for sys in perturbed_systems}
+            ensemble = {sys: traj[..., dims[sys] :] for sys, traj in ensemble.items()}
+
         if self.attractor_validator is not None:
             logger.info(f"Applying attractor validator to {len(ensemble)} systems")
             ensemble, failed_ensemble = (
@@ -452,13 +462,6 @@ class DynSysSampler:
             )
         else:
             failed_ensemble = {}
-
-        if perturbed_systems is not None:
-            dims = {sys.name: sys.driver_dim for sys in perturbed_systems}
-            ensemble = {sys: traj[..., dims[sys] :] for sys, traj in ensemble.items()}
-            failed_ensemble = {
-                sys: traj[..., dims[sys] :] for sys, traj in failed_ensemble.items()
-            }
 
         if save_dyst_dir is not None:
             process_trajs(
