@@ -318,7 +318,7 @@ def main(cfg):
         random_seed=cfg.sampling.rseed,
         events=event_fns,
         silence_integration_errors=cfg.sampling.silence_integration_errors,
-        verbose=int(cfg.sampling.verbosity),
+        verbose=int(cfg.sampling.verbose),
     )
     sys_sampler = DynSysSampler(
         rseed=cfg.sampling.rseed,

@@ -27,7 +27,7 @@ python -W ignore scripts/make_skew_systems.py \
     sampling.rseed=55 \
     sampling.verbose=false \
     events.verbose=false \
-    events.max_duration=120 \
+    events.max_duration=60 \
     skew.normalization_strategy=flow_rms \
     skew.transform_scales=false \
     skew.randomize_driver_indices=true \
