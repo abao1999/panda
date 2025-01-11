@@ -80,13 +80,13 @@ class DynSysSampler:
         self.failed_integrations = defaultdict(list)
         self.rng = np.random.default_rng(self.rseed)
         if self.param_sampler is None:
-            assert self.num_param_perturbations == 1, (
-                "No parameter sampler provided, but num_param_perturbations > 1"
-            )
+            assert (
+                self.num_param_perturbations == 1
+            ), "No parameter sampler provided, but num_param_perturbations > 1"
         if self.ic_sampler is None:
-            assert self.num_ics == 1, (
-                "No initial condition sampler provided, but num_ics > 1"
-            )
+            assert (
+                self.num_ics == 1
+            ), "No initial condition sampler provided, but num_ics > 1"
         if self.attractor_tests is None and self.num_param_perturbations > 1:
             logger.warning(
                 "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
@@ -139,14 +139,15 @@ class DynSysSampler:
         save the ensembles to disk and save the parameters to a json file.
         """
         sys_names = [sys if isinstance(sys, str) else sys.name for sys in systems]
-        assert len(set(sys_names)) == len(sys_names), (
-            "Cannot have duplicate system names"
-        )
+        assert len(set(sys_names)) == len(
+            sys_names
+        ), "Cannot have duplicate system names"
         if save_dir is not None:
             logger.info(
                 f"Making {split} split with {len(systems)} dynamical systems"
                 f" (showing first {min(5, len(sys_names))}): \n {sys_names[:5]}"
             )
+        is_all_basedyn = all(isinstance(sys, BaseDyn) for sys in systems)
 
         if self.attractor_validator is not None and reset_attractor_validator:
             self.attractor_validator.reset()
@@ -192,7 +193,12 @@ class DynSysSampler:
             if key not in failed_integrations
         }
         for callback in callbacks[:-1]:  # ignore failed integrations
-            callback(0, default_ensemble, excluded_keys=failed_integrations)
+            callback(
+                0,
+                default_ensemble,
+                excluded_keys=failed_integrations,
+                perturbed_systems=systems if is_all_basedyn else None,
+            )
 
         logger.info("Generating perturbed ensembles...")
         ensembles = self._generate_ensembles(
@@ -219,7 +225,6 @@ class DynSysSampler:
         Transform the parameters and initial conditions of a system.
 
         NOTE: If
-                    if perturb_params:
          - an IC transform or parameter transform is not successful
          - the system is parameterless (len(sys.param_list) == 0)
         the system is not returned (ignored downstream)
@@ -442,6 +447,11 @@ class DynSysSampler:
             ).transpose(0, 2, 1)
             for sys in ensemble_sys_names
         }
+
+        # TEMPORARY: remove driver dims from trajectories
+        if perturbed_systems is not None:
+            dims = {sys.name: sys.driver_dim for sys in perturbed_systems}
+            ensemble = {sys: traj[:, dims[sys] :, :] for sys, traj in ensemble.items()}
 
         if self.attractor_validator is not None:
             logger.info(f"Applying attractor validator to {len(ensemble)} systems")
