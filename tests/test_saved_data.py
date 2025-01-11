@@ -180,6 +180,12 @@ if __name__ == "__main__":
         action=argparse.BooleanOptionalAction,
         default=False,
     )
+    parser.add_argument(
+        "--rseed",
+        help="Random seed for reproducibility",
+        type=int,
+        default=99,
+    )
     args = parser.parse_args()
 
     if args.split is None:
@@ -187,7 +193,7 @@ if __name__ == "__main__":
 
     if args.dysts_names == ["all"]:
         # choose random 9 systems to plot, using reporducible rseed
-        rseed = 99
+        rseed = args.rseed
         rng = np.random.default_rng(rseed)
         split_dir = os.path.join(DATA_DIR, args.split)
         dyst_names_lst = [

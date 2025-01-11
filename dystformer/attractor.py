@@ -13,6 +13,7 @@ from dysts.analysis import max_lyapunov_exponent_rosenstein
 from scipy.fft import rfft
 from scipy.signal import find_peaks
 from scipy.spatial.distance import cdist
+from statsmodels.tsa.stattools import adfuller, kpss
 
 
 @dataclass
@@ -460,3 +461,49 @@ def check_not_linear(
         return explained_variance_ratio[0] <= r2_threshold
     except np.linalg.LinAlgError:
         return True  # fallback if SVD fails
+
+
+def check_stationarity(
+    traj: np.ndarray,
+    verbose: bool = False,
+) -> bool:
+    """
+    ADF tests for presence of a unit root, with null hypothesis that time_series is non-stationary.
+    KPSS tests for stationarity around a constant (or deterministic trend), with null hypothesis that time_series is stationary.
+    NOTE: may only be sensible for long enough time horizon.
+
+    Args:
+        traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+    Returns:
+        bool: True if the trajectory is stationary, False otherwise.
+    """
+    # assuming first dimension is the state dimension, shape is (dim, T)
+    num_dims = traj.shape[0]
+
+    # If not using recurrence test, test for stationarity using stationarity tests
+    for d in range(num_dims):
+        if verbose:
+            print(f"Checking stationarity for dimension {d}")
+        coord = traj[d, :]
+
+        # Use statsmodels ADF and KPSS tests
+        result_adf = adfuller(coord, autolag="AIC")
+        result_kpss = kpss(coord, regression="c")
+        # Interpret p-values for ADF
+        status_adf = 1 if result_adf[1] < 0.05 else 0
+        status_kpss = 0 if result_kpss[1] < 0.05 else 1
+
+        # Aggregate conclusion
+        if status_adf and status_kpss:
+            if verbose:
+                print("Strong evidence for stationarity")
+        elif not status_adf and not status_kpss:
+            if verbose:
+                print("Strong evidence for non-stationarity")
+            return False
+        else:
+            if verbose:
+                print("Mixed results, inconclusive")
+                print("ADF: ", status_adf)
+                print("KPSS: ", status_kpss)
+    return True
