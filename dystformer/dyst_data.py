@@ -451,7 +451,7 @@ class DynSysSampler:
         # TEMPORARY: remove driver dims from trajectories
         if perturbed_systems is not None:
             dims = {sys.name: sys.driver_dim for sys in perturbed_systems}
-            ensemble = {sys: traj[..., dims[sys] :] for sys, traj in ensemble.items()}
+            ensemble = {sys: traj[:, dims[sys] :, :] for sys, traj in ensemble.items()}
 
         if self.attractor_validator is not None:
             logger.info(f"Applying attractor validator to {len(ensemble)} systems")
