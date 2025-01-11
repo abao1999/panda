@@ -1,38 +1,23 @@
 #!/bin/bash
 
-#====== DEBUG ======#
-# # base dysts
-# python -W ignore scripts/make_dyst_data.py \
-#     sampling.sys_class=continuous \
-#     sampling.num_points=4096 \
-#     sampling.num_periods=10 \
-#     sampling.num_param_perturbations=2 \
-#     sampling.param_scale=1.0 \
-#     sampling.atol=1e-10 \
-#     sampling.rtol=1e-8 \
-#     sampling.silence_integration_errors=true \
-#     sampling.split_prefix=debug_base \
-#     sampling.rseed=56
-
 # skew systems
 python -W ignore scripts/make_skew_systems.py \
     sampling.num_points=4096 \
     sampling.num_periods=10 \
-    sampling.num_param_perturbations=2 \
+    sampling.num_param_perturbations=100 \
     sampling.param_scale=1.0 \
     sampling.atol=1e-10 \
     sampling.rtol=1e-8 \
     sampling.silence_integration_errors=true \
     sampling.data_dir=/stor/work/AMDG_Gilpin_Summer2024/data/skew_flowrms_run3 \
-    sampling.rseed=55 \
+    sampling.rseed=57 \
     sampling.verbose=false \
     events.verbose=false \
-    events.max_duration=60 \
+    events.max_duration=300 \
     skew.normalization_strategy=flow_rms \
-    skew.transform_scales=false \
+    skew.transform_scales=true \
     skew.randomize_driver_indices=true \
-    skew.num_pairs=1024 \
-
+    skew.num_pairs=1280 \
 
 # # base dysts
 # python -W ignore scripts/make_dyst_data.py \
@@ -46,18 +31,3 @@ python -W ignore scripts/make_skew_systems.py \
 #     sampling.silence_integration_errors=true \
 #     sampling.split_prefix=new_base_run4 \
 #     sampling.rseed=43
-
-# # skew systems
-# python -W ignore scripts/make_skew_systems.py \
-#     sampling.num_points=4096 \
-#     sampling.num_periods=10 \
-#     sampling.num_param_perturbations=20 \
-#     sampling.atol=1e-10 \
-#     sampling.rtol=1e-8 \
-#     sampling.silence_integration_errors=true \
-#     sampling.split_prefix=debug_run1 \
-#     skew.normalization_strategy=mean_amp_response \
-#     skew.transform_scales=false \
-#     skew.randomize_driver_indices=false \
-#     skew.num_pairs=200 \
-

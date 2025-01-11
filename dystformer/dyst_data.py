@@ -434,7 +434,7 @@ class DynSysSampler:
         Process the ensemble list by checking for valid attractors and filtering out invalid ones.
         Also, transposes and stacks trajectories to get shape (num_samples, num_dims, num_timesteps).
         """
-        # transpose and stack to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
+        # stack and transpose to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
         ensemble_sys_names = [sys for ens in ensemble_list for sys in ens.keys()]
         ensemble = {
             sys: np.stack(

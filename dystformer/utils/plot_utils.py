@@ -5,8 +5,14 @@ import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
+from matplotlib.ticker import FormatStrFormatter
 
 COLORS = list(TABLEAU_COLORS.values())
+
+if os.path.exists("custom_style.mplstyle"):
+    plt.style.use(["ggplot", "custom_style.mplstyle"])
+else:
+    plt.style.use("ggplot")
 
 
 def plot_trajs_multivariate(
@@ -14,7 +20,6 @@ def plot_trajs_multivariate(
     save_dir: str = "tests/figs",
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
-    n_samples_plot: int | None = None,
     plot_2d_slice: bool = False,
     plot_projections: bool = False,
     standardize: bool = False,
@@ -30,7 +35,6 @@ def plot_trajs_multivariate(
         save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
         plot_name (str, optional): Base name for the saved plot files. Defaults to "dyst".
         samples_subset (list[int] | None): Subset of sample indices to plot. If None, all samples are used. Defaults to None.
-        n_samples_plot (int | None): Number of samples to plot. If None, all samples are plotted. Defaults to None.
         plot_2d_slice (bool): Whether to plot a 2D slice of the first two dimensions. Defaults to True.
         plot_projections (bool): Whether to plot 2D projections on the coordinate planes
         standardize (bool): Whether to standardize the trajectories
@@ -39,11 +43,11 @@ def plot_trajs_multivariate(
         max_samples (int): Maximum number of samples to plot. Defaults to 6.
     """
     os.makedirs(save_dir, exist_ok=True)
-    assert (
-        trajectories.shape[1] >= len(dims_3d)
-    ), f"Data has {trajectories.shape[1]} dimensions, but {len(dims_3d)} dimensions were requested for plotting"
+    assert trajectories.shape[1] >= len(dims_3d), (
+        f"Data has {trajectories.shape[1]} dimensions, but {len(dims_3d)} dimensions were requested for plotting"
+    )
 
-    n_samples_plot = min(max_samples, n_samples_plot or trajectories.shape[0])
+    n_samples_plot = min(max_samples, trajectories.shape[0])
 
     if samples_subset is not None:
         if n_samples_plot > len(samples_subset):
@@ -53,8 +57,11 @@ def plot_trajs_multivariate(
             n_samples_plot = len(samples_subset)
 
     if standardize:
-        trajectories -= trajectories.mean(axis=-1)[:, :, None]
-        trajectories /= trajectories.std(axis=-1)[:, :, None]
+        mean = np.nanmean(trajectories, axis=-1)[:, :, None]
+        std = np.nanstd(trajectories, axis=-1)[:, :, None]
+        std = np.where(std < 1e-10, 1e-10, std)
+
+        trajectories = (trajectories - mean) / std
 
     if plot_2d_slice:
         save_path = os.path.join(save_dir, f"{plot_name}.png")
@@ -153,6 +160,88 @@ def plot_trajs_multivariate(
     ax.tick_params(pad=3)
     ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
     plt.title(plot_name.replace("_", " "))
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+
+
+def plot_grid_trajs_multivariate(
+    ensemble: dict[str, np.ndarray],
+    save_dir: str = "tests/figs",
+    plot_name: str = "dyst_grid",
+    standardize: bool = False,
+    dims_3d: list[int] = [0, 1, 2],
+    subplot_size: tuple[int, int] = (3, 3),
+    max_samples: int = 6,
+) -> None:
+    """
+    Plot a grid of multiple systems' multivariate timeseries from dyst_data
+
+    Args:
+        ensemble (dict[str, np.ndarray]): Dictionary of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
+        save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
+        plot_name (str, optional): Base name for the saved plot files. Defaults to "dyst".
+        standardize (bool): Whether to standardize the trajectories
+        dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
+        figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
+        max_samples (int): Maximum number of samples to plot. Defaults to 6.
+    """
+    os.makedirs(save_dir, exist_ok=True)
+
+    save_path = os.path.join(save_dir, f"{plot_name}.png")
+    print("Plotting grid of 3D trajectories and saving to ", save_path)
+    n_systems = len(ensemble)
+    n_rows = int(np.ceil(np.sqrt(n_systems)))
+    n_cols = int(np.ceil(n_systems / n_rows))
+
+    row_padding = 0.2
+    column_padding = 0.2
+    figsize = (
+        n_cols * subplot_size[0] * (1 + column_padding),
+        n_rows * subplot_size[1] * (1 + row_padding),
+    )
+    fig = plt.figure(figsize=figsize)
+
+    for idx, (system_name, trajectories) in enumerate(ensemble.items()):
+        assert trajectories.shape[1] >= len(dims_3d), (
+            f"Data has {trajectories.shape[1]} dimensions, but {len(dims_3d)} dimensions were requested for plotting"
+        )
+        n_samples_plot = min(max_samples, trajectories.shape[0])
+
+        if standardize:
+            mean = np.nanmean(trajectories, axis=-1)[:, :, None]
+            std = np.nanstd(trajectories, axis=-1)[:, :, None]
+            std = np.where(std < 1e-10, 1e-10, std)
+
+            trajectories = (trajectories - mean) / std
+
+        ax = fig.add_subplot(n_rows, n_cols, idx + 1, projection="3d")
+        for sample_idx in range(n_samples_plot):
+            label = f"Sample {sample_idx}"
+            curr_color = COLORS[sample_idx % len(COLORS)]
+
+            xyz = trajectories[sample_idx, dims_3d, :]
+            ax.plot(*xyz, alpha=0.5, linewidth=1, color=curr_color, label=label)
+
+            ic_pt = xyz[:, 0]
+            ax.scatter(*ic_pt, marker="*", s=100, alpha=0.5, color=curr_color)
+
+            end_pt = xyz[:, -1]
+            ax.scatter(*end_pt, marker="x", s=100, alpha=0.5, color=curr_color)
+
+        system_name_title = system_name.replace("_", " + ")
+        ax.set_title(f"{system_name_title}.", fontsize=8, fontweight="bold")
+        fig.patch.set_facecolor("white")  # Set the figure's face color to white
+        ax.set_facecolor("white")  # Set the axes' face color to white
+        ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+        ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+        ax.zaxis.set_major_formatter(FormatStrFormatter("%.1f"))  # type: ignore
+        ax.tick_params(pad=1)
+        ax.grid(False)
+
+    # Adjust the layout to add more space between rows
+    plt.tight_layout()  # Adjust 'pad' as needed
+    plt.subplots_adjust(hspace=row_padding, wspace=column_padding)
+
     plt.savefig(save_path, dpi=300)
     plt.close()
 

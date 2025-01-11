@@ -10,10 +10,13 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import dysts.flows as flows
+import numpy as np
 
 from dystformer.utils import (
     accumulate_coords,
     get_system_filepaths,
+    make_ensemble_from_arrow_dir,
+    plot_grid_trajs_multivariate,
     plot_trajs_multivariate,
 )
 
@@ -26,7 +29,7 @@ def plot_saved_data(
     split: str,
     one_dim_target: bool = False,
     samples_subset_dict: Optional[Dict[str, List[int]]] = None,
-    n_samples_plot: int = 1,
+    max_samples: int = 1,
     plot_default_sample: bool = True,
     plot_name_suffix: Optional[str] = None,
     plot_save_dir: str = "tests/figs",
@@ -46,7 +49,7 @@ def plot_saved_data(
                 print(f"Plotting samples subset {samples_subset} for {dyst_name}")
 
         start_sample_idx = 0 if plot_default_sample else 1
-        end_sample_idx = n_samples_plot if plot_default_sample else n_samples_plot + 1
+        end_sample_idx = max_samples if plot_default_sample else max_samples + 1
 
         filepaths = get_system_filepaths(dyst_name, DATA_DIR, split)[
             start_sample_idx:end_sample_idx
@@ -54,12 +57,13 @@ def plot_saved_data(
         print(f"{dyst_name} filepaths: ", filepaths)
 
         dyst_coords_samples = accumulate_coords(filepaths, one_dim_target)
+        coords_dim = dyst_coords_samples.shape[1]
 
         # plot the trajectories
         plot_name = f"{dyst_name}_{plot_name_suffix}" if plot_name_suffix else dyst_name
 
         is_skew = "_" in dyst_name
-        if is_skew:
+        if is_skew and coords_dim >= 6:  # hacky check
             driver_name, _ = dyst_name.split("_")
             driver_dim = getattr(flows, driver_name)().dimension
             driver_coords = dyst_coords_samples[:, :driver_dim, :]
@@ -87,6 +91,49 @@ def plot_saved_data(
                 plot_2d_slice=False,
                 plot_projections=True,
             )
+
+
+def make_response_ensemble(ensemble: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """
+    Make an ensemble of just the response coordinates for each system in ensemble.
+    Use case: when saving the concatenated driver and response coordinates of skew system.
+    """
+    driver_dims = {
+        sys: getattr(flows, sys.split("_")[0])().dimension for sys in ensemble.keys()
+    }
+    print("got driver dims")
+    response_ensemble = {
+        sys: ensemble[sys][:, driver_dims[sys] :, :] for sys in ensemble.keys()
+    }
+    return response_ensemble
+
+
+def plot_saved_data_grid(
+    dyst_names_lst: List[str],
+    split: str,
+    max_samples: int = 6,
+    plot_save_dir: str = "tests/figs",
+    plot_name_suffix: Optional[str] = None,
+) -> None:
+    """
+    Plot a grid of multiple systems' multivariate timeseries from dyst_data
+    """
+    ensemble = make_ensemble_from_arrow_dir(
+        DATA_DIR, split, dyst_names_lst=dyst_names_lst
+    )
+    n_systems = len(ensemble)
+    default_name = f"{n_systems}_systems"
+
+    plot_name = (
+        f"{default_name}_{plot_name_suffix}" if plot_name_suffix else default_name
+    )
+    plot_grid_trajs_multivariate(
+        ensemble,
+        save_dir=plot_save_dir,
+        plot_name=plot_name,
+        max_samples=max_samples,
+        standardize=True,
+    )
 
 
 if __name__ == "__main__":
@@ -128,16 +175,25 @@ if __name__ == "__main__":
         action=argparse.BooleanOptionalAction,
         default=False,
     )
+    parser.add_argument(
+        "--plot_grid",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     args = parser.parse_args()
 
     if args.split is None:
         raise ValueError("Split must be provided for loading data")
 
     if args.dysts_names == ["all"]:
+        # choose random 9 systems to plot, using reporducible rseed
+        rseed = 99
+        rng = np.random.default_rng(rseed)
         split_dir = os.path.join(DATA_DIR, args.split)
         dyst_names_lst = [
             folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
         ]
+        dyst_names_lst = list(rng.choice(dyst_names_lst, 9, replace=False))
     else:
         dyst_names_lst = args.dysts_names
 
@@ -152,15 +208,23 @@ if __name__ == "__main__":
             )
         samples_subset_dict = metadata[args.samples_subset]
 
-    plot_saved_data(
-        dyst_names_lst,
-        split=args.split,
-        one_dim_target=args.one_dim_target,
-        samples_subset_dict=samples_subset_dict,
-        n_samples_plot=args.n_samples_plot,
-        plot_default_sample=not args.skip_default_sample,
-        plot_name_suffix="failures"
-        if args.samples_subset == "failed_samples"
-        else None,
-        plot_save_dir=args.plot_save_dir,
-    )
+    plot_name_suffix = "failures" if args.samples_subset == "failed_samples" else None
+    if args.plot_grid:
+        plot_saved_data_grid(
+            dyst_names_lst,
+            split=args.split,
+            max_samples=args.n_samples_plot,
+            plot_name_suffix=plot_name_suffix,
+            plot_save_dir=args.plot_save_dir,
+        )
+    else:
+        plot_saved_data(
+            dyst_names_lst,
+            split=args.split,
+            one_dim_target=args.one_dim_target,
+            samples_subset_dict=samples_subset_dict,
+            max_samples=args.n_samples_plot,
+            plot_default_sample=not args.skip_default_sample,
+            plot_name_suffix=plot_name_suffix,
+            plot_save_dir=args.plot_save_dir,
+        )
