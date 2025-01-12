@@ -6,7 +6,7 @@ sampling:
   rseed: 999
   reference_traj_length: 2048
   reference_traj_transient: 0.2
-  reference_traj_n_periods: 5
+  reference_traj_n_periods: 10
   num_points: 4096
   num_periods: 10
   num_ics: 1

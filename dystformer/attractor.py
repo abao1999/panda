@@ -463,47 +463,33 @@ def check_not_linear(
         return True  # fallback if SVD fails
 
 
-def check_stationarity(
-    traj: np.ndarray,
-    verbose: bool = False,
-) -> bool:
+def check_stationarity(traj: np.ndarray, p_value: float = 0.05) -> bool:
     """
     ADF tests for presence of a unit root, with null hypothesis that time_series is non-stationary.
     KPSS tests for stationarity around a constant (or deterministic trend), with null hypothesis that time_series is stationary.
-    NOTE: may only be sensible for long enough time horizon.
 
     Args:
         traj (ndarray): 2D array of shape (num_vars, num_timepoints), where each row is a time series.
+        p_value: float = 0.05, significance level for stationarity tests
+
     Returns:
         bool: True if the trajectory is stationary, False otherwise.
     """
-    # assuming first dimension is the state dimension, shape is (dim, T)
     num_dims = traj.shape[0]
 
-    # If not using recurrence test, test for stationarity using stationarity tests
     for d in range(num_dims):
-        if verbose:
-            print(f"Checking stationarity for dimension {d}")
         coord = traj[d, :]
 
         # Use statsmodels ADF and KPSS tests
         result_adf = adfuller(coord, autolag="AIC")
         result_kpss = kpss(coord, regression="c")
-        # Interpret p-values for ADF
-        status_adf = 1 if result_adf[1] < 0.05 else 0
-        status_kpss = 0 if result_kpss[1] < 0.05 else 1
 
-        # Aggregate conclusion
-        if status_adf and status_kpss:
-            if verbose:
-                print("Strong evidence for stationarity")
-        elif not status_adf and not status_kpss:
-            if verbose:
-                print("Strong evidence for non-stationarity")
+        # for adf test, null hypothesis is that the time series is non-stationary
+        # for kpss test, null hypothesis is that the time series is stationary
+        status_adf = result_adf[1] < p_value
+        status_kpss = result_kpss[1] >= p_value
+
+        if not status_adf and not status_kpss:
             return False
-        else:
-            if verbose:
-                print("Mixed results, inconclusive")
-                print("ADF: ", status_adf)
-                print("KPSS: ", status_kpss)
+
     return True
