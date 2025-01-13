@@ -177,21 +177,22 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         driver_unbounded_indices: list[int] = [],
     ) -> np.ndarray:
         """
-        Dynamical systems can have unbounded coordinates e.g. time-like drivers or exponential growth dimensions
-        Postprocessing is used to bound these coordinates, for instance by making them periodic
-        For skew systems, this postprocessing is complicated by two considerations:
-            a. Our feature to allow randomized shuffling of driver dimensions
+        For skew systems, the postprocessing is complicated by two considerations:
+            a. random shuffling/permutation of driver dimensions
             b. The driver and response systems live in different spaces.
-        Therefore, a roadmap of the postprocessing is as follows:
-            1. Keep track of the unbounded indices for the driver and response systems
-            2. Map the driver system into the driver space and apply the driver's postprocessing
-            3. Apply the response's postprocessing to the response system
-            4. Map the postprocessed driver back into the response space
-            5. Enforce consistency between the separately postprocessed driver and response
-                This is done by a heuristic scheme that aggregates the driver and response postprocessed coordinates:
-                    + If two indices are both unbounded, the average of the two is returned
-                    + If only one is unbounded, the unbounded index is returned (via the mask)
-                    + If neither is unbounded, theyre the same and the average is either one of them
+        This postprocessing method is a heuristic scheme that, at a high level, takes the response trajectory
+        and postprocesses it in the driver space and the response space and then takes the average of the two.
+
+        In more detail:
+            1. using the driver indices, map the response trajectory back into the driver space
+            2. apply the driver's postprocessing to the mapped trajectory in the driver space
+            3. map the postprocessed "driver" back into the response space
+            4. apply the response's postprocessing to the response space
+            5. create masks s.t. for an given index i, if the driver_postprocessed_i and response_postprocessed_i
+                - both unbounded (in their respective spaces), include both in the average
+                - only one is unbounded, include the unbounded one in the average
+                - neither is unbounded, include both in the average
+            6. take the average of the two postprocessed trajectories
         """
         inds = np.arange(self.response_dim)
         driver_ub_inds = self._permuted_driver_unbounded_indices(
@@ -297,6 +298,9 @@ class RandomActivatedCouplingMap(BaseCouplingMap):
     Random linear transform with nonlinear driver activation coupling map
     """
 
+    driver_scale: float | np.ndarray = 1.0
+    response_scale: float | np.ndarray = 1.0
+
     random_seed: int = 0
     matrix_init_fn: Callable[[int, int, np.random.Generator], np.ndarray] | None = None
     driver_activation: Callable[[np.ndarray], np.ndarray] = _tanh
@@ -315,29 +319,39 @@ class RandomActivatedCouplingMap(BaseCouplingMap):
                 self.response_dim, self.driver_dim + self.response_dim, self.rng
             )
 
+        if isinstance(self.driver_scale, np.ndarray):
+            self.driver_scale = np.pad(
+                self.driver_scale, (0, max(0, self.response_dim - self.driver_dim))
+            )[: self.response_dim]
+
     @property
     def n_params(self) -> int:
         return self.coupling_matrix.size
 
-    def transform_params(self, _: Callable) -> bool:
+    def transform_params(self, param_transform: Callable) -> bool:
         if self.matrix_init_fn is not None:
             self.coupling_matrix = self.matrix_init_fn(
-                self.response_dim, self.driver_dim + self.response_dim, self.rng
+                self.response_dim,
+                self.driver_dim + self.response_dim,
+                param_transform.rng,
             )
         return True
 
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
         driver = self.coupling_matrix[:, : self.driver_dim] @ driver
-        driver = self.driver_activation(driver)
+        driver = self.driver_activation(self.driver_scale * driver)
         response = self.coupling_matrix[:, self.driver_dim :] @ response
-        return np.hstack([driver, response])
+        response = self.response_scale * response
+        return driver + response
 
     def jac(self, driver: np.ndarray, response: np.ndarray, wrt: str = "driver"):
         if wrt == "driver":
             D = self.coupling_matrix[:, : self.driver_dim]  # type: ignore
-            return D * self.driver_activation(driver, deriv=True)[:, np.newaxis]
+            act_grad = self.driver_activation(self.driver_scale * driver, deriv=True)
+            return self.driver_scale * act_grad[:, np.newaxis] * D
         elif wrt == "response":
-            return self.coupling_matrix[:, self.driver_dim :]  # type: ignore
+            R = self.coupling_matrix[:, self.driver_dim :]  # type: ignore
+            return self.response_scale * R
         else:
             raise ValueError(f"Invalid wrt argument: {wrt}")
 
@@ -348,11 +362,16 @@ class RandomActivatedCouplingMap(BaseCouplingMap):
                 "response_dim": self.response_dim,
                 "random_seed": self.random_seed,
                 "coupling_matrix": self.coupling_matrix.tolist(),
+                "driver_scale": self.driver_scale,
+                "response_scale": self.response_scale,
             },
         }
 
     @classmethod
     def _deserialize(cls, data: dict) -> "RandomActivatedCouplingMap":
         preinit_data = data["preinit"]
+        for key in ["driver_scale", "response_scale"]:
+            if isinstance(preinit_data[key], list):
+                preinit_data[key] = np.array(preinit_data[key])
         preinit_data["coupling_matrix"] = np.asarray(preinit_data["coupling_matrix"])
         return cls(**preinit_data)

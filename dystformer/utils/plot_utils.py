@@ -80,6 +80,7 @@ def plot_trajs_multivariate(
             final_point = trajectories[sample_idx, :2, -1]
             plt.scatter(*final_point, marker="x", s=100, alpha=0.5, color=curr_color)
 
+        print(f"Saving 2D plot to {save_path}")
         plt.xlabel("X")
         plt.ylabel("Y")
         plt.legend()
@@ -149,6 +150,7 @@ def plot_trajs_multivariate(
                 x_min, end_pt[1], end_pt[2], marker="x", alpha=palpha, color=curr_color
             )
 
+    print(f"Saving 3D plot to {save_path}")
     ax.set_xlabel(f"dim_{dims_3d[0]}")
     ax.set_ylabel(f"dim_{dims_3d[1]}")
     ax.set_zlabel(f"dim_{dims_3d[2]}")  # type: ignore

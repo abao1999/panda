@@ -136,11 +136,36 @@ def additive_coupling_map_factory(
     )
 
 
+def rank1_perturbed_response_matrix(
+    n: int, m: int, rng: np.random.Generator
+) -> np.ndarray:
+    """Initialize a rank-1 perturbed response matrix"""
+    v = rng.normal(0, 1, size=n)
+    v /= np.linalg.norm(v)
+    perturbation = np.outer(v, v)
+    driving_matrix = np.eye(max(n, m - n))[:n, : m - n]
+    return np.hstack([driving_matrix, perturbation + np.eye(n)])
+
+
 def activated_coupling_map_factory(
-    driver_name: str, response_name: str, random_seed: int = 0, **kwargs
+    driver_name: str,
+    response_name: str,
+    stats_cache: dict[str, dict[str, np.ndarray]],
+    random_seed: int = 0,
+    **kwargs,
 ) -> Callable[[int, int], RandomActivatedCouplingMap]:
-    """Initialize a random activated coupling map with anti-symmetric weights"""
-    return partial(RandomActivatedCouplingMap, random_seed=random_seed)
+    """Initialize a random activated coupling map with an ill-conditioned driving matrix"""
+    driver_stats = stats_cache[driver_name]
+    response_stats = stats_cache[response_name]
+    driver_scale = driver_stats.get("flow_rms", 1.0)
+    response_scale = response_stats.get("flow_rms", 1.0)
+    return partial(
+        RandomActivatedCouplingMap,
+        random_seed=random_seed,
+        matrix_init_fn=rank1_perturbed_response_matrix,
+        driver_scale=driver_scale,
+        response_scale=response_scale,
+    )
 
 
 def init_skew_system(
