@@ -49,11 +49,12 @@ skew:
   train_nonskew_path: null
   test_nonskew_path: null
 
+  coupling_map_type: additive
   coupling_map:
-    random_seed: 0
 
     # for the additive map
-    transform_scales: true
+    transform_scales: false
     randomize_driver_indices: true
     normalization_strategy: flow_rms
 
+    random_seed: 0

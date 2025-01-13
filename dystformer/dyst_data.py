@@ -80,13 +80,13 @@ class DynSysSampler:
         self.failed_integrations = defaultdict(list)
         self.rng = np.random.default_rng(self.rseed)
         if self.param_sampler is None:
-            assert (
-                self.num_param_perturbations == 1
-            ), "No parameter sampler provided, but num_param_perturbations > 1"
+            assert self.num_param_perturbations == 1, (
+                "No parameter sampler provided, but num_param_perturbations > 1"
+            )
         if self.ic_sampler is None:
-            assert (
-                self.num_ics == 1
-            ), "No initial condition sampler provided, but num_ics > 1"
+            assert self.num_ics == 1, (
+                "No initial condition sampler provided, but num_ics > 1"
+            )
         if self.attractor_tests is None and self.num_param_perturbations > 1:
             logger.warning(
                 "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
@@ -139,9 +139,9 @@ class DynSysSampler:
         save the ensembles to disk and save the parameters to a json file.
         """
         sys_names = [sys if isinstance(sys, str) else sys.name for sys in systems]
-        assert len(set(sys_names)) == len(
-            sys_names
-        ), "Cannot have duplicate system names"
+        assert len(set(sys_names)) == len(sys_names), (
+            "Cannot have duplicate system names"
+        )
         if save_dir is not None:
             logger.info(
                 f"Making {split} split with {len(systems)} dynamical systems"
@@ -383,7 +383,7 @@ class DynSysSampler:
     def save_failed_integrations_callback(self, sample_idx, ensemble, **kwargs):
         excluded_keys = kwargs.get("excluded_keys", [])
         if len(excluded_keys) > 0:
-            logger.warning(f"Integration failed for: {excluded_keys}")
+            logger.warning(f"Integration failed for {len(excluded_keys)} systems")
             for dyst_name in excluded_keys:
                 self.failed_integrations[dyst_name].append(sample_idx)
 
@@ -403,9 +403,8 @@ class DynSysSampler:
 
         def _callback(sample_idx, ensemble, **kwargs):
             if len(ensemble.keys()) == 0:
-                logger.warning(
-                    "No successful trajectories for this sample. Skipping, will not save to arrow files."
-                )
+                if save_dyst_dir is not None:
+                    logger.warning("No successful trajectories for this sample")
                 return
 
             ensemble_list.append(ensemble)

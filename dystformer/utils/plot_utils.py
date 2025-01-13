@@ -11,8 +11,6 @@ COLORS = list(TABLEAU_COLORS.values())
 
 if os.path.exists("custom_style.mplstyle"):
     plt.style.use(["ggplot", "custom_style.mplstyle"])
-else:
-    plt.style.use("ggplot")
 
 
 def plot_trajs_multivariate(
@@ -65,7 +63,6 @@ def plot_trajs_multivariate(
 
     if plot_2d_slice:
         save_path = os.path.join(save_dir, f"{plot_name}.png")
-        print("Plotting 2D trajectories and saving to ", save_path)
         plt.figure(figsize=figsize)
         for sample_idx in range(n_samples_plot):
             label_sample_idx = (
@@ -91,7 +88,6 @@ def plot_trajs_multivariate(
         plt.close()
 
     save_path = os.path.join(save_dir, f"{plot_name}_3D.png")
-    print("Plotting 3D trajectories and saving to ", save_path)
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111, projection="3d")
 

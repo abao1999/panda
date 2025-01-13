@@ -298,27 +298,33 @@ class RandomActivatedCouplingMap(BaseCouplingMap):
     """
 
     random_seed: int = 0
-    coupling_matrix: np.ndarray | None = None
-    driver_activation: Callable[[np.ndarray], np.ndarray] = _sin
+    matrix_init_fn: Callable[[int, int, np.random.Generator], np.ndarray] | None = None
+    driver_activation: Callable[[np.ndarray], np.ndarray] = _tanh
 
     def __post_init__(self) -> None:
-        if self.coupling_matrix is None:
-            self.rng = np.random.default_rng(self.random_seed)
-            self.coupling_matrix = self.rng.normal(
-                size=(self.response_dim, self.driver_dim + self.response_dim)
-            ) / (self.driver_dim + self.response_dim)
+        self.rng = np.random.default_rng(self.random_seed)
+        if self.matrix_init_fn is not None:
+            self.coupling_matrix = self.matrix_init_fn(
+                self.response_dim, self.driver_dim + self.response_dim, self.rng
+            )
         else:
-            assert self.coupling_matrix.shape == (
-                self.response_dim,
-                self.driver_dim + self.response_dim,
+            self.matrix_init_fn = lambda n, m, rng: rng.normal(size=(n, m)) / np.sqrt(
+                n + m
+            )
+            self.coupling_matrix = self.matrix_init_fn(
+                self.response_dim, self.driver_dim + self.response_dim, self.rng
             )
 
     @property
     def n_params(self) -> int:
         return self.coupling_matrix.size
 
-    def transform_params(self, param_transform: Callable) -> bool:
-        raise NotImplementedError
+    def transform_params(self, _: Callable) -> bool:
+        if self.matrix_init_fn is not None:
+            self.coupling_matrix = self.matrix_init_fn(
+                self.response_dim, self.driver_dim + self.response_dim, self.rng
+            )
+        return True
 
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
         driver = self.coupling_matrix[:, : self.driver_dim] @ driver

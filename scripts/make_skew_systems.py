@@ -109,6 +109,7 @@ def additive_coupling_map_factory(
     randomize_driver_indices: bool = True,
     normalization_strategy: str = "flow_rms",
     random_seed: int = 0,
+    **kwargs,
 ) -> Callable[[int, int], RandomAdditiveCouplingMap]:
     """
     Initialize a random additive coupling map for a skew-product dynamical system
@@ -136,13 +137,9 @@ def additive_coupling_map_factory(
 
 
 def activated_coupling_map_factory(
-    driver_name: str,
-    response_name: str,
-    random_seed: int = 0,
+    driver_name: str, response_name: str, random_seed: int = 0, **kwargs
 ) -> Callable[[int, int], RandomActivatedCouplingMap]:
-    """
-    Initialize a random activated coupling map for a skew-product dynamical system
-    """
+    """Initialize a random activated coupling map with anti-symmetric weights"""
     return partial(RandomActivatedCouplingMap, random_seed=random_seed)
 
 
@@ -376,15 +373,16 @@ def main(cfg):
             rtol=cfg.sampling.rtol,
         )  # type: ignore
 
-        system = init_skew_system(
-            driver,
-            response,
-            coupling_map_fn=additive_coupling_map_factory(
-                driver, response, stats_cache, **cfg.skew.coupling_map_kwargs
-            ),
+        coupling_map = {
+            "additive": additive_coupling_map_factory,
+            "activated": activated_coupling_map_factory,
+        }[cfg.skew.coupling_map_type](
+            driver, response, **{"stats_cache": stats_cache, **cfg.skew.coupling_map}
         )
+        system = init_skew_system(driver, response, coupling_map_fn=coupling_map)
         plot_single_system(system, sys_sampler, cfg)
         exit()
+    ###########################################################################
 
     # sample skew system train/test splits
     skew_pairs = sample_skew_systems(
@@ -416,7 +414,7 @@ def main(cfg):
         coupling_map_type=cfg.skew.coupling_map_type,
         coupling_map_kwargs={  # add the stats cache to the coupling map kwargs
             "stats_cache": stats_cache,
-            **cfg.skew.coupling_map_kwargs,
+            **cfg.skew.coupling_map,
         },
     )
     train_prop = len(train_systems) / len(skew_pairs)
