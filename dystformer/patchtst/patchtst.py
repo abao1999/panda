@@ -841,7 +841,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             `config.return_dict`=False)
 
         """
-
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
         )
@@ -864,12 +863,8 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         # x_hat: [bs x num_channels x num_patches x patch_length]
         x_hat = self.head(x_hat)
 
-        # renormalize time series and calculate masked_loss
-        # x_hat = x_hat * scale + loc
-        # model_input = model_output.patch_input * scale + loc
-        loss_val = self.loss(x_hat, model_output.patch_input)
-
         # reduce over the patch length dim first, then compute the masked loss over the tokens
+        loss_val = self.loss(x_hat, model_output.patch_input)
         masked_loss = (loss_val.mean(dim=-1) * model_output.mask).sum() / (
             model_output.mask.sum() + 1e-10
         )
@@ -1101,7 +1096,6 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                     y_hat, loc=model_output.loc, scale=model_output.scale
                 )
                 loss_val = nll(distribution, future_values)
-                # take average of the loss
                 loss_val = weighted_average(loss_val)
             else:
                 future_values = (future_values - model_output.loc) / model_output.scale

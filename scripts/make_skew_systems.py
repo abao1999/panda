@@ -24,7 +24,10 @@ from dystformer.attractor import (
     check_power_spectrum,
     check_stationarity,
 )
-from dystformer.coupling_maps import RandomAdditiveCouplingMap
+from dystformer.coupling_maps import (
+    RandomActivatedCouplingMap,
+    RandomAdditiveCouplingMap,
+)
 from dystformer.dyst_data import DynSysSampler
 from dystformer.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
 from dystformer.sampling import OnAttractorInitCondSampler, SignedGaussianParamSampler
@@ -98,34 +101,20 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         )
 
 
-def init_additive_skew_system(
+def additive_coupling_map_factory(
     driver_name: str,
     response_name: str,
-    driver_stats: dict[str, np.ndarray],
-    response_stats: dict[str, np.ndarray],
-    normalization_strategy: str = "flow_rms",
+    stats_cache: dict[str, dict[str, np.ndarray]],
     transform_scales: bool = True,
     randomize_driver_indices: bool = True,
-    seed: int | None = None,
-    **kwargs,
-) -> DynSys:
+    normalization_strategy: str = "flow_rms",
+    random_seed: int = 0,
+) -> Callable[[int, int], RandomAdditiveCouplingMap]:
     """
-    Initialize a skew-product dynamical system with a driver and response system
-
-    Args:
-        driver_stats: reciprocals of computed stats, "flow_rms" and "amplitude", for the driver system
-        response_stats: reciprocals of computed stats, "flow_rms" and "amplitude", for the response system
-        normalization_strategy: strategy for normalizing the driver and response systems
-            - "flow_rms": normalize by the flow RMS scale
-            - "mean_amp": normalize by the mean amplitude
-            - "mean_amp_response": normalize the driver to the mean response amplitude
-                    i.e. driver_scale = mean_amp_response / mean_amp_driver; response_scale = 1.0
-        transform_scales: whether to pass the driver_scale and response_scale through the transform used for parameter perturbations
-        randomize_driver_indices: wheter to shuffle the driver indices in coupling map
+    Initialize a random additive coupling map for a skew-product dynamical system
     """
-    driver = getattr(flows, driver_name)()
-    response = getattr(flows, response_name)()
-
+    driver_stats = stats_cache[driver_name]
+    response_stats = stats_cache[response_name]
     if normalization_strategy == "mean_amp_response":
         # NOTE: response_stats actually returns reciprocals of stats i.e. stiffness / amplitude
         mean_amp_response = 1 / response_stats.get("mean_amp", 1.0)
@@ -136,16 +125,42 @@ def init_additive_skew_system(
         driver_scale = driver_stats.get(normalization_strategy, 1.0)
         response_scale = response_stats.get(normalization_strategy, 1.0)
 
-    coupling_map = RandomAdditiveCouplingMap(
-        driver_dim=driver.dimension,
-        response_dim=response.dimension,
+    return partial(
+        RandomAdditiveCouplingMap,
         driver_scale=driver_scale,
         response_scale=response_scale,
         transform_scales=transform_scales,
         randomize_driver_indices=randomize_driver_indices,
-        random_seed=seed,
+        random_seed=random_seed,
     )
 
+
+def activated_coupling_map_factory(
+    driver_name: str,
+    response_name: str,
+    random_seed: int = 0,
+) -> Callable[[int, int], RandomActivatedCouplingMap]:
+    """
+    Initialize a random activated coupling map for a skew-product dynamical system
+    """
+    return partial(RandomActivatedCouplingMap, random_seed=random_seed)
+
+
+def init_skew_system(
+    driver_name: str, response_name: str, coupling_map_fn: Callable, **kwargs
+) -> DynSys:
+    """
+    Initialize a skew-product dynamical system with a driver and response system
+
+    Args:
+        driver_name: name of the driver system
+        response_name: name of the response system
+        coupling_map_fn: function for initializing the coupling map
+        kwargs: additional arguments for the SkewProduct constructor
+    """
+    driver = getattr(flows, driver_name)()
+    response = getattr(flows, response_name)()
+    coupling_map = coupling_map_fn(driver.dimension, response.dimension)
     return SkewProduct(
         driver=driver, response=response, coupling_map=coupling_map, **kwargs
     )
@@ -165,11 +180,11 @@ def sample_skew_systems(
 def filter_and_split_skew_systems(
     skew_pairs: list[tuple[str, str]],
     test_split: float = 0.2,
-    random_seed: int | None = None,
-    stats_cache: dict[str, dict[str, np.ndarray]] = {},
     train_systems: list[str] | None = None,
     test_systems: list[str] | None = None,
-    **skew_system_kwargs,
+    coupling_map_type: str = "additive",
+    coupling_map_kwargs: dict | None = None,
+    skew_system_kwargs: dict | None = None,
 ) -> tuple[list[str], list[str]]:
     """Sample skew systems from all pairs of non-skew systems and split into train/test
 
@@ -177,8 +192,6 @@ def filter_and_split_skew_systems(
         skew_pairs: List of skew system pairs to sample from
         test_split: Fraction of systems to use for testing
         random_seed: Random seed for reproducibility
-        stats_cache: Optional dictionary mapping system names to their RMS flow scales.
-            If None, scales are set to 1.0
         train_systems: Optional list of system names to use for training
         test_systems: Optional list of system names to use for testing
 
@@ -186,6 +199,9 @@ def filter_and_split_skew_systems(
         Tuple of (train_systems, test_systems) where each is a list of initialized
         skew product systems
     """
+    coupling_map_kwargs = coupling_map_kwargs or {}
+    skew_system_kwargs = skew_system_kwargs or {}
+
     split_idx = int(len(skew_pairs) * (1 - test_split))
     train_pairs, test_pairs = skew_pairs[:split_idx], skew_pairs[split_idx:]
 
@@ -213,15 +229,20 @@ def filter_and_split_skew_systems(
     train_pairs = list(valid_train_pairs) + list(invalid_test_pairs)
     test_pairs = list(valid_test_pairs) + list(invalid_train_pairs)
 
+    coupling_map_factory = {
+        "additive": additive_coupling_map_factory,
+        "activated": activated_coupling_map_factory,
+    }[coupling_map_type]
+
     systems = {}
     for split, skew_pairs in [("train", train_pairs), ("test", test_pairs)]:
         systems[split] = [
-            init_additive_skew_system(
+            init_skew_system(
                 driver,
                 response,
-                driver_stats=stats_cache.get(driver, {}),
-                response_stats=stats_cache.get(response, {}),
-                seed=random_seed,
+                coupling_map_fn=coupling_map_factory(
+                    driver, response, **coupling_map_kwargs
+                ),
                 **skew_system_kwargs,
             )
             for driver, response in skew_pairs
@@ -340,6 +361,8 @@ def main(cfg):
 
     ###########################################################################
     # optionally plot a single skew system for debugging, and exit after
+    #
+    # NOTE: additive map for now
     ###########################################################################
     if cfg.sampling.debug_system:
         driver, response = cfg.sampling.debug_system.split("_")
@@ -352,14 +375,13 @@ def main(cfg):
             atol=cfg.sampling.atol,
             rtol=cfg.sampling.rtol,
         )  # type: ignore
-        system = init_additive_skew_system(
+
+        system = init_skew_system(
             driver,
             response,
-            driver_stats=stats_cache[driver],
-            response_stats=stats_cache[response],
-            normalization_strategy=cfg.skew.normalization_strategy,
-            transform_scales=cfg.skew.transform_scales,
-            random_seed=cfg.sampling.rseed,
+            coupling_map_fn=additive_coupling_map_factory(
+                driver, response, stats_cache, **cfg.skew.coupling_map_kwargs
+            ),
         )
         plot_single_system(system, sys_sampler, cfg)
         exit()
@@ -390,12 +412,12 @@ def main(cfg):
     )
     train_systems, test_systems = filter_and_split_skew_systems(
         skew_pairs,
-        stats_cache=stats_cache,
         test_split=cfg.sampling.test_split,
-        random_seed=cfg.sampling.rseed,
-        normalization_strategy=cfg.skew.normalization_strategy,
-        transform_scales=cfg.skew.transform_scales,
-        randomize_driver_indices=cfg.skew.randomize_driver_indices,
+        coupling_map_type=cfg.skew.coupling_map_type,
+        coupling_map_kwargs={  # add the stats cache to the coupling map kwargs
+            "stats_cache": stats_cache,
+            **cfg.skew.coupling_map_kwargs,
+        },
     )
     train_prop = len(train_systems) / len(skew_pairs)
     test_prop = len(test_systems) / len(skew_pairs)
@@ -416,6 +438,7 @@ def main(cfg):
     )
 
     split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
+    run_name = cfg.run_name + "_" if cfg.run_name else ""
     for split, systems in [("train", train_systems), ("test", test_systems)]:
         split_name = f"{split_prefix}{split}"
         sys_sampler.sample_ensembles(
@@ -437,7 +460,10 @@ def main(cfg):
             use_tqdm=False,
         )
         sys_sampler.save_summary(
-            os.path.join("outputs", f"{split_prefix}{split}_attractor_checks.json"),
+            os.path.join(
+                "outputs",
+                f"{run_name}{split_prefix}{split}_attractor_checks.json",
+            ),
         )
 
 

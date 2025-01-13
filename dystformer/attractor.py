@@ -3,6 +3,7 @@ Suite of tests to determine if generated trajectories are valid attractors
 """
 
 import functools
+import warnings
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from multiprocessing import Pool
@@ -475,21 +476,22 @@ def check_stationarity(traj: np.ndarray, p_value: float = 0.05) -> bool:
     Returns:
         bool: True if the trajectory is stationary, False otherwise.
     """
-    num_dims = traj.shape[0]
+    with warnings.catch_warnings():  # kpss test is annoyingly verbose
+        warnings.filterwarnings("ignore", "The test statistic is outside of the range")
 
-    for d in range(num_dims):
-        coord = traj[d, :]
+        for d in range(traj.shape[0]):
+            coord = traj[d, :]
 
-        # Use statsmodels ADF and KPSS tests
-        result_adf = adfuller(coord, autolag="AIC")
-        result_kpss = kpss(coord, regression="c")
+            try:
+                result_adf = adfuller(coord, autolag="AIC")
+                result_kpss = kpss(coord, regression="c")
+            except ValueError:  # probably due to constant values
+                return False
 
-        # for adf test, null hypothesis is that the time series is non-stationary
-        # for kpss test, null hypothesis is that the time series is stationary
-        status_adf = result_adf[1] < p_value
-        status_kpss = result_kpss[1] >= p_value
+            status_adf = result_adf[1] < p_value
+            status_kpss = result_kpss[1] >= p_value
 
-        if not status_adf and not status_kpss:
-            return False
+            if not status_adf and not status_kpss:
+                return False
 
     return True

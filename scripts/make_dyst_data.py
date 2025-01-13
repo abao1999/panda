@@ -177,6 +177,7 @@ def main(cfg):
     )
 
     split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
+    run_name = cfg.run_name + "_" if cfg.run_name else ""
     for split, systems in [("train", train_systems), ("test", test_systems)]:
         split_name = f"{split_prefix}{split}"
         sys_sampler.sample_ensembles(
@@ -198,7 +199,10 @@ def main(cfg):
             use_tqdm=False,
         )
         sys_sampler.save_summary(
-            os.path.join("outputs", f"{split_prefix}{split}_attractor_checks.json"),
+            os.path.join(
+                "outputs",
+                f"{run_name}{split_prefix}{split}_attractor_checks.json",
+            ),
         )
 
 

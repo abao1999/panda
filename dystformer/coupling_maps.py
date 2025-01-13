@@ -130,9 +130,9 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
 
     def _pad_and_index_driver(self, driver: np.ndarray, axis: int = 0) -> np.ndarray:
         """Pad (append) and index driver to match the response dimension"""
-        assert (
-            axis < driver.ndim
-        ), f"axis {axis} must be less than driver.ndim {driver.ndim}"
+        assert axis < driver.ndim, (
+            f"axis {axis} must be less than driver.ndim {driver.ndim}"
+        )
         pad_spec = (0, max(self.response_dim - self.driver_dim, 0))
         pad_spec = ((0, 0),) * axis + (pad_spec,) + ((0, 0),) * (driver.ndim - axis - 1)
         padded_driver = np.pad(driver, pad_spec)
@@ -272,16 +272,34 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
         return obj
 
 
-@dataclass
-class RandomLinearCouplingMap(BaseCouplingMap):
-    """
-    Affine coupling map between driver and response flows
+def _tanh(x: np.ndarray, deriv: bool = False) -> np.ndarray:
+    val = np.tanh(x)
+    if deriv:
+        return 1 - val**2
+    return val
 
-    TODO: this is very outdated
+
+def _sin(x: np.ndarray, deriv: bool = False) -> np.ndarray:
+    if deriv:
+        return np.cos(x)
+    return np.sin(x)
+
+
+def _relu(x: np.ndarray, deriv: bool = False) -> np.ndarray:
+    if deriv:
+        return (x > 0).astype(float)
+    return np.maximum(0, x)
+
+
+@dataclass
+class RandomActivatedCouplingMap(BaseCouplingMap):
+    """
+    Random linear transform with nonlinear driver activation coupling map
     """
 
     random_seed: int = 0
     coupling_matrix: np.ndarray | None = None
+    driver_activation: Callable[[np.ndarray], np.ndarray] = _sin
 
     def __post_init__(self) -> None:
         if self.coupling_matrix is None:
@@ -295,13 +313,40 @@ class RandomLinearCouplingMap(BaseCouplingMap):
                 self.driver_dim + self.response_dim,
             )
 
+    @property
+    def n_params(self) -> int:
+        return self.coupling_matrix.size
+
+    def transform_params(self, param_transform: Callable) -> bool:
+        raise NotImplementedError
+
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
-        return self.coupling_matrix @ np.hstack([driver, response])
+        driver = self.coupling_matrix[:, : self.driver_dim] @ driver
+        driver = self.driver_activation(driver)
+        response = self.coupling_matrix[:, self.driver_dim :] @ response
+        return np.hstack([driver, response])
 
     def jac(self, driver: np.ndarray, response: np.ndarray, wrt: str = "driver"):
         if wrt == "driver":
-            return self.coupling_matrix[:, : self.driver_dim]  # type: ignore
+            D = self.coupling_matrix[:, : self.driver_dim]  # type: ignore
+            return D * self.driver_activation(driver, deriv=True)[:, np.newaxis]
         elif wrt == "response":
             return self.coupling_matrix[:, self.driver_dim :]  # type: ignore
         else:
             raise ValueError(f"Invalid wrt argument: {wrt}")
+
+    def _serialize(self) -> dict:
+        return {
+            "preinit": {
+                "driver_dim": self.driver_dim,
+                "response_dim": self.response_dim,
+                "random_seed": self.random_seed,
+                "coupling_matrix": self.coupling_matrix.tolist(),
+            },
+        }
+
+    @classmethod
+    def _deserialize(cls, data: dict) -> "RandomActivatedCouplingMap":
+        preinit_data = data["preinit"]
+        preinit_data["coupling_matrix"] = np.asarray(preinit_data["coupling_matrix"])
+        return cls(**preinit_data)

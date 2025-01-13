@@ -48,3 +48,12 @@ skew:
   # skew system samples into train/test sets
   train_nonskew_path: null
   test_nonskew_path: null
+
+  coupling_map:
+    random_seed: 0
+
+    # for the additive map
+    transform_scales: true
+    randomize_driver_indices: true
+    normalization_strategy: flow_rms
+
