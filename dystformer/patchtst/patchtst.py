@@ -15,7 +15,6 @@ from transformers.models.patchtst.modeling_patchtst import (
     PatchTSTForPretrainingOutput,
     PatchTSTMasking,
     PatchTSTModelOutput,
-    PatchTSTPatchify,
     PatchTSTScaler,
     SamplePatchTSTOutput,
     StudentTOutput,
@@ -68,6 +67,53 @@ class PatchTSTRMSNorm(nn.Module):
         return self.weight * hidden_states.to(input_dtype)
 
 
+class PatchTSTPatchify(nn.Module):
+    """
+    A class to patchify the time series sequence into different patches
+
+    NOTE: Exposed from original source code. Allow for variable sequence length
+
+    Returns:
+        `torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`
+    """
+
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+
+        self.sequence_length = config.context_length
+        self.patch_length = config.patch_length
+        self.patch_stride = config.patch_stride
+
+        if self.sequence_length <= self.patch_length:
+            raise ValueError(
+                f"Sequence length ({self.sequence_length}) has to be greater than the patch length ({self.patch_length})"
+            )
+
+    def forward(self, past_values: torch.Tensor):
+        """
+        Parameters:
+            past_values (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
+                Input for patchification
+
+        Returns:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`
+        """
+        sequence_length = past_values.shape[-2]
+        num_patches = (sequence_length - self.patch_length) // self.patch_stride + 1
+        new_sequence_length = self.patch_length + self.patch_stride * (num_patches - 1)
+        sequence_start = sequence_length - new_sequence_length
+
+        # output: [bs x new_sequence_length x num_channels]
+        output = past_values[:, sequence_start:, :]
+        # output: [bs x num_patches x num_input_channels x patch_length]
+        output = output.unfold(
+            dimension=-2, size=self.patch_length, step=self.patch_stride
+        )
+        # output: [bs x num_input_channels x num_patches x patch_length]
+        output = output.transpose(-2, -3).contiguous()
+        return output
+
+
 def apply_p_rope_to_qk(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
@@ -97,8 +143,8 @@ def apply_p_rope_to_qk(
         value=torch.inf,
     )
 
-    # want angles to have shape (..., 1, seq_len, head_dim//2)
-    sinusoid_inp = position_ids[..., None, :, None] / timescale[None, :]
+    # sin, cos: shape (..., 1, seq_len, head_dim//2)
+    sinusoid_inp = position_ids[..., None, :, None] / timescale[None, None, :]
     sin = torch.sin(sinusoid_inp)
     cos = torch.cos(sinusoid_inp)
 
@@ -516,7 +562,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
     PatchTST Encoder
     """
 
-    def __init__(self, config: PatchTSTConfig, num_patches: int):
+    def __init__(self, config: PatchTSTConfig):
         super().__init__(config)
         self.gradient_checkpointing = False
 
@@ -593,10 +639,8 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
 
 
 class PatchTSTNoiser(nn.Module):
-    def __init__(self, high: float, low: float):
+    def __init__(self):
         super().__init__()
-        self.high = high
-        self.low = low
 
     def forward(self, timeseries: torch.Tensor, noise_scale: float) -> torch.Tensor:
         """
@@ -611,39 +655,7 @@ class PatchTSTNoiser(nn.Module):
         Returns:
             `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
         """
-        # return torch.clamp(
-        #     timeseries + torch.randn_like(timeseries) * noise_scale,
-        #     min=self.low,
-        #     max=self.high,
-        # )
         return timeseries + torch.randn_like(timeseries) * noise_scale
-
-
-class PatchTSTQuantizer(nn.Module):
-    def __init__(self, high: float, low: float):
-        super().__init__()
-        self.high = high
-        self.low = low
-
-    def forward(
-        self, timeseries: torch.Tensor, num_bins: int = 2, device: str = "cuda"
-    ) -> torch.Tensor:
-        """
-        Quantize the timeseries
-
-        Parameters:
-            timeseries (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
-                Patch input for embedding
-            num_bins (int, *optional*, defaults to 2):
-                Number of bins to quantize into
-
-        Returns:
-            `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
-        """
-        bins = torch.linspace(self.low, self.high, num_bins + 1, device=device)
-        bins_avg = (bins[1:] + bins[:-1]) / 2
-        bin_indices = torch.bucketize(timeseries, bins)
-        return bins_avg[bin_indices - 1]
 
 
 class PatchTSTModel(PatchTSTPreTrainedModel):
@@ -651,23 +663,16 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         super().__init__(config)
 
         self.scaler = PatchTSTScaler(config)
-        self.quantizer = PatchTSTQuantizer(
-            high=config.quantizer_high, low=config.quantizer_low
-        )
-        self.noiser = PatchTSTNoiser(
-            low=config.quantizer_low, high=config.quantizer_high
-        )
+        self.noiser = PatchTSTNoiser()
         self.patchifier = PatchTSTPatchify(config)
 
         self.do_mask_input = config.do_mask_input
-        # get num_patches information from PatchTSTPatchify
-        num_patches = self.patchifier.num_patches
 
         if self.do_mask_input:
             self.masking = PatchTSTMasking(config)
         else:
             self.masking = nn.Identity()
-        self.encoder = PatchTSTEncoder(config, num_patches=num_patches)
+        self.encoder = PatchTSTEncoder(config)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -931,15 +936,17 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
 
 
 class PatchTSTPredictionHead(nn.Module):
-    def __init__(self, config: PatchTSTConfig, num_patches, distribution_output=None):
+    def __init__(
+        self, config: PatchTSTConfig, num_patches: int = 1, distribution_output=None
+    ):
         super().__init__()
 
-        self.num_input_channels = config.num_input_channels
         self.use_cls_token = config.use_cls_token
         self.pooling_type = config.pooling_type
-        if self.pooling_type or self.use_cls_token:
+        if self.pooling_type or self.use_cls_token:  # this should always be true
             head_dim = config.d_model
-        else:
+        else:  # included for completeness
+            # num_patches is set to a dummy value,
             head_dim = config.d_model * num_patches
 
         # all the channels share the same head
@@ -1023,9 +1030,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 )
 
         self.head = PatchTSTPredictionHead(
-            config,
-            self.model.patchifier.num_patches,
-            distribution_output=self.distribution_output,
+            config, distribution_output=self.distribution_output
         )
 
         self.mse_loss = nn.MSELoss(reduction="mean")

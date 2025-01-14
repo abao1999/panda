@@ -2,19 +2,16 @@
 patchtst:
   mode: "predict"
 
-  # native patchtst config params
-  num_input_channels: 1
   context_length: 512
   prediction_length: 64
   distribution_output: "student_t"
   loss: "mse"
-  patch_length: 1
-  patch_stride: 1
-  num_hidden_layers: 3
-  d_model: 128
-  num_attention_heads: 4
-  share_embedding: true
-  channel_attention: false # This mixes across channels in the encoder 
+  patch_length: 16
+  patch_stride: 16
+  num_hidden_layers: 8
+  d_model: 512
+  num_attention_heads: 8
+  channel_attention: true # This mixes across channels in the encoder 
   ffn_dim: 512
   norm_type: "layernorm"
   norm_eps: 1e-05
@@ -25,10 +22,8 @@ patchtst:
   bias: true
   activation_function: "gelu"
   pre_norm: true
-  positional_encoding_type: "sincos"
   use_cls_token: false
   init_std: 0.02
-  share_projection: true  
   scaling: "std"
   do_mask_input: null
   mask_type: "random"
@@ -39,23 +34,17 @@ patchtst:
   mask_value: 0
   pooling_type: "mean"
   head_dropout: 0.0
-  num_targets: 1
-  output_range: null
   num_parallel_samples: 100
 
   # rope positional embeddings
-  max_wavelength: 10_000
-  rope_percent: 1.0
+  max_wavelength: 500
+  rope_percent: 0.75
 
   # channel embedding
   channel_embedding: "quadratic"
   polynomial_degree: 2
 
   pretrained_encoder_path: null
-
-  # quantizer and noiser upper and lower limits
-  quantizer_high: 15.0
-  quantizer_low: -15.0
 
 chronos:
   model_id: amazon/chronos-t5-small
