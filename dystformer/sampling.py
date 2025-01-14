@@ -98,9 +98,9 @@ class OnAttractorInitCondSampler(BaseSampler):
 
     def __post_init__(self):
         super().__post_init__()
-        assert (
-            0 < self.reference_traj_transient < 1
-        ), "Transient must be a fraction of the trajectory length"
+        assert 0 < self.reference_traj_transient < 1, (
+            "Transient must be a fraction of the trajectory length"
+        )
         self.transient = int(self.reference_traj_length * self.reference_traj_transient)
 
     def clear_cache(self):
@@ -140,14 +140,9 @@ class OnAttractorInitCondSampler(BaseSampler):
             # if integrate fails, resulting in an incomplete trajectory
             if reference_traj is None:
                 if self.verbose > 0:
-                    fail_str = (
+                    logger.warning(
                         f"On-attractor sampling failed integration for {system.name}"
                     )
-                    if self.verbose > 1:
-                        fail_str += (
-                            f" with ic {system.ic} and params {system.param_list}"
-                        )
-                    logger.warning(fail_str)
                 return None
 
             # renormalize with respect to reference trajectory
@@ -194,7 +189,7 @@ class GaussianInitialConditionSampler(BaseSampler):
 
         if self.verbose:
             if system is not None:
-                logger.info(f"System: {system.name} \n" f"IC: {ic} -> {perturbed_ic}")
+                logger.info(f"System: {system.name} \nIC: {ic} -> {perturbed_ic}")
             else:
                 logger.info(f"IC: {ic} -> {perturbed_ic}")
 

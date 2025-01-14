@@ -136,15 +136,16 @@ def additive_coupling_map_factory(
     )
 
 
-def rank1_perturbed_response_matrix(
-    n: int, m: int, rng: np.random.Generator
+def lowrank_response_matrix(
+    n: int, m: int, rng: np.random.Generator, rank: int = 1
 ) -> np.ndarray:
-    """Initialize a rank-1 perturbed response matrix"""
-    v = rng.normal(0, 1, size=n)
-    v /= np.linalg.norm(v)
-    perturbation = np.outer(v, v)
+    """Initialize a low-rank perturbed response matrix"""
+    v = rng.normal(0, 1, size=(n, rank))
+    v /= np.linalg.norm(v, axis=0)
+    svs = rng.random(size=rank)
+    response_matrix = v @ np.diag(svs) @ v.T
     driving_matrix = np.eye(max(n, m - n))[:n, : m - n]
-    return np.hstack([driving_matrix, perturbation + np.eye(n)])
+    return np.hstack([driving_matrix, np.eye(n) + response_matrix])
 
 
 def activated_coupling_map_factory(
@@ -162,7 +163,7 @@ def activated_coupling_map_factory(
     return partial(
         RandomActivatedCouplingMap,
         random_seed=random_seed,
-        matrix_init_fn=rank1_perturbed_response_matrix,
+        matrix_init_fn=lowrank_response_matrix,
         driver_scale=driver_scale,
         response_scale=response_scale,
     )
@@ -363,7 +364,7 @@ def main(cfg):
         random_seed=cfg.sampling.rseed,
         events=event_fns,
         silence_integration_errors=cfg.sampling.silence_integration_errors,
-        verbose=int(cfg.sampling.verbose),
+        verbose=1,
     )
     sys_sampler = DynSysSampler(
         rseed=cfg.sampling.rseed,

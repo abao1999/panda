@@ -356,14 +356,24 @@ class RandomActivatedCouplingMap(BaseCouplingMap):
             raise ValueError(f"Invalid wrt argument: {wrt}")
 
     def _serialize(self) -> dict:
+        driver_scale = (
+            self.driver_scale.tolist()
+            if isinstance(self.driver_scale, np.ndarray)
+            else self.driver_scale
+        )
+        response_scale = (
+            self.response_scale.tolist()
+            if isinstance(self.response_scale, np.ndarray)
+            else self.response_scale
+        )
         return {
             "preinit": {
                 "driver_dim": self.driver_dim,
                 "response_dim": self.response_dim,
                 "random_seed": self.random_seed,
                 "coupling_matrix": self.coupling_matrix.tolist(),
-                "driver_scale": self.driver_scale,
-                "response_scale": self.response_scale,
+                "driver_scale": driver_scale,
+                "response_scale": response_scale,
             },
         }
 

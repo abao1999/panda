@@ -49,9 +49,9 @@ def timeit(logger: logging.Logger | None = None) -> Callable:
             if elapsed < 60:
                 time_str = f"{elapsed:.2f} seconds"
             elif elapsed < 3600:
-                time_str = f"{elapsed/60:.2f} minutes"
+                time_str = f"{elapsed / 60:.2f} minutes"
             else:
-                time_str = f"{elapsed/3600:.2f} hours"
+                time_str = f"{elapsed / 3600:.2f} hours"
 
             msg = f"{func.__name__} took {time_str}"
             if logger:

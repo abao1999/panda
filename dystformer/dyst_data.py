@@ -231,7 +231,7 @@ class DynSysSampler:
         """
         sys = getattr(flows, system)() if isinstance(system, str) else system
 
-        if len(sys.param_list) == 0:
+        if hasattr(sys, "param_list") and len(sys.param_list) == 0:
             return None
 
         success = True
@@ -260,6 +260,8 @@ class DynSysSampler:
         """
         Pre-initialize the perturbed dyst objects for generation
         """
+        assert all(sys is not None for sys in systems), "systems cannot contain None"
+
         ic_rng_stream = [None] * len(systems)
         if ic_rng is not None:
             ic_rng_stream = ic_rng.spawn(len(systems))
@@ -309,6 +311,17 @@ class DynSysSampler:
                     use_multiprocessing=use_multiprocessing,
                 )
 
+                # filter out parameterless systems or
+                # systems that failed to transform parameters for any reason
+                excluded_pperts = [
+                    sys if isinstance(sys, str) else sys.name  # type: ignore
+                    for sys, pp_sys in zip(systems, param_perturbed_systems)
+                    if pp_sys is None
+                ]
+                param_perturbed_systems = [
+                    sys for sys in param_perturbed_systems if sys is not None
+                ]
+
                 if self.ic_sampler is not None and isinstance(
                     self.ic_sampler, OnAttractorInitCondSampler
                 ):
@@ -326,17 +339,15 @@ class DynSysSampler:
                         use_multiprocessing=use_multiprocessing,
                     )
                     excluded_systems = [
-                        systems[i] if isinstance(systems[i], str) else systems[i].name  # type: ignore
-                        for i in range(len(systems))
-                        if ic_perturbed_systems[i] is None
-                    ]
+                        sys if isinstance(sys, str) else sys.name  # type: ignore
+                        for sys, ic_sys in zip(systems, ic_perturbed_systems)
+                        if ic_sys is None
+                    ] + excluded_pperts  # systems that failed ic and param transforms
                     perturbed_systems = [
                         sys for sys in ic_perturbed_systems if sys is not None
                     ]
-                    assert (
-                        len(perturbed_systems) + len(excluded_systems)
-                        == len(systems)
-                        == len(ic_perturbed_systems)
+                    assert len(perturbed_systems) + len(excluded_systems) == len(
+                        systems
                     )
 
                     ensemble = make_trajectory_ensemble(
