@@ -119,7 +119,7 @@ class PatchTST(nn.Module):
 
     def _prepare_and_validate_context(
         self, context: Union[torch.Tensor, List[torch.Tensor]]
-    ):
+    ) -> torch.Tensor:
         if isinstance(context, list):
             context = left_pad_and_stack_multivariate(context)
         assert isinstance(context, torch.Tensor)
@@ -134,11 +134,10 @@ class PatchTST(nn.Module):
         self,
         context: Union[torch.Tensor, List[torch.Tensor]],
         prediction_length: Optional[int] = None,
-        num_samples: Optional[int] = None,
         limit_prediction_length: bool = True,
     ) -> torch.Tensor:
         """
-        Get forecasts for the given time series.
+        Generate an autoregressive forecast for a given context timeseries
 
         Parameters
         ----------
@@ -165,9 +164,9 @@ class PatchTST(nn.Module):
             Tensor of sample forecasts, of shape
             [bs x num_samples x prediction_length x num_channels]
         """
-        assert (
-            self.mode == "predict"
-        ), "Model must be in predict mode to use this method"
+        assert self.mode == "predict", (
+            "Model must be in predict mode to use this method"
+        )
 
         context_tensor = self._prepare_and_validate_context(context=context)
         context_length = context_tensor.shape[1]
@@ -188,7 +187,6 @@ class PatchTST(nn.Module):
         predictions = []
         remaining = prediction_length
 
-        # NOTE: this does the autoregressive prediction
         while remaining > 0:
             # prediction: [bs x num_samples x forecast_len x num_channels]
             outputs = self.model.generate(context_tensor)
@@ -234,9 +232,9 @@ class PatchTST(nn.Module):
             Tensor of completions, of shape
             [bs x context_length x num_channels]
         """
-        assert (
-            self.mode == "pretrain"
-        ), "Model must be in pretrain mode to use this method"
+        assert self.mode == "pretrain", (
+            "Model must be in pretrain mode to use this method"
+        )
 
         context_tensor = self._prepare_and_validate_context(context=context)
         completions_output = self.model.generate_completions(
