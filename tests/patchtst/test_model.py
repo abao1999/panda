@@ -4,7 +4,7 @@ from itertools import accumulate
 import hydra
 import torch
 
-from dystformer.patchtst.model import PatchTST
+from dystformer.patchtst.model import FixedSubsetChannelSampler, PatchTST
 
 
 def create_block_attention_mask(
@@ -19,7 +19,7 @@ def create_block_attention_mask(
     return attn_mask.view(1, 1, *mask.shape).repeat(expand_dim, 1, 1, 1)
 
 
-def basic_tests(model, cfg):
+def test_prediction_basic(model, cfg):
     """
     Test heterogeneous num_channels and autoregressive continuing context prediction
     """
@@ -42,6 +42,17 @@ def basic_tests(model, cfg):
 
     assert context.shape == torch.Size(
         [4, x.size(1) + 10 * cfg.patchtst.prediction_length, 3]
+    )
+
+    # test predict method with a channel sampler for handling a batch of heterogeneous num_channels
+    x = torch.rand(512, 5).to("cuda")
+    y = torch.rand(512, 7).to("cuda")
+    z = torch.rand(512, 4).to("cuda")
+    sampler = FixedSubsetChannelSampler(num_channels=3, num_samples=2)
+    prediction = model.predict([x, y, z], channel_sampler=sampler)
+    total_samples = sum(map(len, sampler.inds))
+    assert prediction.shape == torch.Size(
+        [total_samples, cfg.patchtst.prediction_length, 3]
     )
 
 
@@ -169,15 +180,15 @@ def main(cfg):
     model = PatchTST(dict(cfg.patchtst), mode="predict", device="cuda")
     model.eval()
 
-    # basic_tests(model, cfg)
+    test_prediction_basic(model, cfg)
     # test_attn_mask(batch_size=3, model=model, cfg=cfg)
-    test_interleaved_prediction(
-        batch_size=5,
-        interleave_dim=3,
-        num_interleave_samples=2,
-        model=model,
-        cfg=cfg,
-    )
+    # test_interleaved_prediction(
+    #     batch_size=5,
+    #     interleave_dim=3,
+    #     num_interleave_samples=2,
+    #     model=model,
+    #     cfg=cfg,
+    # )
 
 
 if __name__ == "__main__":

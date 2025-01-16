@@ -1181,6 +1181,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             output_hidden_states=False,
             channel_attention_mask=channel_attention_mask,
         )
+
         if self.distribution_output:
             # get distribution
             distribution = self.distribution_output.distribution(

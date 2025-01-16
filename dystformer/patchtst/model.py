@@ -1,11 +1,11 @@
 """
-PatchTST model with the forward pass exposed
+PatchTST model wrapper for the forecaster and masked model
 
 TODO: This whole thing is kinda useless, figure out how to gracefully deprecate
 """
 
 import warnings
-from typing import List, Optional, Union
+from typing import Callable
 
 import torch
 import torch.nn as nn
@@ -15,23 +15,53 @@ from dystformer.patchtst.patchtst import (
     PatchTSTForPrediction,
     PatchTSTForPretraining,
 )
+from dystformer.utils import left_pad_and_stack_multivariate
 
 
-def left_pad_and_stack_multivariate(tensors: List[torch.Tensor]) -> torch.Tensor:
+class FixedSubsetChannelSampler:
     """
-    Left pad a list of multivariate time series tensors to the same length and stack them.
-    Used in pipeline, if given context is a list of tensors.
+    Generate samples of subsets of channels from a context tensor or a list of context tensors
     """
-    max_len = max(c.shape[0] for c in tensors)
-    padded = []
-    for c in tensors:
-        assert isinstance(c, torch.Tensor)
-        assert c.ndim == 2
-        padding = torch.full(
-            size=(max_len - len(c),), fill_value=torch.nan, device=c.device
+
+    def __init__(self, num_channels: int, num_samples: int):
+        self.num_channels = num_channels
+        self.num_samples = num_samples
+        self._inds = None
+
+    @property
+    def inds(self) -> list[torch.Tensor]:
+        if self._inds is None:
+            raise ValueError("Indices not sampled yet")
+        return self._inds
+
+    def _sample_indices(self, num_channels: int) -> torch.Tensor:
+        """
+        This method is heuristic.
+        Sliding window of size num_channels over a random permutation of the channels -
+        guarantees that each channel is sampled at least once.
+        """
+        assert num_channels >= self.num_channels, (
+            "cannot sample more channels than available"
         )
-        padded.append(torch.concat((padding, c), dim=-1))
-    return torch.stack(padded)
+        idx_samples = [
+            torch.randperm(num_channels).unfold(0, self.num_channels, 1)
+            for _ in range(self.num_samples)
+        ]
+        return torch.cat(idx_samples, dim=0)
+
+    def __call__(self, context: torch.Tensor | list[torch.Tensor]) -> torch.Tensor:
+        """Each context tensor is expected to have shape (bs, context_length, num_channels)"""
+        if not isinstance(context, list):
+            context = [context]
+
+        channels = [t.shape[-1] for t in context]
+
+        # save this for deconstructing the context tensor later
+        self._inds = [self._sample_indices(c) for c in channels]
+
+        selected = torch.cat([t[..., idx] for t, idx in zip(context, self.inds)], dim=1)
+        assert selected.ndim == 3
+        return selected.transpose(0, 1)
 
 
 class PatchTST(nn.Module):
@@ -43,8 +73,8 @@ class PatchTST(nn.Module):
         self,
         config: dict,
         mode: str = "predict",
-        pretrained_encoder_path: Optional[str] = None,
-        device: Optional[Union[str, torch.device]] = None,  # Added device parameter
+        pretrained_encoder_path: str | None = None,
+        device: str | torch.device | None = None,
     ):
         super().__init__()
 
@@ -99,7 +129,7 @@ class PatchTST(nn.Module):
         cls,
         mode: str,
         pretrain_path: str,
-        device: Optional[Union[str, torch.device]] = None,
+        device: str | torch.device | None = None,
     ):
         """
         Load a pretrained model from a path and move it to the specified device.
@@ -118,13 +148,19 @@ class PatchTST(nn.Module):
         return model
 
     def _prepare_and_validate_context(
-        self, context: Union[torch.Tensor, List[torch.Tensor]]
+        self, context: torch.Tensor | list[torch.Tensor]
     ) -> torch.Tensor:
         if isinstance(context, list):
+            assert len(set(c.shape[-1] for c in context)) == 1, (
+                "All contexts must have the same number of channels"
+                "Use a channel sampler to subsample a fixed number of channels"
+            )
             context = left_pad_and_stack_multivariate(context)
         assert isinstance(context, torch.Tensor)
         if context.ndim == 1:
             context = context.view(1, -1, 1)
+        if context.ndim == 2:
+            context = context.unsqueeze(0)
         assert context.ndim == 3
 
         return context
@@ -132,9 +168,11 @@ class PatchTST(nn.Module):
     @torch.no_grad()
     def predict(
         self,
-        context: Union[torch.Tensor, List[torch.Tensor]],
-        prediction_length: Optional[int] = None,
+        context: torch.Tensor | list[torch.Tensor],
+        prediction_length: int | None = None,
         limit_prediction_length: bool = True,
+        channel_sampler: Callable[[torch.Tensor | list[torch.Tensor]], torch.Tensor]
+        | None = None,
     ) -> torch.Tensor:
         """
         Generate an autoregressive forecast for a given context timeseries
@@ -149,14 +187,16 @@ class PatchTST(nn.Module):
         prediction_length
             Time steps to predict. Defaults to what specified
             in ``self.model.config``.
-        num_samples
-            Number of sample paths to predict. Defaults to what
-            specified in ``self.model.config``.
         limit_prediction_length
             Force prediction length smaller or equal than the
             built-in prediction length from the model. True by
             default. When true, fail loudly if longer predictions
             are requested, otherwise longer predictions are allowed.
+        channel_sampler
+            A callable that takes a context tensor or a list of context
+            tensors and returns a tensor of shape:
+                [bs x num_samples x context_length x num_channels]
+            this is intended to be used for subsampling channels
 
         Returns
         -------
@@ -168,8 +208,11 @@ class PatchTST(nn.Module):
             "Model must be in predict mode to use this method"
         )
 
-        context_tensor = self._prepare_and_validate_context(context=context)
-        context_length = context_tensor.shape[1]
+        # context_tensor: [bs x context_length x num_channels]
+        if channel_sampler is not None:
+            context_tensor = channel_sampler(context)
+        else:
+            context_tensor = self._prepare_and_validate_context(context=context)
 
         if prediction_length is None:
             prediction_length = self.config.prediction_length
@@ -188,12 +231,13 @@ class PatchTST(nn.Module):
         remaining = prediction_length
 
         while remaining > 0:
-            # prediction: [bs x num_samples x forecast_len x num_channels]
             outputs = self.model.generate(context_tensor)
+
+            # prediction: [bs x num_samples x forecast_len x num_channels]
             prediction = outputs.sequences  # type: ignore
 
             predictions.append(prediction)
-            remaining -= prediction.shape[-2]
+            remaining -= prediction.shape[2]
 
             if remaining <= 0:
                 break
@@ -202,16 +246,20 @@ class PatchTST(nn.Module):
             context_tensor = torch.cat(
                 [context_tensor, prediction.median(dim=1).values], dim=1
             )
-            context_tensor = context_tensor[:, -context_length:]
 
         # shape: [bs x num_samples x prediction_length x num_channels]
-        return torch.cat(predictions, dim=-2)
+        predictions = torch.cat(predictions, dim=2)
+
+        if self.config.loss == "mse" or self.config.num_parallel_samples == 1:
+            predictions = predictions.squeeze(1)
+
+        return predictions
 
     @torch.no_grad()
     def complete(
         self,
-        context: Union[torch.Tensor, List[torch.Tensor]],
-        past_observed_mask: Optional[torch.Tensor] = None,
+        context: torch.Tensor | list[torch.Tensor],
+        past_observed_mask: torch.Tensor | None = None,
         noise_scale: float = 0.0,
     ) -> torch.Tensor:
         """
