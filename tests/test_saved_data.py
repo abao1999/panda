@@ -114,6 +114,7 @@ def plot_saved_data_grid(
     max_samples: int = 6,
     plot_save_dir: str = "tests/figs",
     plot_name_suffix: Optional[str] = None,
+    subplot_size: tuple[int, int] = (3, 3),
 ) -> None:
     """
     Plot a grid of multiple systems' multivariate timeseries from dyst_data
@@ -133,6 +134,7 @@ def plot_saved_data_grid(
         plot_name=plot_name,
         max_samples=max_samples,
         standardize=True,
+        subplot_size=subplot_size,
     )
 
 
@@ -199,7 +201,7 @@ if __name__ == "__main__":
         dyst_names_lst = [
             folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
         ]
-        dyst_names_lst = list(rng.choice(dyst_names_lst, 9, replace=False))
+        dyst_names_lst = list(rng.choice(dyst_names_lst, 36, replace=False))
     else:
         dyst_names_lst = args.dysts_names
 
@@ -222,6 +224,7 @@ if __name__ == "__main__":
             max_samples=args.n_samples_plot,
             plot_name_suffix=plot_name_suffix,
             plot_save_dir=args.plot_save_dir,
+            subplot_size=(6, 6),
         )
     else:
         plot_saved_data(

@@ -5,6 +5,7 @@ defaults:
   - evaluation
   - dataset
   - dysts
+  - analysis
   # - override hydra/job_logging: disabled 
   - override hydra/hydra_logging: disabled 
 
@@ -20,7 +21,7 @@ hydra:
     handlers:
       file:
         mode: w
-        filename: ${hydra:run.dir}/${oc.select:run_name,${hydra:job.name}}.log
+        # filename: ${hydra:run.dir}/${oc.select:run_name,${hydra:job.name}}.log
 
 # wandb parameters
 wandb:

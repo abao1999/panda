@@ -3,6 +3,7 @@ import os
 import time
 from datetime import datetime
 from functools import wraps
+from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
@@ -226,13 +227,39 @@ def get_system_filepaths(
     return filepaths
 
 
+def process_dyst_name(
+    dyst_name: str,
+    base_dir: str,
+    split: str,
+    one_dim_target: bool,
+    samples_subset: Optional[List[int]] = None,
+) -> Tuple[str, np.ndarray]:
+    filepaths = get_system_filepaths(dyst_name, base_dir, split)
+    dyst_coords_samples = []
+    for filepath in filepaths:
+        # create dataset by reading directly from filepath into FileDataset
+        gts_dataset = FileDataset(
+            path=Path(filepath),
+            freq="h",
+            one_dim_target=one_dim_target,
+        )
+        # extract the coordinates
+        dyst_coords, metadata = stack_and_extract_metadata(gts_dataset)
+        dyst_coords_samples.append(dyst_coords)
+
+    dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
+    print(dyst_coords_samples.shape)
+    if samples_subset is not None:
+        dyst_coords_samples = dyst_coords_samples[samples_subset, :]
+    return dyst_name, dyst_coords_samples
+
+
 def make_ensemble_from_arrow_dir(
     base_dir: str,
     split: str,
     dyst_names_lst: Optional[List[str]] = None,
     samples_subset: Optional[List[int]] = None,
     one_dim_target: bool = False,
-    verbose: bool = False,
 ) -> Dict[str, np.ndarray]:
     ensemble = {}
     if dyst_names_lst is None:
@@ -241,29 +268,19 @@ def make_ensemble_from_arrow_dir(
             folder.name for folder in Path(data_dir).iterdir() if folder.is_dir()
         ]
     print(f"making ensemble from {split} split, with systems: {dyst_names_lst}")
-    for dyst_name in dyst_names_lst:
-        filepaths = get_system_filepaths(dyst_name, base_dir, split)
-        if verbose:
-            print(f"{dyst_name} filepaths: ", filepaths)
-        dyst_coords_samples = []
-        for filepath in filepaths:
-            # create dataset by reading directly from filepath into FileDataset
-            gts_dataset = FileDataset(
-                path=Path(filepath),
-                freq="h",
-                one_dim_target=one_dim_target,
-            )
-            # extract the coordinates
-            dyst_coords, metadata = stack_and_extract_metadata(gts_dataset)
-            dyst_coords_samples.append(dyst_coords)
-            if verbose:
-                print("data shape: ", dyst_coords.shape)
-                print("metadata: ", metadata)
-                print("IC: ", dyst_coords[:, 0])
 
-        dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
-        print(dyst_coords_samples.shape)
-        if samples_subset is not None:
-            dyst_coords_samples = dyst_coords_samples[samples_subset, :]
+    # Prepare arguments for multiprocessing
+    args = [
+        (dyst_name, base_dir, split, one_dim_target, samples_subset)
+        for dyst_name in dyst_names_lst
+    ]
+
+    # Use multiprocessing to process each dyst_name
+    with Pool(cpu_count()) as pool:
+        results = pool.starmap(process_dyst_name, args)
+
+    # Collect results into the ensemble dictionary
+    for dyst_name, dyst_coords_samples in results:
         ensemble[dyst_name] = dyst_coords_samples
+
     return ensemble

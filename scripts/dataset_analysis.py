@@ -2,41 +2,55 @@
 Analyze a dataset of pre-computed trajectories, loading from either Arrow files or npy files
 """
 
-import argparse
+import json
+import logging
 import os
+from functools import partial
 from itertools import chain
 from multiprocessing import Pool
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, Tuple
 
+import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 from dysts.analysis import max_lyapunov_exponent_rosenstein
 
+import dystformer.attractor as attractor
+from dystformer.attractor import AttractorValidator
 from dystformer.utils import make_ensemble_from_arrow_dir
 
-WORK_DIR = os.getenv("WORK", "")
-DATA_DIR = os.path.join(WORK_DIR, "data")
+
+def standardize_trajectories(trajectories: np.ndarray) -> np.ndarray:
+    """
+    Standardize the trajectories in a safe way to avoid NaNs
+    trajectories: shape (n_samples, n_dims, timesteps) or (n_samples, n_dims)
+    """
+    if trajectories.ndim == 3:
+        mean = np.nanmean(trajectories, axis=-1)[:, :, None]
+        std = np.nanstd(trajectories, axis=-1)[:, :, None]
+    elif trajectories.ndim == 2:
+        mean = np.nanmean(trajectories, axis=-1)[:, None]
+        std = np.nanstd(trajectories, axis=-1)[:, None]
+    else:
+        raise ValueError(
+            f"Expected trajectories to be shape (n_samples, n_dims, timesteps) or (n_samples, n_dims), got {trajectories.shape}"
+        )
+    std = np.where(std < 1e-10, 1e-10, std)
+    return (trajectories - mean) / std
 
 
 def compute_lyapunov_exponents(
     dyst_name: str,
-    all_traj: np.ndarray,
-    trajectory_len: int = 200,
+    trajectories: np.ndarray,
+    trajectory_len: int = 1024,
+    transient_time_frac: float = 0.05,
 ) -> np.ndarray:
     """
     Compute the Lyapunov exponents for a specified system.
-    Args:
-        dyst_name: Name of the dynamical system.
-        all_traj: All trajectories for the specified system.
-        trajectory_len: Length of the trajectory to use for Lyapunov exponent computation
-    Returns:
-        np.ndarray: Lyapunov exponents for the specified system.
     """
     lyapunov_exponents = []
-    print(
-        f"Computing Lyapunov exponents for {dyst_name} samples with shape {all_traj.shape}"
-    )
-    for traj in all_traj:
+    for traj in trajectories:
+        traj = traj[:, :trajectory_len]
         spectrum = [
             max_lyapunov_exponent_rosenstein(traj.T, trajectory_len=trajectory_len)
         ]
@@ -46,30 +60,21 @@ def compute_lyapunov_exponents(
 
 def compute_quantile_limits(
     dyst_name: str,
-    all_traj: np.ndarray,
+    trajectories: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Compute the high and low values for the instance normalized trajectories
-    Args:
-        dyst_name: Name of the dynamical system (not used)
-        all_traj: All trajectories for the specified system
-    Returns:
-        Tuple[np.ndarray, np.ndarray]: Tuple of the high and low values for the trajectories
+    Comutes the high and low values for the instance normalized trajectories
     """
-    high_vals = []
-    low_vals = []
-    for traj in all_traj:
-        standard_traj = (traj - np.mean(traj, axis=-1)[:, None]) / np.std(
-            traj, axis=-1
-        )[:, None]
-        high = np.max(standard_traj)
-        low = np.min(standard_traj)
-        high_vals.append(high)
-        low_vals.append(low)
-    return np.array(high_vals), np.array(low_vals)
+    assert trajectories.ndim == 3, (
+        "expected trajectories to be shape (n_samples, n_dims, timesteps)"
+    )
+    standard_traj = standardize_trajectories(trajectories)
+    high = np.max(standard_traj, axis=(1, 2))
+    low = np.min(standard_traj, axis=(1, 2))
+    return high, low
 
 
-def compute_quantities_multiprocessed(
+def multiprocessed_compute_wrapper(
     ensemble: Dict[str, np.ndarray],
     compute_fn: Callable,
 ) -> Dict[str, np.ndarray]:
@@ -89,79 +94,13 @@ def compute_quantities_multiprocessed(
     return {k: v for k, v in zip(list(ensemble.keys()), results)}
 
 
-def filter_quantile_limits(
-    dyst_name: str,
-    all_traj: np.ndarray,
-    max_abs_val: float = 15,
-) -> List[int]:
-    """
-    Filter the trajectories for the given system based on the quantile limits
-    Args:
-        dyst_name: Name of the dynamical system (not used)
-        all_traj: All trajectories for the specified system
-        max_abs_val: Maximum absolute value for the whitened trajectory
-    Returns:
-        List[int]: List of the invalid trajectory sample indices
-    """
-    samples_to_remove = []
-    for sample_idx, traj in enumerate(all_traj):
-        standard_traj = (traj - np.mean(traj, axis=-1)[:, None]) / np.std(
-            traj, axis=-1
-        )[:, None]
-        if np.max(np.abs(standard_traj)) > max_abs_val:
-            samples_to_remove.append(sample_idx)
-    return samples_to_remove
-
-
-def filter_saved_trajectories_multiprocessed(
-    ensemble: Dict[str, np.ndarray],
-    filter_fn: Callable,
-) -> Dict[str, np.ndarray]:
-    """
-    Filter the saved trajectories for the ensemble in parallel (multiprocessed). Simply saves rejected samples into dict
-    Args:
-        ensemble: Ensemble of trajectories
-        filter_fn: Function to return a list of the invalid trajectory sample indices for each system
-    Returns:
-        Dict[str, List[int]]: Dictionary of rejected samples for each system. Key is system name, value is list of rejected sample indices
-    """
-    with Pool() as pool:
-        results = pool.starmap(
-            filter_fn,
-            [(dyst_name, all_traj) for dyst_name, all_traj in ensemble.items()],
-        )
-    rejected_samples = {k: v for k, v in zip(list(ensemble.keys()), results) if v}
-    return rejected_samples
-
-
-def plot_distribution(
-    vals: np.ndarray, plot_title: str, save_name: str, save_dir: str
-) -> None:
-    """
-    Plot the distribution of values in the npy file
-    """
-    plot_save_path = os.path.join(save_dir, f"{save_name}.png")
-    plt.hist(
-        vals,
-        bins=100,
-        density=True,
-        color="tab:blue",
-    )
-    plt.title(plot_title)
-    plt.ylabel("Density")
-    # plt.yscale("log")
-    plt.grid(True)
-    plt.savefig(plot_save_path, dpi=300)
-    plt.close()
-    print(f"Saved plot to {plot_save_path}")
-
-
-def plot_all_distributions(
+def plot_from_npy_paths(
     npy_paths: Dict[str, str],
     plot_title: str,
     save_name: str,
     save_dir: str,
-    log_scale: bool = True,
+    log_scale: bool = False,
+    show_legend: bool = False,
 ) -> None:
     """
     Plot the distribution of values in the npy files
@@ -191,14 +130,18 @@ def plot_all_distributions(
     plt.grid(True)
     if log_scale:
         plt.yscale("log")
-    plt.legend()
+    if show_legend:
+        plt.legend()
     plt.savefig(plot_save_path, dpi=300)
     plt.close()
-    print(f"Saved plot to {plot_save_path}")
 
 
-def plot_all_distributions_scatter(
-    npy_paths: Dict[str, str], plot_title: str, save_name: str, save_dir: str
+def plot_from_npy_paths_scatter(
+    npy_paths: Dict[str, str],
+    plot_title: str,
+    save_name: str,
+    save_dir: str,
+    show_legend: bool = False,
 ) -> None:
     """
     Plot the scatter plot of the high and low values in the npy files
@@ -213,7 +156,6 @@ def plot_all_distributions_scatter(
 
     for i, (data_split, npy_path) in enumerate(npy_paths.items()):
         vals = np.load(npy_path)
-        print(vals.shape)
         plt.scatter(
             vals[:, 0],
             vals[:, 1],
@@ -226,130 +168,121 @@ def plot_all_distributions_scatter(
     plt.ylabel("max")
     plt.gca().invert_xaxis() if vals[:, 0].min() < 0 else None
     plt.gca().invert_yaxis() if vals[:, 1].min() < 0 else None
-    plt.legend()
+    if show_legend:
+        plt.legend()
     plt.savefig(plot_save_path, dpi=300)
     plt.close()
-    print(f"Saved plot to {plot_save_path}")
+
+
+@hydra.main(config_path="../config", config_name="config", version_base=None)
+def main(cfg):
+    save_dir = os.path.join(cfg.analysis.save_dir, cfg.analysis.split)
+    plot_save_dir = os.path.join(cfg.analysis.plots_dir, cfg.analysis.split)
+    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(plot_save_dir, exist_ok=True)
+
+    # make ensemble from saved trajectories in Arrow files
+    ensemble = make_ensemble_from_arrow_dir(
+        cfg.analysis.data_dir, cfg.analysis.split, one_dim_target=False
+    )
+    logger.info(
+        f"Loaded {len(ensemble)} systems from {cfg.analysis.data_dir} split {cfg.analysis.split}"
+    )
+
+    if cfg.analysis.filter_ensemble:
+        logger.info(
+            f"Filtering ensemble with {len(cfg.analysis.attractor_tests)} tests"
+        )
+        attractor_tests = []
+        for test_name in cfg.analysis.attractor_tests:
+            save_path = os.path.join(save_dir, f"{test_name}_rejected_samples.json")
+            test_kwargs = getattr(cfg.analysis, test_name)
+            test_fn = getattr(attractor, test_name)
+            test_fn = partial(test_fn, **test_kwargs)
+            logger.info(
+                f"Adding test {test_name} to validator with kwargs: \n {test_kwargs}"
+            )
+            attractor_tests.append(test_fn)
+
+        validator = AttractorValidator(
+            tests=attractor_tests,
+            transient_time_frac=0.0,
+        )
+        valid_ensemble, failed_ensemble = validator.multiprocessed_filter_ensemble(
+            ensemble,
+        )
+        failed_samples = validator.failed_samples
+        logger.info(f"Failed {len(failed_samples)} samples")
+        json.dump(
+            failed_samples,
+            open(os.path.join(save_dir, "failed_samples.json"), "w"),
+            indent=4,
+        )
+
+    if cfg.analysis.compute_quantile_limits:
+        quantile_limits = multiprocessed_compute_wrapper(
+            ensemble, compute_fn=compute_quantile_limits
+        )
+
+        # save the quantile limits as npy files
+        high_vals = np.array(list(chain(*[v[0] for v in quantile_limits.values()])))
+        low_vals = np.array(list(chain(*[v[1] for v in quantile_limits.values()])))
+        path_low_vals = os.path.join(save_dir, "quantile_low.npy")
+        path_high_vals = os.path.join(save_dir, "quantile_high.npy")
+        np.save(path_low_vals, low_vals)
+        np.save(path_high_vals, high_vals)
+
+        all_vals = np.dstack((low_vals, high_vals)).squeeze()
+        path_all_vals = os.path.join(save_dir, "quantile_low_high.npy")
+        np.save(path_all_vals, all_vals)
+
+        # plot the quantile limits
+        plot_from_npy_paths(
+            npy_paths={
+                "min": path_low_vals,
+                "max": path_high_vals,
+            },
+            plot_title="Quantile Limits",
+            save_name="quantlim",
+            save_dir=plot_save_dir,
+            log_scale=False,
+        )
+
+        plot_from_npy_paths_scatter(
+            npy_paths={
+                "quantile_low_high": path_all_vals,
+            },
+            plot_title="Quantile Limits",
+            save_name="quantlim_scatter",
+            save_dir=plot_save_dir,
+            show_legend=False,
+        )
+
+    if cfg.analysis.compute_max_lyapunov_exponents:
+        save_path = os.path.join(save_dir, "max_lyapunov_exponents.npy")
+        max_lyapunov_exponents = multiprocessed_compute_wrapper(
+            ensemble, compute_fn=compute_lyapunov_exponents
+        )
+        max_lyapunov_exponents_vals = np.array(
+            list(chain(*max_lyapunov_exponents.values()))
+        )
+
+        np.save(save_path, max_lyapunov_exponents_vals)
+
+        # plot the max lyapunov exponents
+        plot_from_npy_paths(
+            npy_paths={
+                "max_lyapunov_exponents": save_path,
+            },
+            plot_title="Max Lyapunov Exponents",
+            save_name="max_lyap",
+            save_dir=plot_save_dir,
+            show_legend=False,
+        )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--split", type=str, default="debug")
-    parser.add_argument("--save_dir", type=str, default="outputs")
-    parser.add_argument("--plots_dir", type=str, default="plots")
-    parser.add_argument("--suffix_name", type=str, default="")
-
-    args = parser.parse_args()
-
-    os.makedirs(args.save_dir, exist_ok=True)
-    os.makedirs(args.plots_dir, exist_ok=True)
-
-    # plot_all_distributions(
-    #     npy_paths={
-    #         "skew flow": os.path.join(
-    #             args.save_dir, "max_lyapunov_exponents_big_flow_skew.npy"
-    #         ),
-    #         "train": os.path.join(
-    #             args.save_dir, "max_lyapunov_exponents_signed_perts_train.npy"
-    #         ),
-    #     },
-    #     plot_title="Max Lyapunov Exponents",
-    #     save_name="max_lyapunov_exponents_all",
-    #     save_dir=args.plots_dir,
-    #     log_scale=False,
-    # )
-    # exit()
-
-    # # plot_all_distributions_scatter(
-    # #     npy_paths={
-    # #         "train": os.path.join(args.save_dir, "quantile_limits_train.npy"),
-    # #         "skew flow": os.path.join(args.save_dir, "quantile_limits_skew_flow.npy"),
-    # #     },
-    # #     plot_title="Quantile Limits",
-    # #     save_name="quantile_limits_scatter",
-    # #     save_dir=args.save_dir,
-    # # )
-    # exit()
-
-    suffix_name = f"_{args.suffix_name}" if args.suffix_name else ""
-    # save_name = f"max_lyapunov_exponents{suffix_name}"
-    save_name = f"quantile_limits{suffix_name}"
-
-    # make ensemble from saved trajectories in Arrow files
-    ensemble = make_ensemble_from_arrow_dir(DATA_DIR, args.split, one_dim_target=False)
-
-    # ## Filter saved trajectories
-    # import json
-    # from functools import partial
-
-    # rejected_samples = filter_saved_trajectories_multiprocessed(
-    #     ensemble, filter_fn=partial(filter_quantile_limits, max_abs_val=15)
-    # )
-    # # Write the rejected samples to a JSON file
-    # rejected_samples_json = os.path.join(
-    #     args.save_dir, f"rejected_samples{suffix_name}.json"
-    # )
-    # with open(rejected_samples_json, "w") as f:
-    #     json.dump(rejected_samples, f, indent=4)
-    # print(f"Saved rejected samples to {rejected_samples_json}")
-    # print(f"Rejected {len(rejected_samples)} samples")
-
-    # exit()
-
-    ## Quantile Limits
-    quantile_limits = compute_quantities_multiprocessed(
-        ensemble, compute_fn=compute_quantile_limits
-    )
-
-    high_vals = np.array(list(chain(*[v[0] for v in quantile_limits.values()])))
-    low_vals = np.array(list(chain(*[v[1] for v in quantile_limits.values()])))
-    np.save(os.path.join(args.save_dir, f"{save_name}_high.npy"), high_vals)
-    np.save(os.path.join(args.save_dir, f"{save_name}_low.npy"), low_vals)
-
-    plot_all_distributions(
-        npy_paths={
-            "low": os.path.join(args.save_dir, f"{save_name}_low.npy"),
-            "high": os.path.join(args.save_dir, f"{save_name}_high.npy"),
-        },
-        plot_title="Quantile Limits",
-        save_name=f"{save_name}_hist",
-        save_dir=args.plots_dir,
-    )
-
-    all_vals = np.dstack((low_vals, high_vals)).squeeze()
-    np.save(os.path.join(args.save_dir, f"{save_name}.npy"), all_vals)
-
-    plot_all_distributions_scatter(
-        npy_paths={
-            suffix_name.replace("_", " "): os.path.join(
-                args.save_dir, f"{save_name}.npy"
-            ),
-        },
-        plot_title="Quantile Limits",
-        save_name=f"{save_name}_scatter",
-        save_dir=args.plots_dir,
-    )
-
-    # # Max Lyapunov Exponents
-    # max_lyapunov_exponents = compute_quantities_multiprocessed(
-    #     ensemble, compute_fn=compute_lyapunov_exponents
-    # )
-    # max_lyapunov_exponents_vals = np.array(
-    #     list(chain(*[v for v in max_lyapunov_exponents.values()]))
-    # )
-    # # max_lyapunov_exponents_vals = np.array(list(chain(*max_lyapunov_exponents.values())))
-
-    # np.save(
-    #     os.path.join(args.save_dir, f"max_lyapunov_exponents{suffix_name}.npy"),
-    #     max_lyapunov_exponents_vals,
-    # )
-    # plot_all_distributions(
-    #     npy_paths={
-    #         suffix_name.replace("_", " "): os.path.join(
-    #             args.save_dir, f"max_lyapunov_exponents{suffix_name}.npy"
-    #         ),
-    #     },
-    #     plot_title="Max Lyapunov Exponents",
-    #     save_name=f"max_lyapunov_exponents{suffix_name}_hist",
-    #     save_dir=args.plots_dir,
-    # )
+    logging.basicConfig(format="%(asctime)s - %(message)s")
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    main()
