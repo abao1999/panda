@@ -310,10 +310,9 @@ class PatchTSTRopeAttention(nn.Module):
                 raise ValueError(
                     f"Attention mask should be of size {(bsz, 1, tgt_len, src_len)}, but is {attention_mask.size()}"
                 )
-            attn_weights = (
-                attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-                + attention_mask
-            )
+            attn_weights = attn_weights.view(
+                bsz, self.num_heads, tgt_len, src_len
+            ) + attention_mask.to(attn_weights.device)
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
         attn_weights = nn.functional.softmax(attn_weights, dim=-1)
@@ -446,7 +445,10 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
         self.pre_norm = config.pre_norm
 
     def forward(
-        self, hidden_state: torch.Tensor, output_attentions: Optional[bool] = None
+        self,
+        hidden_state: torch.Tensor,
+        output_attentions: Optional[bool] = None,
+        channel_attention_mask: Optional[torch.Tensor] = None,
     ):
         """
         Parameters:
@@ -502,13 +504,16 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
                 attn_output, channel_attn_weights, _ = self.channel_self_attn(
                     hidden_states=self.norm_sublayer2(hidden_state),
                     output_attentions=output_attentions,
+                    attention_mask=channel_attention_mask,
                 )
                 # Add: residual connection with residual dropout
                 hidden_state = hidden_state + self.dropout_path2(attn_output)
             else:
                 ## Multi-Head attention and Add residual connection and Norm
                 attn_output, channel_attn_weights, _ = self.channel_self_attn(
-                    hidden_states=hidden_state, output_attentions=output_attentions
+                    hidden_states=hidden_state,
+                    output_attentions=output_attentions,
+                    attention_mask=channel_attention_mask,
                 )
                 # hidden_states: [(bs*sequence_length) x num_channels x d_model]
                 hidden_state = self.norm_sublayer2(
@@ -583,6 +588,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
     def forward(
         self,
         patch_input: torch.Tensor,
+        channel_attention_mask: Optional[torch.Tensor] = None,
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
     ) -> BaseModelOutput:
@@ -622,7 +628,9 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
                 encoder_states = encoder_states + (hidden_state,)  # type: ignore
 
             layer_outputs = encoder_layer(
-                hidden_state=hidden_state, output_attentions=output_attentions
+                hidden_state=hidden_state,
+                output_attentions=output_attentions,
+                channel_attention_mask=channel_attention_mask,
             )
             # get hidden state. hidden_state shape is [bs x num_channels x num_patches x d_model]
             # or [bs x num_channels x (num_patches+1) x d_model] if use cls_token
@@ -684,6 +692,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         future_values: Optional[torch.Tensor] = None,
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
+        channel_attention_mask: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
         noise_scale: float = 0.0,
     ) -> Union[Tuple, PatchTSTModelOutput]:
@@ -741,6 +750,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
             patch_input=masked_values,
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
+            channel_attention_mask=channel_attention_mask,
         )
 
         if not return_dict:
@@ -822,6 +832,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         past_observed_mask: Optional[torch.Tensor] = None,
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
+        channel_attention_mask: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
         noise_scale: float = 0.0,
     ) -> Union[Tuple, PatchTSTForPretrainingOutput]:
@@ -857,6 +868,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             past_observed_mask=past_observed_mask,
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
+            channel_attention_mask=channel_attention_mask,
             return_dict=True,
             noise_scale=noise_scale,
         )
@@ -891,6 +903,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         self,
         past_values: torch.Tensor,
         past_observed_mask: Optional[torch.Tensor] = None,
+        channel_attention_mask: Optional[torch.Tensor] = None,
         noise_scale: float = 0.0,
     ) -> CompletionsPatchTSTOutput:
         r"""
@@ -917,6 +930,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             past_observed_mask=past_observed_mask,
             return_dict=True,
             noise_scale=noise_scale,
+            channel_attention_mask=channel_attention_mask,
         )
 
         x_hat = model_output.last_hidden_state
@@ -1008,8 +1022,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         super().__init__(config)
 
         # Turn off masking
-        if config.do_mask_input:
-            config.do_mask_input = False
+        config.do_mask_input = False
 
         self.model = PatchTSTModel(config)
 
@@ -1044,6 +1057,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         future_values: Optional[torch.Tensor] = None,
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
+        channel_attention_mask: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
         noise_scale: float = 0.0,
     ) -> Union[Tuple, PatchTSTForPredictionOutput]:
@@ -1082,6 +1096,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             past_observed_mask=past_observed_mask,
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
+            channel_attention_mask=channel_attention_mask,
             return_dict=True,
             noise_scale=noise_scale,
         )
@@ -1121,6 +1136,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             ) + model_output[1:-1]
             outputs = (loss_val,) + outputs if loss_val is not None else outputs
             return outputs
+
         return PatchTSTForPredictionOutput(
             loss=loss_val,  # type: ignore
             prediction_outputs=y_hat_out,
@@ -1134,6 +1150,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         self,
         past_values: torch.Tensor,
         past_observed_mask: Optional[torch.Tensor] = None,
+        channel_attention_mask: Optional[torch.Tensor] = None,
     ) -> SamplePatchTSTOutput:
         """
         Generate sequences of sample predictions from a model with a probability distribution head.
@@ -1162,7 +1179,9 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             future_values=None,
             past_observed_mask=past_observed_mask,
             output_hidden_states=False,
+            channel_attention_mask=channel_attention_mask,
         )
+
         if self.distribution_output:
             # get distribution
             distribution = self.distribution_output.distribution(

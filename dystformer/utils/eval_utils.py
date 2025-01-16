@@ -18,6 +18,23 @@ from dystformer.utils import process_trajs
 logger = logging.getLogger(__name__)
 
 
+def left_pad_and_stack_multivariate(tensors: list[torch.Tensor]) -> torch.Tensor:
+    """
+    Left pad a list of multivariate time series tensors to the same length and stack them.
+    Used in pipeline, if given context is a list of tensors.
+    """
+    max_len = max(c.shape[0] for c in tensors)
+    padded = []
+    for c in tensors:
+        assert isinstance(c, torch.Tensor)
+        assert c.ndim == 2
+        padding = torch.full(
+            size=(max_len - len(c),), fill_value=torch.nan, device=c.device
+        )
+        padded.append(torch.concat((padding, c), dim=-1))
+    return torch.stack(padded)
+
+
 def rolling_prediction_window_indices(
     datasets: dict[str, list],
     window_stride: int,
