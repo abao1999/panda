@@ -32,25 +32,33 @@ jq -c 'to_entries[]' "$JSON_FILE" | while IFS= read -r line; do
     indices=$(echo "$line" | jq -r '.value | join(",")')
     echo "Processing subdir $subdir with indices $indices"
     
+    # Get list of filepaths in ${DATA_DIR}/${subdir} and sort by numerical prefix
+    filepaths=$(find "${DATA_DIR}/${subdir}" -type f | awk -F'/' '{print $NF}' | sort -t'_' -k1,1n)
+    # echo "filepaths: $filepaths"
+
     # Iterate over each index
     for index in $(echo "$indices" | tr ',' ' '); do
+        # !IMPORTANT: assumes that the Arrow files are named with a numeric prefix
+        # (e.g., "1_T-1024.arrow"), but the index read from the json file is only
+        # the index of the filepaths sorted by the prefix.
         echo "Processing index $index for subdir $subdir"
         # Construct the file pattern
-        file_pattern="${DATA_DIR}/${subdir}/${index}_T*"
+        # file_pattern="${DATA_DIR}/${subdir}/${index}_T*"
+        filename=$(echo "$filepaths" | awk -v idx="$((index+1))" 'NR==idx {print $0}')
+        filepath="${DATA_DIR}/${subdir}/${filename}"
+        echo "filename: $filename"
         
         # Move the files matching the pattern to the target directory
-        for file in $file_pattern; do
-            if [ -e "$file" ]; then
-                # Create the target subdirectory if it doesn't exist
-                target_subdir="${TARGET_DIR}/${subdir}"
-                mkdir -p "$target_subdir"
-                
-                # Move the file to the target subdirectory
-                mv "$file" "$target_subdir"
-                echo "Moved $file to $target_subdir"
-            else
-                echo "No files found for pattern $file_pattern"
-            fi
-        done
+        if [ -e "$filepath" ]; then
+            # Create the target subdirectory if it doesn't exist
+            target_subdir="${TARGET_DIR}/${subdir}"
+            mkdir -p "$target_subdir"
+            
+            # Move the file to the target subdirectory
+            mv "$filepath" "$target_subdir"
+            echo "Moved $filepath to $target_subdir"
+        else
+            echo "No file found matching $filepath"
+        fi
     done
 done

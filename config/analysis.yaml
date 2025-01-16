@@ -1,18 +1,25 @@
 analysis:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
-  split: debug/train
+  split: debug40/bad
   save_dir: outputs
   plots_dir: plots
-  compute_quantile_limits: true
-  compute_max_lyapunov_exponents: true
+  compute_quantile_limits: false
+  compute_max_lyapunov_exponents: false
   filter_ensemble: true
   verbose: true
   attractor_tests:
-    - check_not_transient
-
+    - check_boundedness
+    # - check_not_transient
+    # - check_stationarity
+  
   check_not_transient:
     max_transient_prop: 0.2
     atol: 1e-3
 
   check_stationarity:
     p_value: 0.05
+
+  check_boundedness:
+    threshold: 1e4
+    max_zscore: 15
+    eps: 1e-10

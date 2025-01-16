@@ -17,7 +17,7 @@ from dysts.analysis import max_lyapunov_exponent_rosenstein
 
 import dystformer.attractor as attractor
 from dystformer.attractor import AttractorValidator
-from dystformer.utils import make_ensemble_from_arrow_dir
+from dystformer.utils import make_ensemble_from_arrow_dir, plot_grid_trajs_multivariate
 
 
 def standardize_trajectories(trajectories: np.ndarray) -> np.ndarray:
@@ -42,15 +42,14 @@ def standardize_trajectories(trajectories: np.ndarray) -> np.ndarray:
 def compute_lyapunov_exponents(
     dyst_name: str,
     trajectories: np.ndarray,
-    trajectory_len: int = 1024,
-    transient_time_frac: float = 0.05,
+    trajectory_len: int = 200,
 ) -> np.ndarray:
     """
     Compute the Lyapunov exponents for a specified system.
+    TODO: this needs to be fixed
     """
     lyapunov_exponents = []
     for traj in trajectories:
-        traj = traj[:, :trajectory_len]
         spectrum = [
             max_lyapunov_exponent_rosenstein(traj.T, trajectory_len=trajectory_len)
         ]
@@ -211,15 +210,36 @@ def main(cfg):
         valid_ensemble, failed_ensemble = validator.multiprocessed_filter_ensemble(
             ensemble,
         )
-        failed_samples = validator.failed_samples
-        logger.info(f"Failed {len(failed_samples)} samples")
-        json.dump(
-            failed_samples,
-            open(os.path.join(save_dir, "failed_samples.json"), "w"),
-            indent=4,
-        )
+        if len(failed_ensemble) > 0:
+            # plot the first 9 systems' failed samples
+            plot_grid_trajs_multivariate(
+                {k: v for k, v in list(failed_ensemble.items())[:9]},
+                save_dir=plot_save_dir,
+                plot_name="failed_samples",
+                max_samples=6,
+                standardize=True,
+                subplot_size=(3, 3),
+            )
+            logger.info(f"Plotted failed samples to {plot_save_dir}/failed_samples.png")
+
+            failed_samples_dict = validator.failed_samples
+            summary_json_path = os.path.join(save_dir, "failed_samples.json")
+            num_failed_samples = sum(len(v) for v in failed_samples_dict.values())
+            logger.info(
+                f"Saving summary of {num_failed_samples} failed samples to {summary_json_path}"
+            )
+            json.dump(
+                failed_samples_dict,
+                open(summary_json_path, "w"),
+                indent=4,
+            )
+            if len(validator.failed_checks) > 0:
+                logger.info(f"failed checks: \n {validator.failed_checks}")
+        else:
+            logger.info("No failed samples found!")
 
     if cfg.analysis.compute_quantile_limits:
+        logger.info("Computing quantile limits")
         quantile_limits = multiprocessed_compute_wrapper(
             ensemble, compute_fn=compute_quantile_limits
         )
@@ -259,6 +279,7 @@ def main(cfg):
         )
 
     if cfg.analysis.compute_max_lyapunov_exponents:
+        logger.info("Computing max Lyapunov exponents")
         save_path = os.path.join(save_dir, "max_lyapunov_exponents.npy")
         max_lyapunov_exponents = multiprocessed_compute_wrapper(
             ensemble, compute_fn=compute_lyapunov_exponents

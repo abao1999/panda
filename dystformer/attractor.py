@@ -251,29 +251,6 @@ def check_not_trajectory_decay(
     return True
 
 
-def check_not_transient(
-    traj: np.ndarray, max_transient_prop: float = 0.2, atol: float = 1e-3
-) -> bool:
-    """
-    Check if a multi-dimensional trajectory takes a long time to reach the attractor.
-    Args:
-        traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
-        max_transient_prop: first max_transient_prop of the trajectory to consider for checking for transient.
-            NOTE: transient is defined loosely here as straight line to hit the attractor.
-                We thus search for the presence of straight lines
-        atol: Absolute tolerance for detecting a fixed point.
-    Returns:
-        bool: False if the system is approaching a fixed point, True otherwise.
-    """
-    n = traj.shape[1]
-    transient = int(max_transient_prop * n)
-    for dim in range(traj.shape[0]):
-        diffs = np.diff(traj[dim, :transient])
-        if np.allclose(diffs, 0, atol=atol):
-            return False
-    return True
-
-
 def check_not_limit_cycle(
     traj: np.ndarray,
     tolerance: float = 1e-3,
@@ -494,4 +471,35 @@ def check_stationarity(traj: np.ndarray, p_value: float = 0.05) -> bool:
             if not status_adf and not status_kpss:
                 return False
 
+    return True
+
+
+def check_not_transient(
+    traj: np.ndarray, max_transient_prop: float = 0.2, atol: float = 1e-3
+) -> bool:
+    """
+    Check if a multi-dimensional trajectory takes a long time to reach the attractor.
+    Args:
+        traj: np.ndarray of shape (num_dims, num_timepoints), the trajectory data.
+        max_transient_prop: first max_transient_prop of the trajectory to consider for checking for transient.
+            NOTE: transient is defined loosely here as straight line to hit the attractor.
+                We thus search for the presence of straight lines
+        atol: Absolute tolerance for detecting a fixed point.
+    Returns:
+        bool: False if the system is approaching a fixed point, True otherwise.
+    """
+    n = traj.shape[1]
+
+    mean = np.nanmean(traj, axis=-1)[:, None]
+    std = np.nanstd(traj, axis=-1)[:, None]
+    std = np.where(std < 1e-10, 1e-10, std)
+
+    standardized_traj = (traj - mean) / std
+
+    transient = int(max_transient_prop * n)
+    diffs = np.diff(standardized_traj[:, :transient], axis=1)
+    print(f"diffs.shape: {diffs.shape}")
+    for dim in range(diffs.shape[0]):
+        if np.allclose(diffs[dim], 0, atol=atol):
+            return False
     return True
