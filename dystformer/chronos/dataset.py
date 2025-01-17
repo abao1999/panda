@@ -1,12 +1,11 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 import itertools
-from functools import partial
-from typing import Iterator, List, Optional
+from typing import Generator, Iterator, List, Optional
 
 import numpy as np
 import torch
-from gluonts.itertools import Cyclic, Map
+from gluonts.itertools import Cyclic, Filter
 from gluonts.transform import (
     ExpectedNumInstanceSampler,
     FilterTransformation,
@@ -132,26 +131,44 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         self.mode = mode
         self.np_dtype = np_dtype
 
-    def preprocess_entry(self, entry: dict, mode: str) -> dict:
-        entry = {f: entry[f] for f in ["start", "target"]}
-        entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
-        assert entry["target"].ndim == 1, f"got {entry['target'].ndim=}, expected 1"
+    # def _preprocess_entry_univariate(self, entry: dict, mode: str) -> dict:
+    #     entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
+    #     assert entry["target"].ndim == 1, f"got {entry['target'].ndim=}, expected 1"
 
-        if self.model_type == "causal":
-            # Causal models do not play nice with missing values, so it is
-            # recommended to use an imputation method, e.g., LastValueImputation
-            entry["target"] = self.imputation_method(entry["target"])
+    #     if self.model_type == "causal":
+    #         # Causal models do not play nice with missing values, so it is
+    #         # recommended to use an imputation method, e.g., LastValueImputation
+    #         entry["target"] = self.imputation_method(entry["target"])
 
-        if mode == "train" and self.drop_prob > 0:
-            target = entry["target"].copy()
-            drop_p = np.random.uniform(low=0.0, high=self.drop_prob)
-            mask = np.random.choice(
-                [True, False], size=len(target), p=[drop_p, 1 - drop_p]
-            )
-            target[mask] = np.nan
-            entry["target"] = target
+    #     if mode == "train" and self.drop_prob > 0:
+    #         target = entry["target"].copy()
+    #         drop_p = np.random.uniform(low=0.0, high=self.drop_prob)
+    #         mask = np.random.choice(
+    #             [True, False], size=len(target), p=[drop_p, 1 - drop_p]
+    #         )
+    #         target[mask] = np.nan
+    #         entry["target"] = target
 
-        return entry
+    #     return entry
+
+    def preprocess_iter(self, entry: Filter, mode: str) -> Generator[dict, None, None]:
+        for item in entry:
+            target = np.asarray(item["target"], dtype=self.np_dtype)
+            for i in range(target.shape[0]):
+                univariate_target = target[i]
+
+                if self.model_type == "causal":
+                    univariate_target = self.imputation_method(univariate_target)
+
+                if mode == "train" and self.drop_prob > 0:
+                    mask = np.random.choice(
+                        [True, False],
+                        size=len(univariate_target),
+                        p=[self.drop_prob, 1 - self.drop_prob],
+                    )
+                    univariate_target = np.where(mask, np.nan, univariate_target)
+
+                yield {"start": item["start"], "target": univariate_target}
 
     def _create_instance_splitter(self, mode: str):
         assert mode in ["train", "test", "validation"]
@@ -260,11 +277,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
 
     def __iter__(self) -> Iterator:
         preprocessed_datasets = [
-            Map(
-                partial(self.preprocess_entry, mode=self.mode),
-                dataset,
-            )  # iterator yields num_dim univariate time series with fixed length num_timesteps
-            for dataset in self.datasets
+            self.preprocess_iter(dataset, self.mode) for dataset in self.datasets
         ]
 
         if self.mode == "train":

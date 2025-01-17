@@ -8,16 +8,12 @@ from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
 
-import dystformer.augmentations as augmentations
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.tokenizer import ChronosConfig
 from dystformer.utils import (
     has_enough_observations,
     log_on_main,
-    sample_index_pairs,
 )
-
-# TODO: update this, since we changed how augmentations work
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -43,12 +39,7 @@ def main(cfg):
                 )
             )
 
-    log_on_main(f"train_data_paths: {train_data_paths}", logger)
-    log_on_main(
-        f"Loading and filtering {len(train_data_paths)} datasets "
-        f"for training: {train_data_paths}",
-        logger,
-    )
+    log_on_main(f"Loading and filtering {len(train_data_paths)} datasets ", logger)
 
     # load datasets and apply loading filters on the fly
     train_datasets = [
@@ -58,39 +49,10 @@ def main(cfg):
                 min_length=cfg.min_past + cfg.chronos.prediction_length,
                 max_missing_prop=cfg.max_missing_prop,
             ),
-            FileDataset(path=Path(data_path), freq="h"),  # type: ignore
+            FileDataset(path=Path(data_path), one_dim_target=False, freq="h"),  # type: ignore
         )
         for data_path in train_data_paths
     ]
-
-    # system-scale augmentations
-    log_on_main("Applying system-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.system:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [augmentation_fn(ds) for ds in train_datasets[: len(train_data_paths)]]
-        )
-
-    # ensemble-scale augmentations
-    log_on_main("Applying ensemble-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.ensemble:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [
-                augmentation_fn(train_datasets[i], train_datasets[j])
-                for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
-            ]
-        )
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -142,9 +104,11 @@ def main(cfg):
         mode="train",
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    for _, data in zip(range(10), shuffled_train_dataset):
+    for i, data in zip(range(1000000000), shuffled_train_dataset):
+        print(f"{i=}")
         for key, value in data.items():
             print(key, value.shape)
+        print()
 
 
 if __name__ == "__main__":
