@@ -39,11 +39,13 @@ def main(cfg):
     if cfg.wandb.log:
         run = wandb.init(
             project=cfg.wandb.project_name,
+            entity=cfg.wandb.entity,
             name=cfg.run_name,
             config=dict(cfg),
             sync_tensorboard=False,  # auto-upload tensorboard metrics
             group=cfg.wandb.group_name,
             resume=cfg.wandb.resume,
+            tags=cfg.wandb.tags,
         )
 
     # check model type is valid
@@ -136,6 +138,9 @@ def main(cfg):
         eos_token_id=cfg.chronos.eos_token_id,
     )
 
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    log_on_main(f"Total trainable parameters: {trainable_params:,}", logger)
+
     log_on_main("Initializing tokenizer", logger)
     chronos_config = ChronosConfig(
         tokenizer_class=cfg.chronos.tokenizer_class,
@@ -186,6 +191,8 @@ def main(cfg):
         learning_rate=cfg.train.learning_rate,
         lr_scheduler_type=cfg.train.lr_scheduler_type,
         warmup_ratio=cfg.train.warmup_ratio,
+        max_grad_norm=cfg.train.max_grad_norm,
+        weight_decay=cfg.train.weight_decay,
         optim=cfg.train.optim,
         logging_dir=f"wandb/tbruns/{run.name}_{run.id}/logs"
         if cfg.wandb.log
@@ -198,11 +205,13 @@ def main(cfg):
         max_steps=cfg.train.max_steps,
         gradient_accumulation_steps=cfg.train.gradient_accumulation_steps,
         dataloader_num_workers=dataloader_num_workers,
+        dataloader_prefetch_factor=cfg.train.dataloader_prefetch_factor,
         tf32=use_tf32,  # remove this if not using Ampere GPUs (e.g., A100)
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
         remove_unused_columns=cfg.train.remove_unused_columns,
         seed=cfg.train.seed,
+        ddp_backend="nccl",
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.

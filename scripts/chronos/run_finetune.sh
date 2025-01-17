@@ -1,6 +1,6 @@
 ulimit -n 100000
 
-CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun \
+CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/chronos/train.py \
         run_name=finetune_large \
@@ -10,7 +10,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun \
         chronos.random_init=false \
         chronos.tie_embeddings=true \
         chronos.context_length=512 \
-        chronos.prediction_length=256 \
+        chronos.prediction_length=64 \
         chronos.num_samples=20 \
         chronos.n_tokens=4096 \
         chronos.n_special_tokens=2 \
@@ -27,8 +27,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun \
         train.save_steps=100_000 \
         train.log_steps=1000 \
         shuffle_buffer_length=100_000 \
-        train.per_device_train_batch_size=64 \
+        train.per_device_train_batch_size=256 \
         train.warmup_ratio=0.1 \
         train.torch_compile=true \
-        train.weight_decay=1e-4 \
+        train.weight_decay=0.0 \
         "$@"
