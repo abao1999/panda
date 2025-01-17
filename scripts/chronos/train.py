@@ -15,8 +15,11 @@ from gluonts.transform import LastValueImputation
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
-import dystformer.augmentations as augmentations
 import wandb
+from dystformer.augmentations import (
+    RandomAffineTransform,
+    RandomConvexCombinationTransform,
+)
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.tokenizer import ChronosConfig
 from dystformer.utils import (
@@ -26,7 +29,6 @@ from dystformer.utils import (
     is_main_process,
     load_model,
     log_on_main,
-    sample_index_pairs,
     save_training_info,
 )
 
@@ -43,6 +45,9 @@ def main(cfg):
             group=cfg.wandb.group_name,
             resume=cfg.wandb.resume,
         )
+
+    # check model type is valid
+    assert cfg.chronos.model_type in ["seq2seq", "causal"]
 
     # set floating point precision
     use_tf32 = cfg.train.tf32
@@ -63,42 +68,20 @@ def main(cfg):
     log_on_main(f"Using SEED: {cfg.train.seed}", logger)
     transformers.set_seed(seed=cfg.train.seed)
 
-    # get tokenizer kwargs dict
-    tokenizer_kwargs = dict(cfg.chronos.tokenizer_kwargs)
-
-    # check model type is valid
-    assert cfg.chronos.model_type in ["seq2seq", "causal"]
-
-    # Get list of files to use for training
-    # add all files in train_data_dirs to train_data_paths, a list of arrow data filepaths
+    # get train data paths
+    train_data_dir_lst = cfg.train_data_dirs
     train_data_paths = []
-    if cfg.train_data_dirs is not None:
-        for train_data_dirs in cfg.train_data_dirs:
-            train_data_paths.extend(
-                list(
-                    filter(
-                        lambda file: file.is_file(), Path(train_data_dirs).rglob("*")
-                    )
-                )
-            )
-    log_on_main(f"train_data_paths: {train_data_paths}", logger)
-
-    # add any additional arrow data filepaths specified to our training set
-    if cfg.extra_train_data_paths is not None:
-        extra_paths = [
-            Path(file) for file in cfg.extra_train_data_paths if Path(file).is_file()
-        ]
-        assert isinstance(extra_paths, list), "extra paths must be a list literal"
-        train_data_paths.extend(extra_paths)
-
+    for train_data_dir in train_data_dir_lst:
+        train_data_dir = os.path.expandvars(train_data_dir)
+        train_data_paths.extend(
+            filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
+        )
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
-    print("output_dir: ", output_dir)
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
-        f"Loading and filtering {len(train_data_paths)} datasets "
-        f"for training: {train_data_paths}",
+        f"Loading and filtering {len(train_data_paths)} datasets for training from directories: {train_data_dir_lst}",
         logger,
     )
 
@@ -110,46 +93,12 @@ def main(cfg):
                 min_length=cfg.min_past + cfg.chronos.prediction_length,
                 max_missing_prop=cfg.max_missing_prop,
             ),
-            FileDataset(path=Path(data_path), freq="h"),  # type: ignore
+            FileDataset(path=Path(data_path), freq="h", one_dim_target=True),  # type: ignore
         )
         for data_path in train_data_paths
     ]
 
-    # apply augmentations on the fly
-    # TODO: understand the fine-tuning details more. Do we want to aggregate the samples together, on the fly?
-    # TODO: also will probably need to re-weight probabilities to take into account the type of augmentation
-    #    - say original data is (3,1024) and augmented is (10,1024). Then each entry in the augmented would have less probability under current scheme
-    #    - essentially, the training datasets is jagged arrays of different lengths
-    #    - (also, if we're doing a skew transform, we might want to weight the original data more heavily?)
-
-    # system-scale augmentations
-    log_on_main("Applying system-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.system:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [augmentation_fn(ds) for ds in train_datasets[: len(train_data_paths)]]
-        )
-
-    # ensemble-scale augmentations
-    log_on_main("Applying ensemble-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.ensemble:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [
-                augmentation_fn(train_datasets[i], train_datasets[j])
-                for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
-            ]
-        )
+    log_on_main(f"number of train_datasets: {len(train_datasets)}", logger)
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -157,7 +106,6 @@ def main(cfg):
     elif cfg.probability is None:
         probability = [1.0 / len(train_datasets)] * len(train_datasets)
     assert isinstance(probability, list)
-
     assert len(train_datasets) == len(probability)
 
     # adapt number of workers to the number of datasets if there are more workers than datasets
@@ -170,8 +118,14 @@ def main(cfg):
         )
         dataloader_num_workers = len(train_datasets)
 
-    log_on_main("Initializing model", logger)
+    # apply augmentations on the fly
+    augmentations = [
+        RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
+        RandomAffineTransform(out_dim=6, scale=1.0),
+    ]
+    log_on_main(f"Using augmentations: {augmentations}", logger)
 
+    log_on_main("Initializing model", logger)
     model = load_model(
         model_id=cfg.chronos.model_id,
         model_type=cfg.chronos.model_type,
@@ -182,6 +136,10 @@ def main(cfg):
         eos_token_id=cfg.chronos.eos_token_id,
     )
 
+    # get tokenizer kwargs dict
+    tokenizer_kwargs = dict(cfg.chronos.tokenizer_kwargs)
+
+    log_on_main("Initializing tokenizer", logger)
     chronos_config = ChronosConfig(
         tokenizer_class=cfg.chronos.tokenizer_class,
         tokenizer_kwargs=tokenizer_kwargs,
@@ -202,6 +160,7 @@ def main(cfg):
     # Add extra items to model config so that it's saved in the ckpt
     model.config.chronos_config = chronos_config.__dict__
 
+    log_on_main("Initializing dataset", logger)
     shuffled_train_dataset = ChronosDataset(
         datasets=train_datasets,
         probabilities=probability,
@@ -214,6 +173,7 @@ def main(cfg):
         if cfg.chronos.model_type == "causal"
         else None,
         mode="train",
+        augmentations=augmentations,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     # Define training args
@@ -240,6 +200,7 @@ def main(cfg):
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
         remove_unused_columns=cfg.train.remove_unused_columns,
+        seed=cfg.train.seed,
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.
@@ -247,7 +208,6 @@ def main(cfg):
     ensure_contiguous(model)
 
     # Create Trainer instance and start training
-    # TODO: utilize custom callbacks https://huggingface.co/docs/transformers/v4.44.2/en/main_classes/callback#transformers.integrations.WandbCallback
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -260,18 +220,15 @@ def main(cfg):
 
     # terminate wandb run after training
     if cfg.wandb.log:
-        # wandb.log(results) # log results to wandb
         run.finish()
 
     # save final model checkpoint and training info locally
     if is_main_process():
-        # ensure_contiguous(model)
         model.save_pretrained(output_dir / "checkpoint-final")
         save_training_info(
             output_dir / "checkpoint-final",
-            model_config=vars(
-                chronos_config
-            ),  # use dataclass asdict for more complex dataclasses
+            model_config=vars(chronos_config),
+            # model_config=OmegaConf.to_container(cfg.chronos, resolve=True),  # type: ignore
             train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
             all_config=OmegaConf.to_container(cfg, resolve=True),  # type: ignore
         )

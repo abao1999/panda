@@ -15,7 +15,6 @@
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/patchtst/train.py \
-        shuffle_buffer_length=100_000 \
         patchtst.context_length=512 \
         patchtst.patch_length=16 \
         patchtst.patch_stride=16 \
@@ -24,15 +23,14 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.d_model=512 \
         patchtst.norm_type=rmsnorm \
         patchtst.channel_attention=true \
-        patchtst.pooling_type=mean \
         patchtst.mask_type=random \
         patchtst.random_mask_ratio=0.5 \
         patchtst.channel_consistent_masking=false \
         patchtst.mode=pretrain \
         patchtst.max_wavelength=500 \
         patchtst.rope_percent=0.75 \
-        train.per_device_train_batch_size=64 \
-        train.max_steps=100_000 \
+        train.per_device_train_batch_size=512 \
+        train.max_steps=200_000 \
         train.save_steps=100_000 \
         train.log_steps=1_000 \
         train.warmup_ratio=0.1 \

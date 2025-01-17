@@ -1,7 +1,8 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 import itertools
-from typing import Generator, Iterator, List, Optional
+from dataclasses import dataclass
+from typing import Callable, Generator, Iterator, List, Optional
 
 import numpy as np
 import torch
@@ -10,7 +11,7 @@ from gluonts.transform import (
     ExpectedNumInstanceSampler,
     FilterTransformation,
     InstanceSplitter,
-    LeavesMissingValues,
+    LastValueImputation,
     MissingValueImputation,
     TestSplitSampler,
     ValidationSplitSampler,
@@ -76,6 +77,7 @@ class RestarableIteratorWrapper:
         yield from self.generator_func(*self.args, **self.kwargs)
 
 
+@dataclass
 class ChronosDataset(IterableDataset, ShuffleMixin):
     """
     Dataset wrapper, using a ``ChronosTokenizer`` to turn data from a time series
@@ -108,39 +110,33 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         One of ``"training"``, ``"validation"``, or ``"test"``.
     np_dtype
         Numpy float data type.
+
+    TODO: implement augmentations
     """
 
-    def __init__(
-        self,
-        datasets: list,
-        probabilities: List[float],
-        tokenizer: ChronosTokenizer,
-        context_length: int = 512,
-        prediction_length: int = 64,
-        drop_prob: float = 0.2,
-        min_past: Optional[int] = None,
-        model_type: str = "seq2seq",
-        imputation_method: Optional[MissingValueImputation] = None,
-        mode: str = "train",
-        np_dtype: np.dtype = np.float32,  # type: ignore
-    ) -> None:
+    datasets: list
+    probabilities: List[float]
+    tokenizer: ChronosTokenizer
+    context_length: int = 512
+    prediction_length: int = 64
+    drop_prob: float = 0.2
+    min_past: Optional[int] = None
+    model_type: str = "seq2seq"
+    imputation_method: Optional[MissingValueImputation] = None
+    mode: str = "train"
+    np_dtype: np.dtype = np.float32  # type: ignore
+    augmentations: Optional[List[Callable]] = None
+    augmentation_probabilities: Optional[List[float]] = None
+    # TODO: implement augmentations
+
+    def __post_init__(self):
         super().__init__()
-
-        assert len(probabilities) == len(datasets)
-        assert mode in ("train", "validation", "test")
-        assert model_type in ("seq2seq", "causal")
-
-        self.datasets = datasets
-        self.probabilities = probabilities
-        self.tokenizer = tokenizer
-        self.context_length = context_length
-        self.prediction_length = prediction_length
-        self.drop_prob = drop_prob if model_type == "seq2seq" else 0.0
-        self.min_past = min_past or prediction_length
-        self.model_type = model_type
-        self.imputation_method = imputation_method or LeavesMissingValues()
-        self.mode = mode
-        self.np_dtype = np_dtype
+        assert len(self.probabilities) == len(self.datasets)
+        assert self.mode in ("train", "validation", "test")
+        assert self.model_type in ("seq2seq", "causal")
+        self.drop_prob = self.drop_prob if self.model_type == "seq2seq" else 0.0
+        self.min_past = self.min_past or self.prediction_length
+        self.imputation_method = self.imputation_method or LastValueImputation()
 
     # def _preprocess_entry_univariate(self, entry: dict, mode: str) -> dict:
     #     entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
@@ -169,7 +165,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
                 univariate_target = target[i]
 
                 if self.model_type == "causal":
-                    univariate_target = self.imputation_method(univariate_target)
+                    univariate_target = self.imputation_method(univariate_target)  # type: ignore
 
                 if mode == "train" and self.drop_prob > 0:
                     mask = np.random.choice(
@@ -188,7 +184,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             "train": ExpectedNumInstanceSampler(
                 num_instances=1.0,
                 min_instances=1,
-                min_past=self.min_past,
+                min_past=self.min_past,  # type: ignore
                 min_future=self.prediction_length,
             ),
             "test": TestSplitSampler(),
