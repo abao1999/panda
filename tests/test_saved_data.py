@@ -128,10 +128,10 @@ def plot_saved_data_grid(
     plot_name = (
         f"{default_name}_{plot_name_suffix}" if plot_name_suffix else default_name
     )
+    save_path = os.path.join(plot_save_dir, f"{plot_name}.pdf")
     plot_grid_trajs_multivariate(
         ensemble,
-        save_dir=plot_save_dir,
-        plot_name=plot_name,
+        save_path=save_path,
         max_samples=max_samples,
         standardize=True,
         subplot_size=subplot_size,
@@ -216,7 +216,8 @@ if __name__ == "__main__":
             )
         samples_subset_dict = metadata[args.samples_subset]
 
-    plot_name_suffix = "failures" if args.samples_subset == "failed_samples" else None
+    plot_name_suffix = "_".join(args.split.split("/"))
+    plot_name_suffix += "_failures" if args.samples_subset == "failed_samples" else ""
     if args.plot_grid:
         plot_saved_data_grid(
             dyst_names_lst,

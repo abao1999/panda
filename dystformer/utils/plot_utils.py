@@ -164,8 +164,7 @@ def plot_trajs_multivariate(
 
 def plot_grid_trajs_multivariate(
     ensemble: dict[str, np.ndarray],
-    save_dir: str = "tests/figs",
-    plot_name: str = "dyst_grid",
+    save_path: str,
     standardize: bool = False,
     dims_3d: list[int] = [0, 1, 2],
     subplot_size: tuple[int, int] = (3, 3),
@@ -177,15 +176,13 @@ def plot_grid_trajs_multivariate(
     Args:
         ensemble (dict[str, np.ndarray]): Dictionary of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
         save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
-        plot_name (str, optional): Base name for the saved plot files. Defaults to "dyst".
         standardize (bool): Whether to standardize the trajectories
         dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
         figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
         max_samples (int): Maximum number of samples to plot. Defaults to 6.
     """
-    os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
-    save_path = os.path.join(save_dir, f"{plot_name}.png")
     print("Plotting grid of 3D trajectories and saving to ", save_path)
     n_systems = len(ensemble)
     n_rows = int(np.ceil(np.sqrt(n_systems)))

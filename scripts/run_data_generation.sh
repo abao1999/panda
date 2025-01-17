@@ -2,7 +2,7 @@
 
 # # skew systems
 # python -W ignore scripts/make_skew_systems.py \
-#     sampling.num_points=4096 \
+#     sampling.num_points=4311 \
 #     sampling.num_periods=40 \
 #     sampling.num_param_perturbations=50 \
 #     sampling.param_scale=1.0 \
@@ -22,7 +22,7 @@
 # base dysts
 python -W ignore scripts/make_dyst_data.py \
     sampling.sys_class=continuous \
-    sampling.num_points=4096 \
+    sampling.num_points=4311 \
     sampling.num_periods=40 \
     sampling.num_param_perturbations=200 \
     sampling.param_scale=1.0 \

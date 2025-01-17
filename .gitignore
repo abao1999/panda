@@ -2,9 +2,6 @@
 tests/playground.py
 tests/another_playground.py
 
-# some run scripts that change a lot
-scripts/run_data_generation.sh
-
 # language config files
 .mypy_cache/
 .mypy.ini

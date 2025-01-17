@@ -63,8 +63,7 @@ class AttractorValidator:
             test_fn.func if isinstance(test_fn, functools.partial) else test_fn
         )
         func_name = original_func.__name__
-        transient_time = int(traj_sample.shape[1] * self.transient_time_frac)
-        status = test_fn(traj_sample[:, transient_time:])
+        status = test_fn(traj_sample)
         return status, func_name
 
     def _filter_system_worker_fn(
@@ -84,6 +83,10 @@ class AttractorValidator:
         failed_attractor_trajs = []
         for i, traj_sample in enumerate(all_traj):
             sample_idx = first_sample_idx + i
+            # cut off transient time
+            transient_time = int(traj_sample.shape[1] * self.transient_time_frac)
+            traj_sample = traj_sample[:, transient_time:]
+            # execute all tests in sequence
             status = True
             for test_fn in self.tests or []:
                 status, test_name = self._execute_test_fn(test_fn, traj_sample)
