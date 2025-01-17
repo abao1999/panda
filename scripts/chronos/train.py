@@ -46,6 +46,9 @@ def main(cfg):
             resume=cfg.wandb.resume,
         )
 
+    # check model type is valid
+    assert cfg.chronos.model_type in ["seq2seq", "causal"]
+
     # set floating point precision
     use_tf32 = cfg.train.tf32
     if use_tf32 and not (
@@ -65,14 +68,7 @@ def main(cfg):
     log_on_main(f"Using SEED: {cfg.train.seed}", logger)
     transformers.set_seed(seed=cfg.train.seed)
 
-    # get tokenizer kwargs dict
-    tokenizer_kwargs = dict(cfg.chronos.tokenizer_kwargs)
-
-    # check model type is valid
-    assert cfg.chronos.model_type in ["seq2seq", "causal"]
-
-    # Get list of files to use for training
-    # add all files in train_data_dirs to train_data_paths, a list of arrow data filepaths
+    # get train data paths
     train_data_paths = []
     if cfg.train_data_dirs is not None:
         for train_data_dirs in cfg.train_data_dirs:
@@ -117,7 +113,6 @@ def main(cfg):
     elif cfg.probability is None:
         probability = [1.0 / len(train_datasets)] * len(train_datasets)
     assert isinstance(probability, list)
-
     assert len(train_datasets) == len(probability)
 
     # adapt number of workers to the number of datasets if there are more workers than datasets
@@ -131,7 +126,6 @@ def main(cfg):
         dataloader_num_workers = len(train_datasets)
 
     log_on_main("Initializing model", logger)
-
     model = load_model(
         model_id=cfg.chronos.model_id,
         model_type=cfg.chronos.model_type,
@@ -142,9 +136,10 @@ def main(cfg):
         eos_token_id=cfg.chronos.eos_token_id,
     )
 
+    log_on_main("Initializing tokenizer", logger)
     chronos_config = ChronosConfig(
         tokenizer_class=cfg.chronos.tokenizer_class,
-        tokenizer_kwargs=tokenizer_kwargs,
+        tokenizer_kwargs=dict(cfg.chronos.tokenizer_kwargs),
         n_tokens=cfg.chronos.n_tokens,
         n_special_tokens=cfg.chronos.n_special_tokens,
         pad_token_id=cfg.chronos.pad_token_id,
@@ -162,7 +157,7 @@ def main(cfg):
     # Add extra items to model config so that it's saved in the ckpt
     model.config.chronos_config = chronos_config.__dict__
 
-    # Note: these augmentations are applied to the multivariate target tra
+    # Note: these augmentations are applied to the multivariate target traj
     augmentations = [
         RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
         RandomAffineTransform(out_dim=6, scale=1.0),
@@ -207,6 +202,7 @@ def main(cfg):
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
         remove_unused_columns=cfg.train.remove_unused_columns,
+        seed=cfg.train.seed,
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.
@@ -214,7 +210,6 @@ def main(cfg):
     ensure_contiguous(model)
 
     # Create Trainer instance and start training
-    # TODO: utilize custom callbacks https://huggingface.co/docs/transformers/v4.44.2/en/main_classes/callback#transformers.integrations.WandbCallback
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -227,18 +222,15 @@ def main(cfg):
 
     # terminate wandb run after training
     if cfg.wandb.log:
-        # wandb.log(results) # log results to wandb
         run.finish()
 
     # save final model checkpoint and training info locally
     if is_main_process():
-        # ensure_contiguous(model)
         model.save_pretrained(output_dir / "checkpoint-final")
         save_training_info(
             output_dir / "checkpoint-final",
-            model_config=vars(
-                chronos_config
-            ),  # use dataclass asdict for more complex dataclasses
+            model_config=vars(chronos_config),
+            # model_config=OmegaConf.to_container(cfg.chronos, resolve=True),  # type: ignore
             train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
             all_config=OmegaConf.to_container(cfg, resolve=True),  # type: ignore
         )

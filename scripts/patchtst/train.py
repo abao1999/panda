@@ -239,8 +239,7 @@ def main(cfg):
         )
         dataloader_num_workers = len(train_datasets)
 
-    log_on_main("Initializing model", logger)
-
+    # apply augmentations on the fly
     augmentations = [
         RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
         RandomAffineTransform(out_dim=6, scale=1.0),
@@ -272,6 +271,8 @@ def main(cfg):
             f"Loading pretrained encoder from {cfg.patchtst.pretrained_encoder_path}",
             logger,
         )
+
+    log_on_main("Initializing model", logger)
 
     model = PatchTST(
         dict(cfg.patchtst),

@@ -1,6 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 import itertools
+from dataclasses import dataclass
 from typing import Callable, Generator, Iterator
 
 import numpy as np
@@ -76,6 +77,7 @@ class RestarableIteratorWrapper:
         yield from self.generator_func(*self.args, **self.kwargs)
 
 
+@dataclass
 class ChronosDataset(IterableDataset, ShuffleMixin):
     """
     Dataset wrapper, using a ``ChronosTokenizer`` to turn data from a time series
@@ -110,43 +112,29 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         Numpy float data type.
     """
 
-    def __init__(
-        self,
-        datasets: list,
-        probabilities: list[float],
-        tokenizer: ChronosTokenizer,
-        context_length: int = 512,
-        prediction_length: int = 64,
-        drop_prob: float = 0.2,
-        min_past: int | None = None,
-        model_type: str = "seq2seq",
-        imputation_method: MissingValueImputation | None = None,
-        mode: str = "train",
-        np_dtype: np.dtype = np.dtype(np.float32),
-        augmentations: list[Callable] | None = None,
-        augmentation_probabilities: list[float] | None = None,
-        transforms: list[Callable] | None = None,
-    ) -> None:
+    datasets: list
+    probabilities: list[float]
+    tokenizer: ChronosTokenizer
+    context_length: int = 512
+    prediction_length: int = 64
+    drop_prob: float = 0.2
+    min_past: int | None = None
+    model_type: str = "seq2seq"
+    imputation_method: MissingValueImputation | None = None
+    mode: str = "train"
+    np_dtype: np.dtype = np.dtype(np.float32)
+    augmentations: list[Callable] | None = None
+    augmentation_probabilities: list[float] | None = None
+    transforms: list[Callable] | None = None
+
+    def __post_init__(self):
         super().__init__()
-
-        assert len(probabilities) == len(datasets)
-        assert mode in ("train", "validation", "test")
-        assert model_type in ("seq2seq", "causal")
-
-        self.datasets = datasets
-        self.probabilities = probabilities
-        self.tokenizer = tokenizer
-        self.context_length = context_length
-        self.prediction_length = prediction_length
-        self.drop_prob = drop_prob if model_type == "seq2seq" else 0.0
-        self.min_past = min_past or prediction_length
-        self.model_type = model_type
-        self.imputation_method = imputation_method or LeavesMissingValues()
-        self.mode = mode
-        self.np_dtype = np_dtype
-        self.transforms = transforms
-        self.augmentations = augmentations
-        self.augmentation_probabilities = augmentation_probabilities
+        assert len(self.probabilities) == len(self.datasets)
+        assert self.mode in ("train", "validation", "test")
+        assert self.model_type in ("seq2seq", "causal")
+        self.drop_prob = self.drop_prob if self.model_type == "seq2seq" else 0.0
+        self.min_past = self.min_past or self.prediction_length
+        self.imputation_method = self.imputation_method or LeavesMissingValues()
 
         if self.augmentations is None:
             return
@@ -176,7 +164,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
                 univariate_target = target[i]
 
                 if self.model_type == "causal":
-                    univariate_target = self.imputation_method(univariate_target)
+                    univariate_target = self.imputation_method(univariate_target)  # type: ignore
 
                 if mode == "train" and self.drop_prob > 0:
                     mask = np.random.choice(
@@ -195,7 +183,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             "train": ExpectedNumInstanceSampler(
                 num_instances=1.0,
                 min_instances=1,
-                min_past=self.min_past,
+                min_past=self.min_past,  # type: ignore
                 min_future=self.prediction_length,
             ),
             "test": TestSplitSampler(),

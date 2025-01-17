@@ -13,7 +13,7 @@ patchtst:
   num_attention_heads: 8
   channel_attention: true # This mixes across channels in the encoder 
   ffn_dim: 512
-  norm_type: "layernorm"
+  norm_type: "rmsnorm"
   norm_eps: 1e-05
   attention_dropout: 0.0
   positional_dropout: 0.0
@@ -48,7 +48,6 @@ patchtst:
 
 chronos:
   model_id: amazon/chronos-t5-mini
-  # model_id: google/t5-efficient-large
   model_type: seq2seq
 
   # model params
@@ -57,7 +56,7 @@ chronos:
 
   context_length: 512
   prediction_length: 64
-  num_samples: 20 # TODO: this is not actually being used. should we change it to match our number of samples?
+  num_samples: 20
 
   # vocab (tokens)
   n_tokens: 4096
