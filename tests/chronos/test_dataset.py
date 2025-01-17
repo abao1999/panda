@@ -8,6 +8,10 @@ from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
 
+from dystformer.augmentations import (
+    RandomAffineTransform,
+    RandomConvexCombinationTransform,
+)
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.tokenizer import ChronosConfig
 from dystformer.utils import (
@@ -53,8 +57,6 @@ def main(cfg):
         )
         for data_path in train_data_paths
     ]
-    train_datasets = train_datasets[:1]
-    print(train_data_paths[0])
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -74,6 +76,12 @@ def main(cfg):
             logger,
         )
         dataloader_num_workers = len(train_datasets)
+
+    # Note: these augmentations are applied to the multivariate target tra
+    augmentations = [
+        RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
+        RandomAffineTransform(out_dim=6, scale=1.0),
+    ]
 
     chronos_config = ChronosConfig(
         tokenizer_class=cfg.chronos.tokenizer_class,
@@ -104,7 +112,8 @@ def main(cfg):
         if cfg.chronos.model_type == "causal"
         else None,
         mode="train",
-    )  # .shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
+        augmentations=augmentations,
+    ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     for i, data in zip(range(100), shuffled_train_dataset):
         print(f"{i=}")

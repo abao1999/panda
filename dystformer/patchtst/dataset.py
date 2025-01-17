@@ -5,7 +5,7 @@ Dataset for PatchTST
 import itertools
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Iterator, List, Optional
+from typing import Callable, Iterator
 
 import numpy as np
 import torch
@@ -86,22 +86,22 @@ class PseudoShuffledIterableDataset(IterableDataset):
 
 @dataclass
 class PatchTSTDataset(IterableDataset):
-    datasets: List
-    probabilities: List[float]
+    datasets: list
+    probabilities: list[float]
     context_length: int = 512
     prediction_length: int = 64
-    min_past: Optional[int] = None
-    imputation_method: Optional[MissingValueImputation] = None
+    min_past: int | None = None
+    imputation_method: MissingValueImputation | None = None
     mode: str = "train"
     np_dtype: np.dtype = np.dtype(np.float32)
-    fixed_dim: Optional[int] = None
+    fixed_dim: int | None = None
     delay_embed_prob: float = 0.0
     num_test_instances: int = 1
     window_style: str = "sampled"
     window_stride: int = 1
-    transforms: Optional[List[Callable]] = None
-    augmentations: Optional[List[Callable]] = None
-    augmentation_probabilities: Optional[List[float]] = None
+    transforms: list[Callable] | None = None
+    augmentations: list[Callable] | None = None
+    augmentation_probabilities: list[float] | None = None
 
     def __post_init__(self):
         assert len(self.probabilities) == len(self.datasets)
@@ -208,10 +208,7 @@ class PatchTSTDataset(IterableDataset):
 
     def __iter__(self) -> Iterator:
         preprocessed_datasets = [
-            Map(
-                partial(self.preprocess_entry, mode=self.mode),
-                dataset,
-            )
+            Map(partial(self.preprocess_entry, mode=self.mode), dataset)
             for dataset in self.datasets
         ]
 
@@ -243,7 +240,6 @@ class PatchTSTDataset(IterableDataset):
         probs = [prob / sum(probs) for prob in probs]
 
         iterators = list(map(iter, iterables))
-
         if self.mode == "train":
             while True:
                 idx = np.random.choice(range(len(iterators)), p=probs)

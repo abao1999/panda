@@ -47,7 +47,7 @@ patchtst:
   pretrained_encoder_path: null
 
 chronos:
-  model_id: amazon/chronos-t5-small
+  model_id: amazon/chronos-t5-mini
   # model_id: google/t5-efficient-large
   model_type: seq2seq
 

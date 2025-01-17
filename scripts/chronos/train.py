@@ -15,8 +15,11 @@ from gluonts.transform import LastValueImputation
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
-import dystformer.augmentations as augmentations
 import wandb
+from dystformer.augmentations import (
+    RandomAffineTransform,
+    RandomConvexCombinationTransform,
+)
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.tokenizer import ChronosConfig
 from dystformer.utils import (
@@ -26,7 +29,6 @@ from dystformer.utils import (
     is_main_process,
     load_model,
     log_on_main,
-    sample_index_pairs,
     save_training_info,
 )
 
@@ -81,7 +83,6 @@ def main(cfg):
                     )
                 )
             )
-    log_on_main(f"train_data_paths: {train_data_paths}", logger)
 
     # add any additional arrow data filepaths specified to our training set
     if cfg.extra_train_data_paths is not None:
@@ -93,14 +94,9 @@ def main(cfg):
 
     # create a new output directory to save results
     output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
-    print("output_dir: ", output_dir)
 
     log_on_main(f"Logging dir: {output_dir}", logger)
-    log_on_main(
-        f"Loading and filtering {len(train_data_paths)} datasets "
-        f"for training: {train_data_paths}",
-        logger,
-    )
+    log_on_main(f"Loading and filtering {len(train_data_paths)} datasets ", logger)
 
     # load datasets and apply loading filters on the fly
     train_datasets = [
@@ -110,46 +106,10 @@ def main(cfg):
                 min_length=cfg.min_past + cfg.chronos.prediction_length,
                 max_missing_prop=cfg.max_missing_prop,
             ),
-            FileDataset(path=Path(data_path), freq="h"),  # type: ignore
+            FileDataset(path=Path(data_path), one_dim_target=False, freq="h"),  # type: ignore
         )
         for data_path in train_data_paths
     ]
-
-    # apply augmentations on the fly
-    # TODO: understand the fine-tuning details more. Do we want to aggregate the samples together, on the fly?
-    # TODO: also will probably need to re-weight probabilities to take into account the type of augmentation
-    #    - say original data is (3,1024) and augmented is (10,1024). Then each entry in the augmented would have less probability under current scheme
-    #    - essentially, the training datasets is jagged arrays of different lengths
-    #    - (also, if we're doing a skew transform, we might want to weight the original data more heavily?)
-
-    # system-scale augmentations
-    log_on_main("Applying system-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.system:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} system-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [augmentation_fn(ds) for ds in train_datasets[: len(train_data_paths)]]
-        )
-
-    # ensemble-scale augmentations
-    log_on_main("Applying ensemble-scale augmentations", logger)
-    for augmentation_cls_name in cfg.augmentations.ensemble:
-        augmentation_cls = getattr(augmentations, augmentation_cls_name)
-        log_on_main(
-            f"Applying {augmentation_cls.__name__} ensemble-scale augmentation", logger
-        )
-        kwargs = dict(getattr(cfg.augmentations, f"{augmentation_cls_name}_kwargs"))
-        augmentation_fn = partial(augmentation_cls, **kwargs)
-        train_datasets.extend(
-            [
-                augmentation_fn(train_datasets[i], train_datasets[j])
-                for i, j in sample_index_pairs(len(train_data_paths), num_pairs=5)
-            ]
-        )
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -202,6 +162,12 @@ def main(cfg):
     # Add extra items to model config so that it's saved in the ckpt
     model.config.chronos_config = chronos_config.__dict__
 
+    # Note: these augmentations are applied to the multivariate target tra
+    augmentations = [
+        RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
+        RandomAffineTransform(out_dim=6, scale=1.0),
+    ]
+
     shuffled_train_dataset = ChronosDataset(
         datasets=train_datasets,
         probabilities=probability,
@@ -214,6 +180,7 @@ def main(cfg):
         if cfg.chronos.model_type == "causal"
         else None,
         mode="train",
+        augmentations=augmentations,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     # Define training args

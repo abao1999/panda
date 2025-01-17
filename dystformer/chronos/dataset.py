@@ -1,7 +1,7 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 import itertools
-from typing import Generator, Iterator, List, Optional
+from typing import Callable, Generator, Iterator
 
 import numpy as np
 import torch
@@ -113,16 +113,19 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
     def __init__(
         self,
         datasets: list,
-        probabilities: List[float],
+        probabilities: list[float],
         tokenizer: ChronosTokenizer,
         context_length: int = 512,
         prediction_length: int = 64,
         drop_prob: float = 0.2,
-        min_past: Optional[int] = None,
+        min_past: int | None = None,
         model_type: str = "seq2seq",
-        imputation_method: Optional[MissingValueImputation] = None,
+        imputation_method: MissingValueImputation | None = None,
         mode: str = "train",
-        np_dtype: np.dtype = np.float32,  # type: ignore
+        np_dtype: np.dtype = np.dtype(np.float32),
+        augmentations: list[Callable] | None = None,
+        augmentation_probabilities: list[float] | None = None,
+        transforms: list[Callable] | None = None,
     ) -> None:
         super().__init__()
 
@@ -141,30 +144,34 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         self.imputation_method = imputation_method or LeavesMissingValues()
         self.mode = mode
         self.np_dtype = np_dtype
+        self.transforms = transforms
+        self.augmentations = augmentations
+        self.augmentation_probabilities = augmentation_probabilities
 
-    # def _preprocess_entry_univariate(self, entry: dict, mode: str) -> dict:
-    #     entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
-    #     assert entry["target"].ndim == 1, f"got {entry['target'].ndim=}, expected 1"
+        if self.augmentations is None:
+            return
 
-    #     if self.model_type == "causal":
-    #         # Causal models do not play nice with missing values, so it is
-    #         # recommended to use an imputation method, e.g., LastValueImputation
-    #         entry["target"] = self.imputation_method(entry["target"])
+        if self.augmentation_probabilities is None:
+            self.augmentation_probabilities = [1.0 / len(self.augmentations)] * len(
+                self.augmentations
+            )
 
-    #     if mode == "train" and self.drop_prob > 0:
-    #         target = entry["target"].copy()
-    #         drop_p = np.random.uniform(low=0.0, high=self.drop_prob)
-    #         mask = np.random.choice(
-    #             [True, False], size=len(target), p=[drop_p, 1 - drop_p]
-    #         )
-    #         target[mask] = np.nan
-    #         entry["target"] = target
-
-    #     return entry
+        assert len(self.augmentations) == len(self.augmentation_probabilities)
+        assert sum(self.augmentation_probabilities) == 1.0
 
     def preprocess_iter(self, entry: Filter, mode: str) -> Generator[dict, None, None]:
         for item in entry:
             target = np.asarray(item["target"], dtype=self.np_dtype)
+
+            if mode == "train" and self.augmentations is not None:
+                augmentation_idx = np.random.choice(
+                    len(self.augmentations), p=self.augmentation_probabilities
+                )
+                target = self.augmentations[augmentation_idx](target)
+
+            for transform in self.transforms or []:
+                target = transform(target)
+
             for i in range(target.shape[0]):
                 univariate_target = target[i]
 

@@ -1,22 +1,34 @@
-# Debug train script
-# # On single GPU
-CUDA_VISIBLE_DEVICES=0 \
-python scripts/chronos/train.py \
+ulimit -n 100000
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun \
+        --nproc-per-node 4 \
+        scripts/chronos/train.py \
         run_name=finetune_large \
         wandb.log=false \
-        train.max_steps=100_000 \
-        train.save_steps=10_000 \
-        train.log_steps=100 \
-        train_data_dirs=$WORK/data/chronos_train \
-
-# On multiple GPUs (example with 6 GPUs)
-# torchrun --nproc-per-node=3 scripts/chronos/train.py \
-#         run_name=finetune_small \
-#         wandb.log=false \
-#         wandb.group_name=finetune_large \
-#         train.max_steps=100_000 \
-#         train.save_steps=10_000 \
-#         train.log_steps=100 \
-#         train_data_dirs=$WORK/data/chronos_train \
-
-# accelerate launch scripts/training/train.py
+        chronos.model_id="amazon/chronos-t5-mini" \
+        chronos.model_type=seq2seq \
+        chronos.random_init=false \
+        chronos.tie_embeddings=true \
+        chronos.context_length=512 \
+        chronos.prediction_length=256 \
+        chronos.num_samples=20 \
+        chronos.n_tokens=4096 \
+        chronos.n_special_tokens=2 \
+        chronos.pad_token_id=0 \
+        chronos.eos_token_id=1 \
+        chronos.use_eos_token=true \
+        chronos.tokenizer_class=MeanScaleUniformBins \
+        chronos.tokenizer_kwargs.low_limit=-15.0 \
+        chronos.tokenizer_kwargs.high_limit=15.0 \
+        chronos.temperature=1.0 \
+        chronos.top_k=50 \
+        chronos.top_p=1.0 \
+        train.max_steps=200_000 \
+        train.save_steps=100_000 \
+        train.log_steps=1000 \
+        shuffle_buffer_length=100_000 \
+        train.per_device_train_batch_size=64 \
+        train.warmup_ratio=0.1 \
+        train.torch_compile=true \
+        train.weight_decay=1e-4 \
+        "$@"
