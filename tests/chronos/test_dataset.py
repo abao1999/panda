@@ -53,6 +53,8 @@ def main(cfg):
         )
         for data_path in train_data_paths
     ]
+    train_datasets = train_datasets[:1]
+    print(train_data_paths[0])
 
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
@@ -102,9 +104,9 @@ def main(cfg):
         if cfg.chronos.model_type == "causal"
         else None,
         mode="train",
-    ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
+    )  # .shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    for i, data in zip(range(1000000000), shuffled_train_dataset):
+    for i, data in zip(range(100), shuffled_train_dataset):
         print(f"{i=}")
         for key, value in data.items():
             print(key, value.shape)

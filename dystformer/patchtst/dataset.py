@@ -243,6 +243,7 @@ class PatchTSTDataset(IterableDataset):
         probs = [prob / sum(probs) for prob in probs]
 
         iterators = list(map(iter, iterables))
+
         if self.mode == "train":
             while True:
                 idx = np.random.choice(range(len(iterators)), p=probs)

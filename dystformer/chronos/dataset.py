@@ -65,6 +65,17 @@ class ShuffleMixin:
         return PseudoShuffledIterableDataset(self, shuffle_buffer_length)
 
 
+class RestarableIteratorWrapper:
+    def __init__(self, generator_func, *args, **kwargs):
+        self.generator_func = generator_func
+        self.args = args
+        self.kwargs = kwargs
+        self._length = None
+
+    def __iter__(self):
+        yield from self.generator_func(*self.args, **self.kwargs)
+
+
 class ChronosDataset(IterableDataset, ShuffleMixin):
     """
     Dataset wrapper, using a ``ChronosTokenizer`` to turn data from a time series
@@ -277,7 +288,8 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
 
     def __iter__(self) -> Iterator:
         preprocessed_datasets = [
-            self.preprocess_iter(dataset, self.mode) for dataset in self.datasets
+            RestarableIteratorWrapper(self.preprocess_iter, dataset, self.mode)
+            for dataset in self.datasets
         ]
 
         if self.mode == "train":
