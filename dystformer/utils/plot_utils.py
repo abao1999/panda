@@ -92,6 +92,11 @@ def plot_trajs_multivariate(
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111, projection="3d")
 
+    if n_samples_plot == 1:
+        linewidth = 1
+    else:
+        linewidth = 0.5
+
     for sample_idx in range(n_samples_plot):
         label_sample_idx = (
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
@@ -100,7 +105,7 @@ def plot_trajs_multivariate(
         curr_color = COLORS[sample_idx % len(COLORS)]
 
         xyz = trajectories[sample_idx, dims_3d, :]
-        ax.plot(*xyz, alpha=0.5, linewidth=1, color=curr_color, label=label)
+        ax.plot(*xyz, alpha=0.5, linewidth=linewidth, color=curr_color, label=label)
 
         ic_pt = xyz[:, 0]
         ax.scatter(*ic_pt, marker="*", s=100, alpha=0.5, color=curr_color)
@@ -210,12 +215,17 @@ def plot_grid_trajs_multivariate(
             trajectories = (trajectories - mean) / std
 
         ax = fig.add_subplot(n_rows, n_cols, idx + 1, projection="3d")
+
+        if n_samples_plot == 1:
+            linewidth = 1
+        else:
+            linewidth = 0.5
         for sample_idx in range(n_samples_plot):
             label = f"Sample {sample_idx}"
             curr_color = COLORS[sample_idx % len(COLORS)]
 
             xyz = trajectories[sample_idx, dims_3d, :]
-            ax.plot(*xyz, alpha=0.5, linewidth=1, color=curr_color, label=label)
+            ax.plot(*xyz, alpha=0.5, linewidth=linewidth, color=curr_color, label=label)
 
             ic_pt = xyz[:, 0]
             ax.scatter(*ic_pt, marker="*", s=100, alpha=0.5, color=curr_color)
@@ -224,7 +234,7 @@ def plot_grid_trajs_multivariate(
             ax.scatter(*end_pt, marker="x", s=100, alpha=0.5, color=curr_color)
 
         system_name_title = system_name.replace("_", " + ")
-        ax.set_title(f"{system_name_title}.", fontsize=8, fontweight="bold")
+        ax.set_title(f"{system_name_title}.", fontsize=18, fontweight="bold")
         fig.patch.set_facecolor("white")  # Set the figure's face color to white
         ax.set_facecolor("white")  # Set the axes' face color to white
         ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
@@ -300,7 +310,9 @@ def plot_completions_evaluation(
             color=curr_color,
             label=f"Sample {label_sample_idx}",
         )
-        ax1.set_title("Context")
+        ax1.set_title("Context", y=0.94, fontweight="bold")
+        ax1.axis("off")
+        ax1.grid(b=None)
         # Plot completions in 3D
         (line2,) = ax2.plot(
             completions[sample_idx, 0, :],
@@ -311,7 +323,9 @@ def plot_completions_evaluation(
             color=curr_color,
             label=f"Sample {label_sample_idx}",
         )
-        ax2.set_title("Completions")
+        ax2.set_title("Completions", y=0.94, fontweight="bold")
+        ax2.axis("off")
+        ax2.grid(b=None)
 
         # Add lines and labels for the first sample only to avoid duplicates
         if sample_idx == 0:
@@ -367,7 +381,7 @@ def plot_completions_evaluation(
                 color=curr_color,
                 alpha=0.3,
             )
-            ax.set_title(f"Dimension {dim + 1}")
+            ax.set_title(f"Dimension {dim + 1}", fontweight="bold")
             # ax.set_xlabel("Timesteps")
 
     # # Create a shared legend for samples
@@ -383,11 +397,12 @@ def plot_completions_evaluation(
 
     plt.suptitle(
         plot_name.replace("_", " + "), fontsize=18, fontweight="bold"
-    )  # Adjust y for padding
+    )  # $), y=0.95)
+
     # plt.subplots_adjust(hspace=0.6)  # Fine-tune spacing between rows
     plt.tight_layout()
 
-    save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
+    save_path = os.path.join(save_dir, f"{plot_name}_combined.pdf")
     plt.savefig(save_path, dpi=300)
     plt.close()
 
@@ -460,7 +475,10 @@ def plot_forecast_evaluation(
             color=curr_color,
             label=f"Sample {label_sample_idx} Ground Truth",
         )
-        ax1.set_title("Ground Truth")
+        ax1.set_title("Ground Truth", fontweight="bold", y=0.94)
+        ax1.grid(b=None)
+        ax1.axis("off")
+
         # Plot forecasts in 3D
         (line2,) = ax2.plot(
             forecasts[sample_idx, 0, :context_length],
@@ -470,7 +488,6 @@ def plot_forecast_evaluation(
             linewidth=1,
             color=curr_color,
         )
-        ax2.set_title("Forecasts")
         ax2.plot(
             forecasts[sample_idx, 0, context_length:],
             forecasts[sample_idx, 1, context_length:],
@@ -480,6 +497,9 @@ def plot_forecast_evaluation(
             color=curr_color,
             label=f"Sample {label_sample_idx} Forecasts",
         )
+        ax2.set_title("Forecasts", fontweight="bold", y=0.94)
+        ax2.grid(b=None)
+        ax2.axis("off")
 
         # Add lines and labels for the first sample only to avoid duplicates
         if sample_idx == 0:
@@ -511,7 +531,7 @@ def plot_forecast_evaluation(
                 color=curr_color,
                 alpha=0.3,
             )
-            ax.set_title(f"Dimension {dim + 1}")
+            ax.set_title(f"Dimension {dim + 1}", fontweight="bold")
             # ax.set_xlabel("Timesteps")
     # # Create a shared legend for samples
     # fig.legend(lines, labels, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 0.95))
@@ -526,9 +546,7 @@ def plot_forecast_evaluation(
 
     ax3.legend(handles=[line_ground_truth, line_forecasts], loc="upper right")
 
-    plt.suptitle(
-        plot_name.replace("_", " + "), fontsize=16, y=1.02
-    )  # Adjust y for padding
+    plt.suptitle(plot_name.replace("_", " + "), fontsize=18, fontweight="bold")
     save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
     plt.savefig(save_path, dpi=300)
     plt.close()

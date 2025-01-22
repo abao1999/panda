@@ -33,6 +33,7 @@ def plot_saved_data(
     plot_default_sample: bool = True,
     plot_name_suffix: Optional[str] = None,
     plot_save_dir: str = "tests/figs",
+    standardize: bool = True,
 ) -> None:
     """
     Plot saved Arrow data files.
@@ -77,7 +78,7 @@ def plot_saved_data(
                     save_dir=plot_save_dir,
                     plot_name=f"{plot_name}_{name}",
                     samples_subset=samples_subset,
-                    standardize=True,
+                    standardize=standardize,
                     plot_2d_slice=False,
                     plot_projections=True,
                 )
@@ -87,7 +88,7 @@ def plot_saved_data(
                 save_dir=plot_save_dir,
                 plot_name=plot_name,
                 samples_subset=samples_subset,
-                standardize=True,
+                standardize=standardize,
                 plot_2d_slice=False,
                 plot_projections=True,
             )
@@ -115,6 +116,7 @@ def plot_saved_data_grid(
     plot_save_dir: str = "tests/figs",
     plot_name_suffix: Optional[str] = None,
     subplot_size: tuple[int, int] = (3, 3),
+    standardize: bool = True,
 ) -> None:
     """
     Plot a grid of multiple systems' multivariate timeseries from dyst_data
@@ -133,7 +135,7 @@ def plot_saved_data_grid(
         ensemble,
         save_path=save_path,
         max_samples=max_samples,
-        standardize=True,
+        standardize=standardize,
         subplot_size=subplot_size,
     )
 
@@ -165,6 +167,12 @@ if __name__ == "__main__":
         help="Directory to save plots",
         type=str,
         default="tests/figs",
+    )
+    parser.add_argument(
+        "--n_systems_plot",
+        help="Number of systems to plot",
+        type=int,
+        default=16,
     )
     parser.add_argument(
         "--n_samples_plot",
@@ -201,7 +209,9 @@ if __name__ == "__main__":
         dyst_names_lst = [
             folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
         ]
-        dyst_names_lst = list(rng.choice(dyst_names_lst, 36, replace=False))
+        dyst_names_lst = list(
+            rng.choice(dyst_names_lst, args.n_systems_plot, replace=False)
+        )
     else:
         dyst_names_lst = args.dysts_names
 
@@ -219,13 +229,15 @@ if __name__ == "__main__":
     plot_name_suffix = "_".join(args.split.split("/"))
     plot_name_suffix += "_failures" if args.samples_subset == "failed_samples" else ""
     if args.plot_grid:
+        n_rows = round(args.n_systems_plot**0.5)
+        subplot_size = (n_rows, n_rows)
         plot_saved_data_grid(
             dyst_names_lst,
             split=args.split,
             max_samples=args.n_samples_plot,
             plot_name_suffix=plot_name_suffix,
             plot_save_dir=args.plot_save_dir,
-            subplot_size=(6, 6),
+            subplot_size=subplot_size,
         )
     else:
         plot_saved_data(
@@ -237,4 +249,5 @@ if __name__ == "__main__":
             plot_default_sample=not args.skip_default_sample,
             plot_name_suffix=plot_name_suffix,
             plot_save_dir=args.plot_save_dir,
+            standardize=True,
         )

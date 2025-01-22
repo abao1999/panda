@@ -16,6 +16,7 @@ data/
 *.jpeg
 *.out
 *_old.py
+*_debug.py
 *.mplstyle
 *.nfs*
 nohup.out
@@ -136,6 +137,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+notebooks/
 
 # IPython
 profile_default/

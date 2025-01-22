@@ -27,6 +27,7 @@ def plot_saved_data(
     samples_subset_dict: Optional[Dict[str, List[int]]] = None,
     plot_name_suffix: Optional[str] = None,
     plot_save_dir: str = "tests/figs",
+    num_samples_plot: int = 6,
 ) -> None:
     """
     Plot saved Arrow data files.
@@ -47,18 +48,20 @@ def plot_saved_data(
             dyst_name, DATA_DIR, split_completions
         )
         dyst_coords_samples_completions = accumulate_coords(
-            filepaths_completions, one_dim_target
+            filepaths_completions, one_dim_target, num_samples=num_samples_plot
         )
 
         # context
         filepaths_context = get_system_filepaths(dyst_name, DATA_DIR, split_context)
         dyst_coords_samples_context = accumulate_coords(
-            filepaths_context, one_dim_target
+            filepaths_context, one_dim_target, num_samples=num_samples_plot
         )
 
         # mask
         filepaths_mask = get_system_filepaths(dyst_name, DATA_DIR, split_mask)
-        dyst_mask_samples = accumulate_coords(filepaths_mask, one_dim_target)
+        dyst_mask_samples = accumulate_coords(
+            filepaths_mask, one_dim_target, num_samples=num_samples_plot
+        )
 
         # plot the trajectories
         plot_name = f"{dyst_name}_{plot_name_suffix}" if plot_name_suffix else dyst_name

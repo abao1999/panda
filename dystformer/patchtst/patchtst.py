@@ -647,10 +647,20 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
 
 
 class PatchTSTNoiser(nn.Module):
-    def __init__(self):
+    def __init__(
+        self,
+        clamp_low: Optional[float] = None,
+        clamp_high: Optional[float] = None,
+    ):
         super().__init__()
+        self.clamp_low = clamp_low
+        self.clamp_high = clamp_high
 
-    def forward(self, timeseries: torch.Tensor, noise_scale: float) -> torch.Tensor:
+    def forward(
+        self,
+        timeseries: torch.Tensor,
+        noise_scale: float,
+    ) -> torch.Tensor:
         """
         Noise the timeseries with standard normal noise
 
@@ -663,7 +673,11 @@ class PatchTSTNoiser(nn.Module):
         Returns:
             `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
         """
-        return timeseries + torch.randn_like(timeseries) * noise_scale
+        return torch.clamp(
+            timeseries + torch.randn_like(timeseries) * noise_scale,
+            min=self.clamp_low,
+            max=self.clamp_high,
+        )
 
 
 class PatchTSTModel(PatchTSTPreTrainedModel):
@@ -671,7 +685,10 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         super().__init__(config)
 
         self.scaler = PatchTSTScaler(config)
-        self.noiser = PatchTSTNoiser()
+        self.noiser = PatchTSTNoiser(
+            clamp_low=config.clamp_low,
+            clamp_high=config.clamp_high,
+        )
         self.patchifier = PatchTSTPatchify(config)
 
         self.do_mask_input = config.do_mask_input
@@ -821,8 +838,13 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             head_dropout=config.head_dropout,
             use_cls_token=config.use_cls_token,
         )
-        self.loss = nn.MSELoss(reduction="none")
-
+        # self.loss = nn.MSELoss(reduction="none")
+        if config.loss == "mse":
+            self.loss = nn.MSELoss(reduction="none")
+        elif config.loss == "huber":
+            self.loss = nn.HuberLoss(reduction="none", delta=config.huber_delta)
+        else:
+            raise ValueError(f"Unknown loss {config.loss}")
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1026,7 +1048,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
 
         self.model = PatchTSTModel(config)
 
-        if config.loss == "mse":
+        if config.loss == "mse" or config.loss == "huber":
             self.distribution_output = None
         else:
             if config.distribution_output == "student_t":
@@ -1046,7 +1068,12 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             config, distribution_output=self.distribution_output
         )
 
-        self.mse_loss = nn.MSELoss(reduction="mean")
+        if config.loss == "mse":
+            self.loss = nn.MSELoss(reduction="mean")
+        elif config.loss == "huber":
+            self.loss = nn.HuberLoss(reduction="mean", delta=config.huber_delta)
+        else:
+            raise ValueError(f"Unknown loss {config.loss}")
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -1120,7 +1147,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             else:
                 future_values = (future_values - model_output.loc) / model_output.scale
                 future_values = self.model.noiser(future_values, noise_scale)
-                loss_val = self.mse_loss(y_hat_out, future_values)
+                loss_val = self.loss(y_hat_out, future_values)
 
         loc = model_output.loc
         scale = model_output.scale

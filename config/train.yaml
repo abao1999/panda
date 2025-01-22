@@ -31,7 +31,7 @@ noiser:
   enabled: false
   schedule_name: cosine
   start: 1.0
-  end: 1e-3
+  end: 0.0
   decay_rate: 8.0
   eps: 0.008
   log_steps: 100

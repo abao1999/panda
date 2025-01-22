@@ -6,6 +6,10 @@ patchtst:
   prediction_length: 64
   distribution_output: "student_t"
   loss: "mse"
+  huber_delta: 10.0 # NOTE: only used if loss is Huber loss
+  clamp_low: -15.0 # Optional, can be null
+  clamp_high: 15.0 # Optional, can be null
+
   patch_length: 16
   patch_stride: 16
   num_hidden_layers: 8
@@ -13,6 +17,7 @@ patchtst:
   num_attention_heads: 8
   channel_attention: true # This mixes across channels in the encoder 
   ffn_dim: 512
+  
   norm_type: "rmsnorm"
   norm_eps: 1e-05
   attention_dropout: 0.0

@@ -119,7 +119,7 @@ def evaluate_mlm_model(
             if metrics_names is not None:
                 eval_metrics = compute_metrics(
                     completions,
-                    past_batch.cpu().numpy(),
+                    processed_past_values,
                     include=metrics_names,  # type: ignore
                 )
                 # compute running average of metrics over batches
@@ -136,15 +136,17 @@ def evaluate_mlm_model(
                 all_timestep_masks.append(timestep_mask)
 
         if return_completions:
-            full_completion = np.concatenate(all_completions, axis=1)
+            for i in range(len(all_completions)):
+                print(all_completions[i].shape)
+            full_completion = np.concatenate(all_completions, axis=0)
             system_completions[system] = full_completion
         if return_processed_past_values:
             full_processed_past_values = np.concatenate(
-                all_processed_past_values, axis=1
+                all_processed_past_values, axis=0
             )
             system_processed_past_values[system] = full_processed_past_values
         if return_masks:
-            full_timestep_masks = np.concatenate(all_timestep_masks, axis=1)
+            full_timestep_masks = np.concatenate(all_timestep_masks, axis=0)
             system_timestep_masks[system] = full_timestep_masks
 
     # convert defaultdicts to regular dicts
@@ -260,13 +262,16 @@ def evaluate_forecasting_model(
         # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         predictions = np.concatenate(predictions, axis=1)
-        # shape: (num_parallel_samples, num_windows*num_datasets, num_channels)
+        print(predictions.shape)
+        # shape: (num_windows*num_datasets, prediction_length, num_channels)
         labels = np.concatenate(labels, axis=0)
+        print(labels.shape)
         contexts = np.concatenate(contexts, axis=0)
+        print(contexts.shape)
 
         if metrics_names is not None:
             system_metrics[system] = compute_metrics(
-                predictions,
+                np.squeeze(predictions),
                 labels,
                 include=metrics_names,  # type: ignore
             )
@@ -408,6 +413,7 @@ def main(cfg):
         split_coords=cfg.eval.split_coords,
         verbose=cfg.eval.verbose,
     )
+    logger.info(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
 
     if cfg.eval.mode == "predict":
         predictions, contexts, labels, metrics = evaluate_forecasting_model(

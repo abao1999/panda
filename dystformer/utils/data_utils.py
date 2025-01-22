@@ -115,10 +115,12 @@ def convert_to_arrow(
 
 
 def accumulate_coords(
-    filepaths: List[Path], one_dim_target: bool = False
+    filepaths: List[Path], one_dim_target: bool = False, num_samples: int | None = None
 ) -> np.ndarray:
     dyst_coords_samples = []
     for filepath in filepaths:
+        if num_samples is not None and len(dyst_coords_samples) >= num_samples:
+            break
         # create dataset by reading directly from filepath into FileDataset
         gts_dataset = FileDataset(
             path=Path(filepath),
