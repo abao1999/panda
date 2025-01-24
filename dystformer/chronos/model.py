@@ -1,6 +1,10 @@
-# Adapted from https://github.com/amazon-science/chronos-forecasting
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: Apache-2.0
+"""
+Chronos Model
+Modified from original Chronos codebase https://github.com/amazon-science/chronos-forecasting
+    (under Apache-2.0 license):
+    Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+    SPDX-License-Identifier: Apache-2.0
+"""
 
 from typing import Optional
 
@@ -59,9 +63,9 @@ class ChronosModel(nn.Module):
             A tensor of encoder embeddings with shape
             (batch_size, sequence_length, d_model).
         """
-        assert (
-            self.config.model_type == "seq2seq"
-        ), "Encoder embeddings are only supported for encoder-decoder models"
+        assert self.config.model_type == "seq2seq", (
+            "Encoder embeddings are only supported for encoder-decoder models"
+        )
         return self.model.encoder(
             input_ids=input_ids, attention_mask=attention_mask
         ).last_hidden_state

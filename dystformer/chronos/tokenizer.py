@@ -1,7 +1,10 @@
-# Adapted from https://github.com/amazon-science/chronos-forecasting
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: Apache-2.0
-# TODO: modify for dysts
+"""
+Chronos Config and Tokenizer
+Modified from original Chronos codebase https://github.com/amazon-science/chronos-forecasting
+    (under Apache-2.0 license):
+    Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+    SPDX-License-Identifier: Apache-2.0
+"""
 
 import importlib
 from dataclasses import dataclass

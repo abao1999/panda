@@ -1,9 +1,9 @@
-# Adapted from https://github.com/amazon-science/chronos-forecasting
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: Apache-2.0
-
 """
-Evaluation pipeline for forecasting time series with Chronos.
+Evaluation pipeline for forecasting time series with Chronos
+Modified from original Chronos codebase https://github.com/amazon-science/chronos-forecasting
+    (under Apache-2.0 license):
+    Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+    SPDX-License-Identifier: Apache-2.0
 """
 
 import warnings

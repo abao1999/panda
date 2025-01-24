@@ -47,15 +47,6 @@ eval:
 # agg_axis: null # 1 to keep dimensions separate
 # num_samples: 20 # TODO: use this
 
-
-chronos_eval:
-  model_id: /stor/work/AMDG_Gilpin_Summer2024/checkpoints/checkpoint-80000
-  temperature: null
-  top_k: null
-  top_p: null
-  offset: -64
-  num_rolls: 1
-
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:
   wandb_run_id: null

@@ -3,9 +3,9 @@ analysis:
   split: debug40/bad
   save_dir: outputs
   plots_dir: plots
-  compute_quantile_limits: false
+  compute_quantile_limits: true
   compute_max_lyapunov_exponents: false
-  filter_ensemble: true
+  filter_ensemble: false
   verbose: true
   attractor_tests:
     - check_boundedness

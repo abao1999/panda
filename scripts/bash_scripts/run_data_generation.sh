@@ -18,6 +18,7 @@
 #     skew.transform_scales=true \
 #     skew.randomize_driver_indices=true \
 #     skew.num_pairs=2048 \
+#     run_name=big_skew40_run1 \
 
 # base dysts
 python -W ignore scripts/make_dyst_data.py \
@@ -34,3 +35,4 @@ python -W ignore scripts/make_dyst_data.py \
     sampling.verbose=false \
     events.verbose=false \
     events.max_duration=300 \
+    run_name=big_base40_run1 \

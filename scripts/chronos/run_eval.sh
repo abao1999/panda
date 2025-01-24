@@ -1,102 +1,24 @@
 #!/bin/bash
-
-run_job_bg() {
-    echo "RUNNING: $@"
-    python "$@" &
-}
-
-# Function to run Python job and wait for it to finish
-run_job_bg_wait() {
-    echo "RUNNING: $@"
-    python "$@" &
-    wait $!
-}
-
-run_job_seq() {
-    echo "RUNNING: $@"
-    python "$@" && echo "$@ finished successfully!"
-}
-
-# Set variable to main (parent) directory
-main_dir=$(dirname "$(dirname "$0")")
+main_dir=$(cd "$(dirname "$0")/../.." && pwd)
+echo "main_dir: $main_dir"
 checkpoint_dir=$WORK/checkpoints
+# # chronos zero-shot
+# eval.checkpoint_path=amazon/chronos-t5-mini \
 
-# base chronos large model
-run_job_bg scripts/evaluate.py \
-        eval.model_id=amazon/chronos-t5-large \
-        eval.data_dir=$WORK/data \
-        eval.split=train \
-        eval.limit_prediction_length=false \
-        eval.prediction_length=512 \
-        eval.offset=-512 \
-        eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=test_base_metrics.csv \
-        eval.overwrite=false \
-        eval.device=cuda:6 \
-
-# fine-tuned dystformer large model, intermediate checkpoint
-run_job_bg scripts/evaluate.py \
-        eval.model_id=$checkpoint_dir/checkpoint-20000 \
-        eval.data_dir=$WORK/data \
-        eval.split=train \
-        eval.limit_prediction_length=false \
-        eval.prediction_length=512 \
-        eval.offset=-512 \
-        eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=test_20000_metrics.csv \
-        eval.overwrite=false \
-        eval.device=cuda:5 \
-
-# fine-tuned dystformer large model, intermediate checkpoint
-run_job_bg scripts/evaluate.py \
-        eval.model_id=$checkpoint_dir/checkpoint-40000 \
-        eval.data_dir=$WORK/data \
-        eval.split=train \
-        eval.limit_prediction_length=false \
-        eval.prediction_length=512 \
-        eval.offset=-512 \
-        eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=test_40000_metrics.csv \
-        eval.overwrite=false \
-        eval.device=cuda:4 \
-
-# fine-tuned dystformer large model, intermediate checkpoint
-run_job_bg scripts/evaluate.py \
-        eval.model_id=$checkpoint_dir/checkpoint-60000 \
-        eval.data_dir=$WORK/data \
-        eval.split=train \
-        eval.limit_prediction_length=false \
-        eval.prediction_length=512 \
-        eval.offset=-512 \
-        eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=test_60000_metrics.csv \
-        eval.overwrite=false \
-        eval.device=cuda:3 \
-
-# fine-tuned dystformer large model, intermediate checkpoint
-run_job_bg scripts/evaluate.py \
-        eval.model_id=$checkpoint_dir/checkpoint-80000 \
-        eval.data_dir=$WORK/data \
-        eval.split=train \
-        eval.limit_prediction_length=false \
-        eval.prediction_length=512 \
-        eval.offset=-512 \
-        eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=test_80000_metrics.csv \
-        eval.overwrite=false \
-        eval.device=cuda:2 \
-
+run_num=357
 # fine-tuned dystformer large model, final checkpoint
-run_job_bg scripts/evaluate.py \
-        eval.model_id=$checkpoint_dir/checkpoint-final \
-        eval.data_dir=$WORK/data \
-        eval.split=train \
-        eval.limit_prediction_length=false \
-        eval.prediction_length=512 \
-        eval.offset=-512 \
-        eval.save_forecasts_to_npy=true \
-        eval.forecast_save_dir=$WORK/data/forecasts \
-        eval.output_dir=$main_dir/eval_results \
-        eval.output_fname=test_100000_metrics.csv \
-        eval.overwrite=false \
+python scripts/chronos/evaluate.py \
+        eval.checkpoint_path=$checkpoint_dir/run-${run_num}/checkpoint-final \
+        eval.data_path=$WORK/data/final_skew15/test_base \
+        eval.num_systems=10 \
+        eval.num_test_instances=1 \
+        eval.window_style=sampled \
+        eval.batch_size=64 \
+        eval.metrics_save_dir=$main_dir/eval_results/chronos \
+        eval.metrics_fname=zeroshot_forecast_${run_num}_metrics \
+        eval.overwrite=true \
         eval.device=cuda:1 \
+        eval.forecast_save_dir=$WORK/data/eval/chronos/forecasts/run-${run_num} \
+        eval.labels_save_dir=$WORK/data/eval/chronos/labels/run-${run_num} \
+        eval.seed=99 \
+        "$@"

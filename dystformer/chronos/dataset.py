@@ -1,7 +1,14 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: Apache-2.0
+"""
+Dataset for Chronos
+Modified from original Chronos codebase https://github.com/amazon-science/chronos-forecasting
+    (under Apache-2.0 license):
+    Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+    SPDX-License-Identifier: Apache-2.0
+"""
+
 import itertools
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable, Generator, Iterator
 
 import numpy as np
@@ -10,15 +17,56 @@ from gluonts.itertools import Cyclic, Filter
 from gluonts.transform import (
     ExpectedNumInstanceSampler,
     FilterTransformation,
+    InstanceSampler,
     InstanceSplitter,
     LeavesMissingValues,
     MissingValueImputation,
-    TestSplitSampler,
+    NumInstanceSampler,
     ValidationSplitSampler,
 )
 from torch.utils.data import IterableDataset, get_worker_info
 
 from dystformer.chronos.tokenizer import ChronosTokenizer
+
+# used for prediction length in test mode when window style is single
+# if you're predicting for more timepoints than this at a time...what are you doing??
+MAX_PREDICTION_LENGTH = 1_000_000
+
+
+class RegularWindowedSampler(InstanceSampler):
+    """
+    Sample regular context windows from each series.
+
+    Parameters
+    ----------
+    stride: int
+        stride of the sampled context windows
+    """
+
+    stride: int
+
+    def __call__(self, ts: np.ndarray) -> np.ndarray:
+        a, b = self._get_bounds(ts)
+        if a > b:
+            return np.array([], dtype=int)
+
+        return np.arange(a, b + 1, self.stride)
+
+
+class SingleContextSampler(InstanceSampler):
+    """
+    Sample a single context window from the beginning of each series.
+
+    Used for autoregressive prediction where the model should predict the
+    rest of the entire timeseries.
+    """
+
+    def __call__(self, ts: np.ndarray) -> np.ndarray:
+        a, b = self._get_bounds(ts)
+        if a > b:
+            return np.array([], dtype=int)
+
+        return np.array([a])
 
 
 class PseudoShuffledIterableDataset(IterableDataset):
@@ -107,7 +155,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         Data samples will be considered only if there's at least ``min_past``-many
         historical observations.
     mode
-        One of ``"training"``, ``"validation"``, or ``"test"``.
+        One of ``"train"``, ``"validation"``, or ``"test"``.
     np_dtype
         Numpy float data type.
     """
@@ -125,6 +173,9 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
     np_dtype: np.dtype = np.dtype(np.float32)
     augmentations: list[Callable] | None = None
     augmentation_probabilities: list[float] | None = None
+    num_test_instances: int = 1
+    window_style: str = "sampled"
+    window_stride: int = 1
     transforms: list[Callable] | None = None
 
     def __post_init__(self):
@@ -178,18 +229,41 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
 
     def _create_instance_splitter(self, mode: str):
         assert mode in ["train", "test", "validation"]
+        assert (
+            self.window_style
+            in [
+                "sampled",  # randomly sample eval windows from each timeseries
+                "rolling",  # take sliding windows of context_length with a stride of window_stride from each timeseries
+                "single",  # get only the first context window from each timeseries, predict the rest
+            ]
+        ), "evaluation windows can only either be rolling or randomly sampled"
+
+        test_sampler = {
+            "sampled": partial(NumInstanceSampler, N=self.num_test_instances),
+            "rolling": partial(RegularWindowedSampler, stride=self.window_stride),
+            "single": SingleContextSampler,
+        }[self.window_style]
 
         instance_sampler = {
             "train": ExpectedNumInstanceSampler(
                 num_instances=1.0,
                 min_instances=1,
-                min_past=self.min_past,  # type: ignore
+                min_past=self.context_length,  # never sample behind the timeseries
+                # min_past=self.min_past,  # type: ignore
                 min_future=self.prediction_length,
             ),
-            "test": TestSplitSampler(),
+            "test": test_sampler(
+                min_past=self.context_length,
+                min_future=self.prediction_length,
+            ),
             "validation": ValidationSplitSampler(min_future=self.prediction_length),
         }[mode]
 
+        prediction_length = (
+            MAX_PREDICTION_LENGTH
+            if mode == "test" and self.window_style == "single"
+            else self.prediction_length
+        )
         return InstanceSplitter(
             target_field="target",
             is_pad_field="is_pad",
@@ -197,7 +271,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             forecast_start_field="forecast_start",
             instance_sampler=instance_sampler,
             past_length=self.context_length,
-            future_length=self.prediction_length,
+            future_length=prediction_length,
             dummy_value=np.nan,
         )
 
@@ -220,10 +294,13 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         return data
 
     def to_hf_format(self, entry: dict) -> dict:
+        # shape (1, contex_length)
         past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
+        # shapes (1, contex_length+1), (1, contex_length+1), (1)
         input_ids, attention_mask, scale = self.tokenizer.context_input_transform(
             past_target
         )
+        # shape (1, prediction_length)
         future_target = torch.tensor(entry["future_target"]).unsqueeze(0)
         labels, labels_mask = self.tokenizer.label_input_transform(future_target, scale)
         labels[labels_mask == 0] = -100
@@ -281,6 +358,15 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             "labels": labels.squeeze(0),
         }
 
+    def to_hf_format_eval(self, entry: dict) -> dict:
+        # shape (1, contex_length)
+        past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
+        future_target = torch.tensor(entry["future_target"]).unsqueeze(0)
+        return {
+            "past_values": past_target,
+            "future_values": future_target,
+        }
+
     def __iter__(self) -> Iterator:
         preprocessed_datasets = [
             RestarableIteratorWrapper(self.preprocess_iter, dataset, self.mode)
@@ -332,4 +418,4 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         else:
             # cyclers aren't used here, so just chain iterators sequentially
             for entry in itertools.chain(*iterators):
-                yield self.to_hf_format(entry)
+                yield self.to_hf_format_eval(entry)

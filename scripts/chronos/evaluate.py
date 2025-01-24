@@ -1,214 +1,319 @@
+import json
 import logging
 import os
-from collections import defaultdict
+from functools import partial
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import hydra
 import numpy as np
-import pandas as pd
 import torch
-from gluonts.ev.metrics import MASE, RMSE, SMAPE, MeanWeightedSumQuantileLoss
-from gluonts.model.evaluation import evaluate_forecasts
+import transformers
+from dysts.metrics import compute_metrics  # type: ignore
+from gluonts.dataset.common import FileDataset
+from gluonts.itertools import batcher
+from gluonts.transform import LastValueImputation
 from tqdm.auto import tqdm
 
+from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.pipeline import ChronosPipeline
 from dystformer.utils import (
-    average_nested_dict,
-    generate_sample_forecasts,
-    load_and_split_dataset_from_arrow,
+    log_on_main,
+    save_evaluation_results,
 )
 
+logger = logging.getLogger(__name__)
 
-@hydra.main(config_path="../config", config_name="config", version_base=None)
+
+def evaluate_chronos_forecast(
+    pipeline: ChronosPipeline,
+    systems: Dict[str, ChronosDataset],
+    batch_size: int,
+    prediction_length: int,
+    limit_prediction_length: bool = False,
+    metrics_names: Optional[List[str]] = None,
+    parallel_sample_reduction: str = "none",
+    return_predictions: bool = False,
+    return_contexts: bool = False,
+    return_labels: bool = False,
+    redo_normalization: bool = False,
+    **predict_kwargs,
+) -> Tuple[
+    Optional[Dict[str, np.ndarray]],
+    Optional[Dict[str, np.ndarray]],
+    Optional[Dict[str, np.ndarray]],
+    Dict[str, Dict[str, float]],
+]:
+    """
+    Evaluate the model on each test system and save metrics.
+
+    Args:
+        pipeline: The Chronos Pipeline for evaluation.
+        systems: A dictionary mapping system names to their respective ChronosDataset.
+        batch_size: The batch size to use for evaluation.
+        metrics_names: Optional list of metric names to compute.
+        parallel_sample_reduction: How to reduce the parallel samples over dim 0,
+            only used if return_predictions is True
+        return_predictions: Whether to return the predictions.
+        return_contexts: Whether to return the contexts.
+        return_labels: Whether to return the future values.
+    Returns:
+        A tuple containing:
+        - system_predictions: A dictionary mapping system names to their predictions.
+            Only returned if `return_predictions` is True.
+        - system_contexts: A dictionary mapping system names to their contexts.
+            Only returned if `return_contexts` is True.
+        - system_labels: A dictionary mapping system names to their future values.
+            Only returned if `return_labels` is True.
+        - system_metrics: A nested dictionary containing computed metrics for each system.
+    """
+    system_predictions = {}
+    system_contexts = {}
+    system_labels = {}
+    system_metrics = {system: {} for system in systems}
+
+    parallel_sample_reduction_fn = {
+        "mean": lambda x: np.mean(x, axis=0),
+        "median": lambda x: np.median(x, axis=0),
+    }.get(parallel_sample_reduction, lambda x: x)
+
+    for system in tqdm(systems, desc="Forecasting..."):
+        print(f"Evaluating {system}")
+        dataset = systems[system]
+        predictions, labels, contexts, future_values = [], [], [], []
+        for batch in batcher(dataset, batch_size=batch_size):
+            past_values, future_values = zip(
+                *[(data["past_values"], data["future_values"]) for data in batch]
+            )
+            # shpae: (dim * num_samples, 1, context_length) where num_samples is number of arrow files in this system's subdirectory
+            past_batch = (
+                torch.stack(past_values, dim=0).to(pipeline.model.device).squeeze(1)
+            ).cpu()
+            # shape: (dim * num_samples, num_parallel_samples, prediction_length)
+            preds = (
+                pipeline.predict(
+                    past_batch,
+                    prediction_length=prediction_length,
+                    # num_samples=1, # if None, defaults to chronos config
+                    limit_prediction_length=limit_prediction_length,
+                    **predict_kwargs,
+                )
+                .cpu()
+                .numpy()
+            )
+            # TODO: it works up to here, keep going later
+            breakpoint()
+
+            context = past_batch.cpu().numpy()
+
+            # shape: (batch_size, sampler_prediction_length, num_channels)h
+            future_batch = torch.stack(future_values, dim=0).cpu().numpy()
+            # Truncate predictions to match future_batch length if needed
+            if preds.shape[2] > future_batch.shape[1]:
+                preds = preds[..., : future_batch.shape[1], :]
+
+            if redo_normalization:
+                # compute loc and scale from past_batch
+                loc = context.mean(axis=1)
+                scale = context.std(axis=1)
+                loc = np.expand_dims(loc, axis=1)
+                scale = np.expand_dims(scale, axis=1)
+                future_batch = (future_batch - loc) / scale
+                # preds = (preds - loc) / scale
+                context = (context - loc) / scale
+
+            labels.append(future_batch)
+            predictions.append(preds)
+            contexts.append(context)
+
+        # num_windows is either config.eval.num_test_instances for the sampled window style
+        # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
+        # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
+        predictions = np.concatenate(predictions, axis=1)
+        print(predictions.shape)
+        # shape: (num_windows*num_datasets, prediction_length, num_channels)
+        labels = np.concatenate(labels, axis=0)
+        print(labels.shape)
+        contexts = np.concatenate(contexts, axis=0)
+        print(contexts.shape)
+
+        if metrics_names is not None:
+            system_metrics[system] = compute_metrics(
+                np.squeeze(predictions),
+                labels,
+                include=metrics_names,  # type: ignore
+            )
+
+        # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
+        # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
+        if return_predictions:
+            system_predictions[system] = parallel_sample_reduction_fn(
+                predictions
+            ).transpose(0, 2, 1)
+        if return_contexts:
+            system_contexts[system] = contexts.transpose(0, 2, 1)
+        if return_labels:
+            system_labels[system] = labels.transpose(0, 2, 1)
+
+    return (
+        system_predictions if return_predictions else None,
+        system_contexts if return_contexts else None,
+        system_labels if return_labels else None,
+        system_metrics,
+    )
+
+
+@hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
-    metrics_fname = cfg.eval.output_fname or f"{cfg.eval.split}_metrics.csv"
-    metrics_path = os.path.join(cfg.eval.output_dir, metrics_fname)
-    print("Saving metrics to: ", metrics_path)
-    os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
+    checkpoint_path = cfg.eval.checkpoint_path
+    log_on_main(f"Using checkpoint: {checkpoint_path}", logger)
+    training_info_path = os.path.join(checkpoint_path, "training_info.json")
+    if os.path.exists(training_info_path):
+        log_on_main(f"Training info file found at: {training_info_path}", logger)
+        with open(training_info_path, "r") as f:
+            training_info = json.load(f)
+            train_config = training_info.get("train_config", None)
+            if train_config is None:  # for backwards compatibility
+                train_config = training_info.get("training_config", None)
+            dataset_config = training_info.get("dataset_config", None)
+    else:
+        log_on_main(f"No training info file found at: {training_info_path}", logger)
+        train_config = None
+        dataset_config = None
 
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
-
-    default_prediction_length = cfg.eval.prediction_length
-    default_offset = cfg.eval.offset
-    default_num_rolls = cfg.eval.num_rolls
-
-    data_dir = os.path.join(cfg.eval.data_dir, cfg.eval.split)
-    if not os.path.isdir(data_dir):
-        raise Exception(f"Directory {data_dir} does not exist.")
-    eval_dysts_names = [
-        d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))
-    ]
-
-    custom_dysts_config_lst = cfg.eval.custom_dysts
-    custom_dysts_dict = {}
-    print("Custom dysts configs: ", custom_dysts_config_lst)
-    if custom_dysts_config_lst:
-        for d in custom_dysts_config_lst:
-            dyst_name = d["name"]
-            dyst_dir = d.get("path")
-            if not dyst_dir or not os.path.isdir(dyst_dir):
-                raise Exception(f"Directory {dyst_dir} does not exist.")
-            custom_dysts_dict[dyst_name] = {
-                "path": dyst_dir,
-                "prediction_length": d.get(
-                    "prediction_length", default_prediction_length
-                ),
-                "offset": d.get("offset", default_offset),
-                "num_rolls": d.get("num_rolls", default_num_rolls),
-            }
-
-    eval_dysts_names.extend(
-        [d for d in custom_dysts_dict.keys() if d not in eval_dysts_names]
-    )
-    print("Eval dyst dirs: ", eval_dysts_names)
-
-    print(
-        f"Loading Chronos checkpoint: {cfg.eval.model_id} onto device: {cfg.eval.device}"
-    )
     pipeline = ChronosPipeline.from_pretrained(
-        cfg.eval.model_id,
+        cfg.eval.checkpoint_path,
         device_map=cfg.eval.device,
         torch_dtype=torch_dtype,
     )
-
-    result_rows = []
-    for dyst_name in tqdm(eval_dysts_names):
-        dyst_dir = custom_dysts_dict.get(dyst_name, {}).get(
-            "path", os.path.join(data_dir, dyst_name)
+    model_config = dict(vars(pipeline.model.config))
+    train_config = train_config or dict(cfg.train)
+    dataset_config = dataset_config or dict(cfg)
+    # set floating point precision
+    use_tf32 = train_config.get("tf32", False)
+    log_on_main(f"use tf32: {use_tf32}", logger)
+    if use_tf32 and not (
+        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
+    ):
+        # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
+        log_on_main(
+            "TF32 format is only available on devices with compute capability >= 8. "
+            "Setting tf32 to False.",
+            logger,
         )
-        dyst_config = custom_dysts_dict.get(
-            dyst_name,
-            {
-                "prediction_length": default_prediction_length,
-                "offset": default_offset,
-                "num_rolls": default_num_rolls,
-            },
+        use_tf32 = False
+
+    rseed = train_config.get("seed", cfg.train.seed)
+    log_on_main(f"Using SEED: {rseed}", logger)
+    transformers.set_seed(seed=rseed)
+
+    context_length = model_config["context_length"]
+    prediction_length = model_config["prediction_length"]
+    log_on_main(f"context_length: {context_length}", logger)
+    log_on_main(f"prediction_length: {prediction_length}", logger)
+    pipeline.model.eval()
+
+    # get test data paths
+    test_data_dir = os.path.expandvars(cfg.eval.data_path)
+    test_data_dict = {}
+
+    # Get all system directories and randomly sample num_systems of them
+    system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
+
+    for i, system_dir in enumerate(system_dirs):
+        if i > cfg.eval.num_systems:
+            break
+        system_name = system_dir.name
+        system_files = list(system_dir.glob("*"))
+        test_data_dict[system_name] = [
+            FileDataset(path=Path(file_path), freq="h", one_dim_target=False)
+            for file_path in system_files
+            if file_path.is_file()
+        ]
+
+    log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
+
+    test_datasets = {
+        system_name: ChronosDataset(
+            datasets=test_data_dict[system_name],
+            probabilities=[1.0 / len(test_data_dict[system_name])]
+            * len(test_data_dict[system_name]),
+            tokenizer=pipeline.tokenizer,
+            context_length=cfg.chronos.context_length,
+            prediction_length=cfg.chronos.prediction_length,
+            min_past=cfg.min_past,
+            num_test_instances=cfg.eval.num_test_instances,
+            window_style=cfg.eval.window_style,
+            window_stride=cfg.eval.window_stride,
+            model_type=cfg.chronos.model_type,
+            imputation_method=LastValueImputation()
+            if cfg.chronos.model_type == "causal"
+            else None,
+            mode="test",
         )
-        prediction_length = dyst_config["prediction_length"]
-        offset = dyst_config["offset"]
-        num_rolls = dyst_config["num_rolls"]
-        print(
-            f"Evaluating {dyst_name} from {dyst_dir} with prediction length {prediction_length} and offset {offset}"
-        )
+        for system_name in test_data_dict
+    }
 
-        filepaths = sorted(
-            list(Path(dyst_dir).glob("*.arrow")),
-            key=lambda x: int(x.stem.split("_")[0]),
-        )
-        metrics_all_samples = defaultdict(lambda: defaultdict(list))
-        for sample_idx, filepath in tqdm(enumerate(filepaths)):
-            logger.info(f"Loading sample index {sample_idx}, from {filepath}")
-            test_data = load_and_split_dataset_from_arrow(
-                prediction_length=prediction_length,
-                offset=offset,
-                num_rolls=num_rolls,
-                filepath=filepath,
-            )
-
-            logger.info(
-                f"Generating forecasts for {dyst_name} sample {sample_idx} with ({len(test_data.input)} time series)"
-            )
-
-            forecast_save_path = None
-            if cfg.eval.forecast_save_dir:
-                forecast_save_path = os.path.join(
-                    cfg.eval.forecast_save_dir, dyst_name, f"{filepath.stem}.npy"
-                )
-                os.makedirs(os.path.dirname(forecast_save_path), exist_ok=True)
-
-            sample_forecasts = generate_sample_forecasts(
-                test_data.input,
-                pipeline=pipeline,
-                prediction_length=prediction_length,
-                batch_size=cfg.eval.batch_size,
-                num_samples=cfg.eval.num_samples,
-                limit_prediction_length=cfg.eval.limit_prediction_length,
-                save_path=forecast_save_path,
-                temperature=cfg.eval.temperature,
-                top_k=cfg.eval.top_k,
-                top_p=cfg.eval.top_p,
-            )
-
-            logger.info("Evaluating forecasts")
-
-            metrics = []
-            if test_data.input:
-                metrics = (
-                    evaluate_forecasts(
-                        sample_forecasts,
-                        test_data=test_data,
-                        metrics=[
-                            SMAPE(),
-                            MASE(),
-                            RMSE(),
-                            MeanWeightedSumQuantileLoss(np.arange(0.1, 1.0, 0.1)),
-                        ],
-                        batch_size=5000,
-                        axis=cfg.eval.agg_axis,
-                    )
-                    .reset_index(drop=True)
-                    .to_dict(orient="records")
-                )
-
-            keys = metrics[0].keys()
-            if not all(m.keys() == keys for m in metrics):
-                raise ValueError(
-                    "Not all dictionaries (per dim) in metrics list have the same keys."
-                )
-
-            for dim_idx, metrics_per_dim in enumerate(metrics):
-                for metric_name, metric_value in metrics_per_dim.items():
-                    metrics_all_samples[dim_idx][metric_name].append(metric_value)
-
-        metrics_dict = {k: dict(v) for k, v in metrics_all_samples.items()}
-        metrics_all_samples = average_nested_dict(metrics_dict)
-
-        if cfg.eval.agg_axis is None:
-            assert (
-                len(metrics_all_samples) == 1
-            ), "Expected only one dimension for axis=None aggregation"
-            result_rows.append(
-                {
-                    "dataset": dyst_name,
-                    "model": cfg.eval.model_id,
-                    **metrics_all_samples[0],
-                }
-            )
-        elif cfg.eval.agg_axis == 1:
-            result_rows.extend(
-                {
-                    "dataset": dyst_name,
-                    "dimension": dim_idx,
-                    "model": cfg.eval.model_id,
-                    **metrics_all_samples[dim_idx],
-                }
-                for dim_idx in range(len(metrics_all_samples))
-            )
-        else:
-            raise ValueError(f"Invalid aggregation axis: {cfg.eval.agg_axis}")
-
-    results_df = (
-        pd.DataFrame(result_rows)
-        .rename(
-            {
-                "sMAPE[0.5]": "sMAPE",
-                "MASE[0.5]": "MASE",
-                "RMSE[mean]": "RMSE",
-                "mean_weighted_sum_quantile_loss": "WQL",
-            },
-            axis="columns",
-        )
-        .sort_values(by="dataset")
+    save_eval_results = partial(
+        save_evaluation_results,
+        metrics_save_dir=cfg.eval.metrics_save_dir,
+        metrics_fname=cfg.eval.metrics_fname,
+        overwrite=cfg.eval.overwrite,
+        split_coords=cfg.eval.split_coords,
+        verbose=cfg.eval.verbose,
     )
-    if os.path.isfile(metrics_path) and not cfg.eval.overwrite:
-        existing_df = pd.read_csv(metrics_path)
-        results_df = pd.concat([existing_df, results_df], ignore_index=True)
-    results_df.to_csv(metrics_path, index=False)
+    logger.info(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
+
+    predictions, contexts, labels, metrics = evaluate_chronos_forecast(
+        pipeline,
+        test_datasets,
+        batch_size=cfg.eval.batch_size,
+        prediction_length=cfg.eval.prediction_length,
+        limit_prediction_length=cfg.eval.limit_prediction_length,
+        metrics_names=cfg.eval.metrics_names,
+        return_predictions=True,
+        return_contexts=True,
+        return_labels=True,
+        parallel_sample_reduction="mean",
+        redo_normalization=True,
+        temperature=model_config["temperature"],
+        top_k=model_config["top_k"],
+        top_p=model_config["top_p"],
+    )
+    window_indices = None
+
+    if predictions is not None and contexts is not None:
+        full_trajs = {}
+        for system in predictions:
+            if system not in contexts:
+                raise ValueError(f"System {system} not in contexts")
+            full_trajs[system] = np.concatenate(
+                [contexts[system], predictions[system]], axis=2
+            )
+        save_eval_results(
+            metrics,
+            coords=full_trajs,
+            window_indices=window_indices,
+            coords_save_dir=cfg.eval.forecast_save_dir,
+        )
+
+    if labels is not None and contexts is not None:
+        full_trajs = {}
+        for system in labels:
+            if system not in contexts:
+                raise ValueError(f"System {system} not in contexts")
+            full_trajs[system] = np.concatenate(
+                [contexts[system], labels[system]], axis=2
+            )
+        save_eval_results(
+            metrics,
+            coords=full_trajs,
+            window_indices=window_indices,
+            coords_save_dir=cfg.eval.labels_save_dir,
+        )
 
 
 if __name__ == "__main__":
-    logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    logger = logging.getLogger(__file__)
-    logger.setLevel(logging.INFO)
     main()

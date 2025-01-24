@@ -1,5 +1,5 @@
 """
-utils for Chronos Pipeline (evaluation) and evaluation scripts
+utils for evaluation scripts
 """
 
 import logging

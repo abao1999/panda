@@ -238,7 +238,7 @@ def main(cfg):
         model.save_pretrained(output_dir / "checkpoint-final")
         save_training_info(
             output_dir / "checkpoint-final",
-            model_config=vars(chronos_config),
+            model_config=vars(chronos_config),  # TODO: add model_id to this
             # model_config=OmegaConf.to_container(cfg.chronos, resolve=True),  # type: ignore
             train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
             all_config=OmegaConf.to_container(cfg, resolve=True),  # type: ignore

@@ -262,12 +262,12 @@ def evaluate_forecasting_model(
         # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         predictions = np.concatenate(predictions, axis=1)
-        print(predictions.shape)
+        print(f"predictions.shape: {predictions.shape}")
         # shape: (num_windows*num_datasets, prediction_length, num_channels)
         labels = np.concatenate(labels, axis=0)
-        print(labels.shape)
+        print(f"labels.shape: {labels.shape}")
         contexts = np.concatenate(contexts, axis=0)
-        print(contexts.shape)
+        print(f"contexts.shape: {contexts.shape}")
 
         if metrics_names is not None:
             system_metrics[system] = compute_metrics(

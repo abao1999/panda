@@ -48,6 +48,7 @@ def compute_lyapunov_exponents(
     Compute the Lyapunov exponents for a specified system.
     TODO: this needs to be fixed
     """
+    print(f"Computing max lyapunov exponents for {dyst_name}")
     lyapunov_exponents = []
     for traj in trajectories:
         spectrum = [
@@ -212,15 +213,15 @@ def main(cfg):
         )
         if len(failed_ensemble) > 0:
             # plot the first 9 systems' failed samples
+            save_path = os.path.join(plot_save_dir, "failed_samples.png")
             plot_grid_trajs_multivariate(
                 {k: v for k, v in list(failed_ensemble.items())[:9]},
-                save_dir=plot_save_dir,
-                plot_name="failed_samples",
+                save_path=save_path,
                 max_samples=6,
                 standardize=True,
                 subplot_size=(3, 3),
             )
-            logger.info(f"Plotted failed samples to {plot_save_dir}/failed_samples.png")
+            logger.info(f"Plotted failed samples to {save_path}")
 
             failed_samples_dict = validator.failed_samples
             summary_json_path = os.path.join(save_dir, "failed_samples.json")

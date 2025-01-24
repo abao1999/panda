@@ -87,6 +87,7 @@ class DynSysSampler:
             assert self.num_ics == 1, (
                 "No initial condition sampler provided, but num_ics > 1"
             )
+        self.attractor_validator = None
         if self.attractor_tests is None and self.num_param_perturbations > 1:
             logger.warning(
                 "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
