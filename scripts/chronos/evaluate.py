@@ -85,32 +85,31 @@ def evaluate_chronos_forecast(
             past_values, future_values = zip(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
-            # shpae: (dim * num_samples, 1, context_length) where num_samples is number of arrow files in this system's subdirectory
+            # shape: (dim * num_samples, 1, context_length) where num_samples is number of arrow files in this system's subdirectory
             past_batch = (
                 torch.stack(past_values, dim=0).to(pipeline.model.device).squeeze(1)
             ).cpu()
-            # shape: (dim * num_samples, num_parallel_samples, prediction_length)
+            # shape: (dim * min(num_samples, batch_size), num_parallel_samples, prediction_length)
             preds = (
                 pipeline.predict(
                     past_batch,
                     prediction_length=prediction_length,
-                    # num_samples=1, # if None, defaults to chronos config
+                    num_samples=1,  # if None, defaults to chronos config
                     limit_prediction_length=limit_prediction_length,
                     **predict_kwargs,
                 )
                 .cpu()
                 .numpy()
-            )
-            # TODO: it works up to here, keep going later
-            breakpoint()
+            ).transpose(1, 0, 2)
 
             context = past_batch.cpu().numpy()
 
-            # shape: (batch_size, sampler_prediction_length, num_channels)h
-            future_batch = torch.stack(future_values, dim=0).cpu().numpy()
+            # shape: (dim * num_samples, sampler_prediction_length)
+            future_batch = torch.stack(future_values, dim=0).squeeze(1).cpu().numpy()
+
             # Truncate predictions to match future_batch length if needed
-            if preds.shape[2] > future_batch.shape[1]:
-                preds = preds[..., : future_batch.shape[1], :]
+            if preds.shape[-1] > future_batch.shape[-1]:
+                preds = preds[..., : future_batch.shape[-1]]
 
             if redo_normalization:
                 # compute loc and scale from past_batch
@@ -122,16 +121,16 @@ def evaluate_chronos_forecast(
                 # preds = (preds - loc) / scale
                 context = (context - loc) / scale
 
+            print(
+                f"future_batch shape: {future_batch.shape}, preds shape: {preds.shape}"
+            )
+            print(f"context shape: {context.shape}")
             labels.append(future_batch)
             predictions.append(preds)
             contexts.append(context)
 
-        # num_windows is either config.eval.num_test_instances for the sampled window style
-        # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
-        # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         predictions = np.concatenate(predictions, axis=1)
         print(predictions.shape)
-        # shape: (num_windows*num_datasets, prediction_length, num_channels)
         labels = np.concatenate(labels, axis=0)
         print(labels.shape)
         contexts = np.concatenate(contexts, axis=0)
@@ -147,13 +146,11 @@ def evaluate_chronos_forecast(
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
         if return_predictions:
-            system_predictions[system] = parallel_sample_reduction_fn(
-                predictions
-            ).transpose(0, 2, 1)
+            system_predictions[system] = parallel_sample_reduction_fn(predictions)
         if return_contexts:
-            system_contexts[system] = contexts.transpose(0, 2, 1)
+            system_contexts[system] = contexts
         if return_labels:
-            system_labels[system] = labels.transpose(0, 2, 1)
+            system_labels[system] = labels
 
     return (
         system_predictions if return_predictions else None,
@@ -277,41 +274,45 @@ def main(cfg):
         return_contexts=True,
         return_labels=True,
         parallel_sample_reduction="mean",
-        redo_normalization=True,
+        redo_normalization=False,
         temperature=model_config["temperature"],
         top_k=model_config["top_k"],
         top_p=model_config["top_p"],
     )
     window_indices = None
 
+    print("Saving predictions...")
     if predictions is not None and contexts is not None:
         full_trajs = {}
         for system in predictions:
             if system not in contexts:
                 raise ValueError(f"System {system} not in contexts")
             full_trajs[system] = np.concatenate(
-                [contexts[system], predictions[system]], axis=2
+                [contexts[system], predictions[system]], axis=1
             )
+            print(full_trajs[system].shape)
         save_eval_results(
             metrics,
             coords=full_trajs,
             window_indices=window_indices,
-            coords_save_dir=cfg.eval.forecast_save_dir,
+            coords_save_dir=None,  # cfg.eval.forecast_save_dir,
         )
 
+    print("Saving labels...")
     if labels is not None and contexts is not None:
         full_trajs = {}
         for system in labels:
             if system not in contexts:
                 raise ValueError(f"System {system} not in contexts")
             full_trajs[system] = np.concatenate(
-                [contexts[system], labels[system]], axis=2
+                [contexts[system], labels[system]], axis=1
             )
+            print(full_trajs[system].shape)
         save_eval_results(
             metrics,
             coords=full_trajs,
             window_indices=window_indices,
-            coords_save_dir=cfg.eval.labels_save_dir,
+            coords_save_dir=None,  # cfg.eval.labels_save_dir,
         )
 
 

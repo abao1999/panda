@@ -10,7 +10,7 @@ run_num=357
 python scripts/chronos/evaluate.py \
         eval.checkpoint_path=$checkpoint_dir/run-${run_num}/checkpoint-final \
         eval.data_path=$WORK/data/final_skew15/test_base \
-        eval.num_systems=10 \
+        eval.num_systems=325 \
         eval.num_test_instances=1 \
         eval.window_style=sampled \
         eval.batch_size=64 \
@@ -18,7 +18,7 @@ python scripts/chronos/evaluate.py \
         eval.metrics_fname=zeroshot_forecast_${run_num}_metrics \
         eval.overwrite=true \
         eval.device=cuda:1 \
-        eval.forecast_save_dir=$WORK/data/eval/chronos/forecasts/run-${run_num} \
-        eval.labels_save_dir=$WORK/data/eval/chronos/labels/run-${run_num} \
+        eval.forecast_save_dir=$WORK/data/eval/chronos/run-${run_num}/forecasts \
+        eval.labels_save_dir=$WORK/data/eval/chronos/run-${run_num}/labels \
         eval.seed=99 \
         "$@"

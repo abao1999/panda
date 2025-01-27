@@ -200,6 +200,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
 
     def preprocess_iter(self, entry: Filter, mode: str) -> Generator[dict, None, None]:
         for item in entry:
+            # TODO: can access system dimension here
             target = np.asarray(item["target"], dtype=self.np_dtype)
 
             if mode == "train" and self.augmentations is not None:
