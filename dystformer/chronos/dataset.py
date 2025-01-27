@@ -171,12 +171,13 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
     imputation_method: MissingValueImputation | None = None
     mode: str = "train"
     np_dtype: np.dtype = np.dtype(np.float32)
-    augmentations: list[Callable] | None = None
-    augmentation_probabilities: list[float] | None = None
     num_test_instances: int = 1
     window_style: str = "sampled"
     window_stride: int = 1
     transforms: list[Callable] | None = None
+    augmentations: list[Callable] | None = None
+    augmentation_probabilities: list[float] | None = None
+    augmentation_rate: float = 0.0
 
     def __post_init__(self):
         super().__init__()
@@ -203,10 +204,11 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             target = np.asarray(item["target"], dtype=self.np_dtype)
 
             if mode == "train" and self.augmentations is not None:
-                augmentation_idx = np.random.choice(
-                    len(self.augmentations), p=self.augmentation_probabilities
-                )
-                target = self.augmentations[augmentation_idx](target)
+                if np.random.rand() < self.augmentation_rate:
+                    augmentation_idx = np.random.choice(
+                        len(self.augmentations), p=self.augmentation_probabilities
+                    )
+                    target = self.augmentations[augmentation_idx](target)
 
             for transform in self.transforms or []:
                 target = transform(target)

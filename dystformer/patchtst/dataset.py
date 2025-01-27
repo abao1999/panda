@@ -101,6 +101,7 @@ class PatchTSTDataset(IterableDataset):
     window_stride: int = 1
     transforms: list[Callable] | None = None
     augmentations: list[Callable] | None = None
+    augmentation_rate: float = 0.0
     augmentation_probabilities: list[float] | None = None
 
     def __post_init__(self):
@@ -126,10 +127,11 @@ class PatchTSTDataset(IterableDataset):
         entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
 
         if mode == "train" and self.augmentations is not None:
-            augmentation_idx = np.random.choice(
-                len(self.augmentations), p=self.augmentation_probabilities
-            )
-            entry["target"] = self.augmentations[augmentation_idx](entry["target"])
+            if np.random.rand() < self.augmentation_rate:
+                augmentation_idx = np.random.choice(
+                    len(self.augmentations), p=self.augmentation_probabilities
+                )
+                entry["target"] = self.augmentations[augmentation_idx](entry["target"])
 
         for transform in self.transforms or []:
             entry["target"] = transform(entry["target"])
