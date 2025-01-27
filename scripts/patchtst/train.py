@@ -239,7 +239,6 @@ def main(cfg):
         )
         dataloader_num_workers = len(train_datasets)
 
-    # apply augmentations on the fly
     augmentations = [
         RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
         RandomAffineTransform(out_dim=6, scale=1.0),
@@ -260,6 +259,7 @@ def main(cfg):
         mode="train",
         fixed_dim=cfg.fixed_dim,
         augmentations=augmentations,
+        augmentation_rate=cfg.augmentations.augmentation_rate,
         transforms=transforms,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
@@ -342,9 +342,7 @@ def main(cfg):
         )
     else:
         trainer = Trainer(
-            model=model,
-            args=training_args,
-            train_dataset=shuffled_train_dataset,
+            model=model, args=training_args, train_dataset=shuffled_train_dataset
         )
 
     log_on_main("Training", logger)

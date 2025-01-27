@@ -3,7 +3,6 @@ ulimit -n 100000
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/chronos/train.py \
-        run_name=finetune_large \
         wandb.log=false \
         chronos.model_id="amazon/chronos-t5-mini" \
         chronos.model_type=seq2seq \
@@ -27,7 +26,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         train.save_steps=100_000 \
         train.log_steps=1000 \
         shuffle_buffer_length=100_000 \
-        train.per_device_train_batch_size=256 \
+        train.per_device_train_batch_size=168 \
         train.warmup_ratio=0.1 \
         train.torch_compile=true \
         train.weight_decay=0.0 \

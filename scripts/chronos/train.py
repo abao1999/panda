@@ -181,6 +181,7 @@ def main(cfg):
         else None,
         mode="train",
         augmentations=augmentations,
+        augmentation_rate=cfg.augmentations.augmentation_rate,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     # Define training args

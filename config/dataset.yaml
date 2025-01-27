@@ -17,3 +17,6 @@ min_past: 60
 max_missing_prop: 0.9
 
 fixed_dim: 3
+
+augmentations:
+  augmentation_rate: 0.2
