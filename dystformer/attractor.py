@@ -202,6 +202,7 @@ def check_boundedness(
     std = np.where(std < eps, eps, std)
 
     standardized_traj = (traj.T - mean) / std
+
     if np.max(np.abs(standardized_traj)) > max_zscore:
         return False
 

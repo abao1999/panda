@@ -17,26 +17,11 @@ from dysts.analysis import max_lyapunov_exponent_rosenstein
 
 import dystformer.attractor as attractor
 from dystformer.attractor import AttractorValidator
-from dystformer.utils import make_ensemble_from_arrow_dir, plot_grid_trajs_multivariate
-
-
-def standardize_trajectories(trajectories: np.ndarray) -> np.ndarray:
-    """
-    Standardize the trajectories in a safe way to avoid NaNs
-    trajectories: shape (n_samples, n_dims, timesteps) or (n_samples, n_dims)
-    """
-    if trajectories.ndim == 3:
-        mean = np.nanmean(trajectories, axis=-1)[:, :, None]
-        std = np.nanstd(trajectories, axis=-1)[:, :, None]
-    elif trajectories.ndim == 2:
-        mean = np.nanmean(trajectories, axis=-1)[:, None]
-        std = np.nanstd(trajectories, axis=-1)[:, None]
-    else:
-        raise ValueError(
-            f"Expected trajectories to be shape (n_samples, n_dims, timesteps) or (n_samples, n_dims), got {trajectories.shape}"
-        )
-    std = np.where(std < 1e-10, 1e-10, std)
-    return (trajectories - mean) / std
+from dystformer.utils import (
+    make_ensemble_from_arrow_dir,
+    plot_grid_trajs_multivariate,
+    safe_standardize,
+)
 
 
 def compute_lyapunov_exponents(
@@ -68,7 +53,7 @@ def compute_quantile_limits(
     assert trajectories.ndim == 3, (
         "expected trajectories to be shape (n_samples, n_dims, timesteps)"
     )
-    standard_traj = standardize_trajectories(trajectories)
+    standard_traj = safe_standardize(trajectories)
     high = np.max(standard_traj, axis=(1, 2))
     low = np.min(standard_traj, axis=(1, 2))
     return high, low

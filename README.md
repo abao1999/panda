@@ -68,8 +68,14 @@ The torchrun launcher provides capability for distributed data-parallel (DDP) tr
 If you run into a weird miopen error, see: https://github.com/pytorch/pytorch/issues/60477
 
 ## Evaluation
-To evalute the performance of a fine-tuned model, run `python scripts/patchtst/evaluate.py` after setting the appropriate configuration in `configs/evaluation.yaml`. In particular, set `model_id` to point to the directory of your saved fine-tuned model checkpoint. The list of dynamical systems used for evaluation is also set in the configuration, but will default to using the test/train split.
-TODO: write up current PatchTST docs
+Script for evaluating the forecasts: [tests/test_forecasts.py](tests/test_forecasts.py). An example:
+```
+python tests/test_forecasts.py ThomasLabyrinth_Coullet --split_forecasts eval/run-380/forecasts --split_ground_truth eval/run-380/labels --plot_save_dir figs/forecasts_run-380
+```
+Script for evaluating the completions from MLM pretraining of PatchTST: [tests/test_completions.py](tests/test_completions.py). An example:
+```
+python tests/test_completions.py ThomasLabyrinth_Coullet --split_completions eval/run-367/completions --split_context eval/run-367/patch_input --split_mask eval/run-367/timestep_masks --plot_save_dir figs/completions_run-367
+```
 
 ## Development Goals
 ---

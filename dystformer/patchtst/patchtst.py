@@ -1135,6 +1135,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             y_hat_out = y_hat
 
         else:
+            # NOTE: keep the output of the prediction head standardized
             y_hat_out = y_hat  # * model_output.scale + model_output.loc
 
         if future_values is not None:

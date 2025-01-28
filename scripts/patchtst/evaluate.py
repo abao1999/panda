@@ -246,12 +246,12 @@ def evaluate_forecasting_model(
 
             if redo_normalization:
                 # compute loc and scale from past_batch
-                loc = context.mean(axis=1)
-                scale = context.std(axis=1)
+                loc = np.nanmean(context, axis=1)
+                scale = np.nanstd(context, axis=1)
+                scale = np.where(scale < 1e-10, 1e-10, scale)
                 loc = np.expand_dims(loc, axis=1)
                 scale = np.expand_dims(scale, axis=1)
                 future_batch = (future_batch - loc) / scale
-                # preds = (preds - loc) / scale
                 context = (context - loc) / scale
 
             labels.append(future_batch)

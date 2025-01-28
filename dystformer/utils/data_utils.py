@@ -14,6 +14,24 @@ from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
 
 
+def safe_standardize(trajs: np.ndarray, epsilon: float = 1e-10) -> np.ndarray:
+    """
+    Standardize the trajectories by subtracting the mean and dividing by the standard deviation
+    """
+    if trajs.ndim == 3:
+        mean = np.nanmean(trajs, axis=-1)[:, :, None]
+        std = np.nanstd(trajs, axis=-1)[:, :, None]
+    elif trajs.ndim == 2:
+        mean = np.nanmean(trajs, axis=-1)[:, None]
+        std = np.nanstd(trajs, axis=-1)[:, None]
+    else:
+        raise ValueError(
+            f"Expected trajectories to be shape (n_samples, n_dims, timesteps) or (n_samples, timesteps), got {trajs.shape}"
+        )
+    std = np.where(std < epsilon, epsilon, std)
+    return (trajs - mean) / std
+
+
 def demote_from_numpy(param: float | np.ndarray) -> float | list[float]:
     """
     Demote a float or numpy array to a float or list of floats

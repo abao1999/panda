@@ -7,6 +7,8 @@ import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
 from matplotlib.ticker import FormatStrFormatter
 
+from dystformer.utils import safe_standardize
+
 COLORS = list(TABLEAU_COLORS.values())
 
 if os.path.exists("custom_style.mplstyle"):
@@ -55,11 +57,7 @@ def plot_trajs_multivariate(
             n_samples_plot = len(samples_subset)
 
     if standardize:
-        mean = np.nanmean(trajectories, axis=-1)[:, :, None]
-        std = np.nanstd(trajectories, axis=-1)[:, :, None]
-        std = np.where(std < 1e-10, 1e-10, std)
-
-        trajectories = (trajectories - mean) / std
+        trajectories = safe_standardize(trajectories)
 
     if plot_2d_slice:
         save_path = os.path.join(save_dir, f"{plot_name}.png")
@@ -208,11 +206,7 @@ def plot_grid_trajs_multivariate(
         n_samples_plot = min(max_samples, trajectories.shape[0])
 
         if standardize:
-            mean = np.nanmean(trajectories, axis=-1)[:, :, None]
-            std = np.nanstd(trajectories, axis=-1)[:, :, None]
-            std = np.where(std < 1e-10, 1e-10, std)
-
-            trajectories = (trajectories - mean) / std
+            trajectories = safe_standardize(trajectories)
 
         ax = fig.add_subplot(n_rows, n_cols, idx + 1, projection="3d")
 
