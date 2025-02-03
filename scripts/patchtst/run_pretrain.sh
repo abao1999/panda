@@ -1,5 +1,5 @@
 # On multiple GPUs (example with 4 GPUs)
-CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
+CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun \
         --nproc-per-node 4 \
         scripts/patchtst/train.py \
         patchtst.context_length=512 \
@@ -18,7 +18,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.rope_percent=0.75 \
         patchtst.clamp_low=-15.0 \
         patchtst.clamp_high=15.0 \
-        patchtst.loss=huber \
+        patchtst.loss=mse \
         patchtst.huber_delta=10.0 \
         train.per_device_train_batch_size=512 \
         train.max_steps=100_000 \
@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         train.warmup_ratio=0.1 \
         train.torch_compile=true \
         train.weight_decay=1e-4 \
-        noiser.enabled=true \
+        noiser.enabled=false \
         noiser.schedule_name=cosine \
         noiser.start=1.0 \
         noiser.end=0.0 \

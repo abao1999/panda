@@ -118,6 +118,7 @@ def evaluate_chronos_forecast(
                 scale = np.where(scale < 1e-10, 1e-10, scale)
                 loc = np.expand_dims(loc, axis=1)
                 scale = np.expand_dims(scale, axis=1)
+                preds = (preds - loc) / scale
                 future_batch = (future_batch - loc) / scale
                 context = (context - loc) / scale
 
@@ -220,7 +221,7 @@ def main(cfg):
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
 
     for i, system_dir in enumerate(system_dirs):
-        if i > cfg.eval.num_systems:
+        if i >= cfg.eval.num_systems:
             break
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
@@ -239,7 +240,7 @@ def main(cfg):
             * len(test_data_dict[system_name]),
             tokenizer=pipeline.tokenizer,
             context_length=cfg.chronos.context_length,
-            prediction_length=cfg.chronos.prediction_length,
+            prediction_length=cfg.eval.prediction_length,  # NOTE: should match the forecast prediction length
             min_past=cfg.min_past,
             num_test_instances=cfg.eval.num_test_instances,
             window_style=cfg.eval.window_style,
@@ -274,7 +275,7 @@ def main(cfg):
         return_contexts=True,
         return_labels=True,
         parallel_sample_reduction="mean",
-        redo_normalization=False,
+        redo_normalization=True,
         temperature=model_config["temperature"],
         top_k=model_config["top_k"],
         top_p=model_config["top_p"],

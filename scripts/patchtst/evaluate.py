@@ -224,7 +224,7 @@ def evaluate_forecasting_model(
             )
             past_batch = torch.stack(past_values, dim=0).to(model.device)
 
-            # shape: (num_parallel_samples, batch_size, prediction_length, num_channels)
+            # shape: (batch size, prediction_length, num_channels)
             preds = (
                 model.predict(
                     past_batch,
@@ -233,12 +233,19 @@ def evaluate_forecasting_model(
                 )
                 .cpu()
                 .numpy()
-                .transpose(1, 0, 2, 3)
             )
+            if preds.ndim == 4:
+                # NOTE: something changed with augmetnations, dataset, so that new runs don't output singleton dimension anymore
+                # i.e. preds of shape (15, 128, 3) instead of (15, 1, 128, 3)
+                preds = preds.transpose(1, 0, 2, 3)
+            else:
+                # add singleton dimension to axis 0
+                # NOTE: this makes preds into shape (num_samples, batch size, prediction_length, num_channels)
+                preds = np.expand_dims(preds, axis=0)
 
             context = past_batch.cpu().numpy()
 
-            # shape: (batch_size, sampler_prediction_length, num_channels)h
+            # shape: (batch size, sampler_prediction_length, num_channels)h
             future_batch = torch.stack(future_values, dim=0).cpu().numpy()
             # Truncate predictions to match future_batch length if needed
             if preds.shape[2] > future_batch.shape[1]:

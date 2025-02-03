@@ -25,7 +25,7 @@ checkpoint_dir=$WORK/checkpoints
 #     eval.seed=42 \
 #     "$@"
 
-run_num=380 #363
+run_num=385 #363
 # forecast eval
 python scripts/patchtst/evaluate.py \
     eval.mode=predict \
@@ -35,7 +35,7 @@ python scripts/patchtst/evaluate.py \
     eval.num_test_instances=1 \
     eval.window_style=sampled \
     eval.batch_size=64 \
-    eval.metrics_save_dir=$main_dir/eval_results \
+    eval.metrics_save_dir=$main_dir/eval_results/patchtst \
     eval.metrics_fname=zeroshot_forecast_${run_num}_metrics \
     eval.overwrite=true \
     eval.device=cuda:1 \
