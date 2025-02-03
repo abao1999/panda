@@ -14,22 +14,37 @@ from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
 
 
-def safe_standardize(trajs: np.ndarray, epsilon: float = 1e-10) -> np.ndarray:
+def safe_standardize(
+    arr: np.ndarray,
+    epsilon: float = 1e-10,
+    axis: int = -1,
+    context: np.ndarray | None = None,
+) -> np.ndarray:
     """
     Standardize the trajectories by subtracting the mean and dividing by the standard deviation
+
+    Args:
+        arr: The array to standardize
+        epsilon: A small value to prevent division by zero
+        axis: The axis to standardize along
+        context: The context to use for standardization. If provided, use the context to standardize the array.
+
+    Returns:
+        The standardized array
     """
-    if trajs.ndim == 3:
-        mean = np.nanmean(trajs, axis=-1)[:, :, None]
-        std = np.nanstd(trajs, axis=-1)[:, :, None]
-    elif trajs.ndim == 2:
-        mean = np.nanmean(trajs, axis=-1)[:, None]
-        std = np.nanstd(trajs, axis=-1)[:, None]
-    else:
-        raise ValueError(
-            f"Expected trajectories to be shape (n_samples, n_dims, timesteps) or (n_samples, timesteps), got {trajs.shape}"
-        )
+    # if no context is provided, use the array itself
+    context = arr if context is None else context
+
+    assert arr.ndim == context.ndim, (
+        "arr and context must have the same num dims if context is provided"
+    )
+    assert axis < arr.ndim and axis >= -arr.ndim, (
+        "invalid axis specified for standardization"
+    )
+    mean = np.nanmean(context, axis=axis, keepdims=True)
+    std = np.nanstd(context, axis=axis, keepdims=True)
     std = np.where(std < epsilon, epsilon, std)
-    return (trajs - mean) / std
+    return (arr - mean) / std
 
 
 def demote_from_numpy(param: float | np.ndarray) -> float | list[float]:

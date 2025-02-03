@@ -3,7 +3,7 @@ import logging
 import os
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any
 
 import hydra
 import numpy as np
@@ -19,30 +19,64 @@ from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.pipeline import ChronosPipeline
 from dystformer.utils import (
     log_on_main,
+    safe_standardize,
     save_evaluation_results,
 )
 
 logger = logging.getLogger(__name__)
+log = partial(log_on_main, logger=logger)
+
+
+def get_dim_from_dataset(dataset: FileDataset) -> int:
+    """
+    Helper function to get system dimension from file dataset
+    """
+    return next(iter(dataset))["target"].shape[0]
+
+
+def dim_aware_batcher(iterator, batch_size: int, dim: int):
+    """Yields batches from iterator where batch sizes are multiples of dim.
+
+    Args:
+        iterator: Iterator to batch
+        batch_size: Target batch size
+        dim: Dimension to align batches with
+    """
+    # Round batch_size to nearest multiple of dim that's <= batch_size
+    aligned_batch_size = (batch_size // dim) * dim
+    if aligned_batch_size == 0:
+        aligned_batch_size = dim
+
+    batch = []
+    for item in iterator:
+        batch.append(item)
+        if len(batch) >= aligned_batch_size:
+            yield batch
+            batch = []
+
+    if batch:  # Yield any remaining items
+        yield batch
 
 
 def evaluate_chronos_forecast(
     pipeline: ChronosPipeline,
-    systems: Dict[str, ChronosDataset],
+    systems: dict[str, ChronosDataset],
     batch_size: int,
     prediction_length: int,
     limit_prediction_length: bool = False,
-    metrics_names: Optional[List[str]] = None,
+    metrics_names: list[str] | None = None,
     parallel_sample_reduction: str = "none",
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
     redo_normalization: bool = False,
-    **predict_kwargs,
-) -> Tuple[
-    Optional[Dict[str, np.ndarray]],
-    Optional[Dict[str, np.ndarray]],
-    Optional[Dict[str, np.ndarray]],
-    Dict[str, Dict[str, float]],
+    system_dims: dict[str, int] | None = None,
+    **predict_kwargs: Any,
+) -> tuple[
+    dict[str, np.ndarray] | None,
+    dict[str, np.ndarray] | None,
+    dict[str, np.ndarray] | None,
+    dict[str, dict[str, float]],
 ]:
     """
     Evaluate the model on each test system and save metrics.
@@ -57,6 +91,8 @@ def evaluate_chronos_forecast(
         return_predictions: Whether to return the predictions.
         return_contexts: Whether to return the contexts.
         return_labels: Whether to return the future values.
+        system_dims: A dictionary mapping system names to their dimensions.
+
     Returns:
         A tuple containing:
         - system_predictions: A dictionary mapping system names to their predictions.
@@ -67,6 +103,11 @@ def evaluate_chronos_forecast(
             Only returned if `return_labels` is True.
         - system_metrics: A nested dictionary containing computed metrics for each system.
     """
+    if system_dims is None:
+        system_dims = {}
+    else:
+        log("System dims provided, will use dimension-aware batching")
+
     system_predictions = {}
     system_contexts = {}
     system_labels = {}
@@ -78,18 +119,29 @@ def evaluate_chronos_forecast(
     }.get(parallel_sample_reduction, lambda x: x)
 
     for system in tqdm(systems, desc="Forecasting..."):
-        print(f"Evaluating {system}")
+        log(f"Evaluating {system}")
         dataset = systems[system]
+        dim = system_dims.get(system)
         predictions, labels, contexts, future_values = [], [], [], []
-        for batch in batcher(dataset, batch_size=batch_size):
+
+        # if system dim is available, use dim-aware batching
+        batching_fn = (
+            partial(dim_aware_batcher, dim=dim) if dim is not None else batcher
+        )
+        for batch in batching_fn(dataset, batch_size=batch_size):
             past_values, future_values = zip(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
-            # shape: (dim * num_samples, 1, context_length) where num_samples is number of arrow files in this system's subdirectory
-            past_batch = (
-                torch.stack(past_values, dim=0).to(pipeline.model.device).squeeze(1)
-            ).cpu()
-            # shape: (dim * min(num_samples, batch_size), num_parallel_samples, prediction_length)
+
+            # num_samples = number of arrow files in this system's subdirectory
+            # num_windows depends on the eval window sampling strategy:
+            # - "rolling" -> num_windows = (T - context_length - prediction_length) // eval.window_stride + 1
+            # - "sampled" -> num_windows = eval.num_test_instances
+            # - "single" -> num_windows = 1
+            # shape: (dim * num_samples if dim-aware batching else batch_size, context_length)
+            past_batch = (torch.cat(past_values, dim=0).to(pipeline.model.device)).cpu()
+
+            # shape: (num_parallel_samples, dim * num_samples if dim-aware batching else batch_size, prediction_length)
             preds = (
                 pipeline.predict(
                     past_batch,
@@ -101,47 +153,31 @@ def evaluate_chronos_forecast(
                 .cpu()
                 .numpy()
             ).transpose(1, 0, 2)
+            context = past_batch.numpy()
 
-            context = past_batch.cpu().numpy()
-
-            # shape: (dim * num_samples, sampler_prediction_length)
-            future_batch = torch.stack(future_values, dim=0).squeeze(1).cpu().numpy()
+            # shape: (dim * num_samples if dim-aware batching else batch_size, sampler_prediction_length)
+            future_batch = torch.cat(future_values, dim=0).cpu().numpy()
 
             # Truncate predictions to match future_batch length if needed
             if preds.shape[-1] > future_batch.shape[-1]:
                 preds = preds[..., : future_batch.shape[-1]]
 
+            # standardize using the context from the past_batch
             if redo_normalization:
-                # compute loc and scale from past_batch
-                loc = np.nanmean(context, axis=1)
-                scale = np.nanstd(context, axis=1)
-                scale = np.where(scale < 1e-10, 1e-10, scale)
-                loc = np.expand_dims(loc, axis=1)
-                scale = np.expand_dims(scale, axis=1)
-                preds = (preds - loc) / scale
-                future_batch = (future_batch - loc) / scale
-                context = (context - loc) / scale
+                future_batch = safe_standardize(future_batch, context=context)
+                context = safe_standardize(context)
 
-            print(
-                f"future_batch shape: {future_batch.shape}, preds shape: {preds.shape}"
-            )
-            print(f"context shape: {context.shape}")
             labels.append(future_batch)
             predictions.append(preds)
             contexts.append(context)
 
         predictions = np.concatenate(predictions, axis=1)
-        print(predictions.shape)
         labels = np.concatenate(labels, axis=0)
-        print(labels.shape)
         contexts = np.concatenate(contexts, axis=0)
-        print(contexts.shape)
 
         if metrics_names is not None:
             system_metrics[system] = compute_metrics(
-                np.squeeze(predictions),
-                labels,
-                include=metrics_names,  # type: ignore
+                parallel_sample_reduction_fn(predictions), labels, include=metrics_names
             )
 
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
@@ -164,10 +200,10 @@ def evaluate_chronos_forecast(
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
     checkpoint_path = cfg.eval.checkpoint_path
-    log_on_main(f"Using checkpoint: {checkpoint_path}", logger)
+    log(f"Using checkpoint: {checkpoint_path}")
     training_info_path = os.path.join(checkpoint_path, "training_info.json")
     if os.path.exists(training_info_path):
-        log_on_main(f"Training info file found at: {training_info_path}", logger)
+        log(f"Training info file found at: {training_info_path}")
         with open(training_info_path, "r") as f:
             training_info = json.load(f)
             train_config = training_info.get("train_config", None)
@@ -175,10 +211,11 @@ def main(cfg):
                 train_config = training_info.get("training_config", None)
             dataset_config = training_info.get("dataset_config", None)
     else:
-        log_on_main(f"No training info file found at: {training_info_path}", logger)
+        log(f"No training info file found at: {training_info_path}")
         train_config = None
         dataset_config = None
 
+    # init model for inference
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
     pipeline = ChronosPipeline.from_pretrained(
@@ -186,42 +223,41 @@ def main(cfg):
         device_map=cfg.eval.device,
         torch_dtype=torch_dtype,
     )
+    pipeline.model.eval()
+
     model_config = dict(vars(pipeline.model.config))
     train_config = train_config or dict(cfg.train)
     dataset_config = dataset_config or dict(cfg)
+
     # set floating point precision
     use_tf32 = train_config.get("tf32", False)
-    log_on_main(f"use tf32: {use_tf32}", logger)
+    log(f"use tf32: {use_tf32}")
     if use_tf32 and not (
         torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
     ):
         # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
-        log_on_main(
+        log(
             "TF32 format is only available on devices with compute capability >= 8. "
             "Setting tf32 to False.",
-            logger,
         )
         use_tf32 = False
 
     rseed = train_config.get("seed", cfg.train.seed)
-    log_on_main(f"Using SEED: {rseed}", logger)
+    log(f"Using SEED: {rseed}")
     transformers.set_seed(seed=rseed)
 
     context_length = model_config["context_length"]
     prediction_length = model_config["prediction_length"]
-    log_on_main(f"context_length: {context_length}", logger)
-    log_on_main(f"prediction_length: {prediction_length}", logger)
-    pipeline.model.eval()
+    log(f"context_length: {context_length}")
+    log(f"prediction_length: {prediction_length}")
 
-    # get test data paths
+    # get test data paths, collect all time series for each system in a dict (system_name -> list of FileDatasets)
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
-
-    # Get all system directories and randomly sample num_systems of them
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
 
     for i, system_dir in enumerate(system_dirs):
-        if i >= cfg.eval.num_systems:
+        if i > cfg.eval.num_systems:
             break
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
@@ -231,7 +267,13 @@ def main(cfg):
             if file_path.is_file()
         ]
 
-    log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
+    # for convenience, get system dimensions
+    system_dims = {
+        system_name: get_dim_from_dataset(test_data_dict[system_name][0])
+        for system_name in test_data_dict
+    }
+
+    log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     test_datasets = {
         system_name: ChronosDataset(
@@ -262,7 +304,7 @@ def main(cfg):
         split_coords=cfg.eval.split_coords,
         verbose=cfg.eval.verbose,
     )
-    logger.info(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
+    log(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
 
     predictions, contexts, labels, metrics = evaluate_chronos_forecast(
         pipeline,
@@ -271,6 +313,7 @@ def main(cfg):
         prediction_length=cfg.eval.prediction_length,
         limit_prediction_length=cfg.eval.limit_prediction_length,
         metrics_names=cfg.eval.metrics_names,
+        system_dims=system_dims,
         return_predictions=True,
         return_contexts=True,
         return_labels=True,
@@ -282,7 +325,7 @@ def main(cfg):
     )
     window_indices = None
 
-    print("Saving predictions...")
+    log("Saving predictions...")
     if predictions is not None and contexts is not None:
         full_trajs = {}
         for system in predictions:
@@ -291,7 +334,6 @@ def main(cfg):
             full_trajs[system] = np.concatenate(
                 [contexts[system], predictions[system]], axis=1
             )
-            print(full_trajs[system].shape)
         save_eval_results(
             metrics,
             coords=full_trajs,
@@ -299,7 +341,7 @@ def main(cfg):
             coords_save_dir=None,  # cfg.eval.forecast_save_dir,
         )
 
-    print("Saving labels...")
+    log("Saving labels...")
     if labels is not None and contexts is not None:
         full_trajs = {}
         for system in labels:
@@ -308,7 +350,6 @@ def main(cfg):
             full_trajs[system] = np.concatenate(
                 [contexts[system], labels[system]], axis=1
             )
-            print(full_trajs[system].shape)
         save_eval_results(
             metrics,
             coords=full_trajs,

@@ -196,7 +196,9 @@ class PatchTST(nn.Module):
             A callable that takes a context tensor or a list of context
             tensors and returns a tensor of shape:
                 [bs x num_samples x context_length x num_channels]
-            this is intended to be used for subsampling channels
+            where num_samples is specific to the channel_sampler implementation.
+            This is intended to be used for subsampling channels e.g. when the
+            model was trained with a fixed dim embedding.
 
         Returns
         -------

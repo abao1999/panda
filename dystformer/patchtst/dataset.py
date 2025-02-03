@@ -202,7 +202,6 @@ class PatchTSTDataset(IterableDataset):
     def to_hf_format(self, entry: dict) -> dict:
         past_target = torch.tensor(entry["past_target"], dtype=torch.float32)
         future_target = torch.tensor(entry["future_target"], dtype=torch.float32)
-
         return {
             "past_values": past_target,
             "future_values": future_target,
