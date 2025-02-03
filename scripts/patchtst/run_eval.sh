@@ -31,7 +31,7 @@ python scripts/patchtst/evaluate.py \
     eval.mode=predict \
     eval.checkpoint_path=$checkpoint_dir/run-${run_num}/checkpoint-final \
     eval.data_path=$WORK/data/final_skew40/test_base \
-    eval.num_systems=325 \
+    eval.num_systems=10 \
     eval.num_test_instances=1 \
     eval.window_style=sampled \
     eval.batch_size=64 \

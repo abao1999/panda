@@ -1,10 +1,10 @@
 import json
 import logging
 import os
+import random
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import hydra
 import numpy as np
@@ -23,26 +23,28 @@ from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
     log_on_main,
+    safe_standardize,
     save_evaluation_results,
 )
 
 logger = logging.getLogger(__name__)
+log = partial(log_on_main, logger=logger)
 
 
 def evaluate_mlm_model(
     model: PatchTST,
-    systems: Dict[str, PatchTSTDataset],
+    systems: dict[str, PatchTSTDataset],
     batch_size: int,
-    metrics_names: Optional[List[str]] = None,
+    metrics_names: list[str] | None = None,
     undo_normalization: bool = False,
     return_completions: bool = False,
     return_processed_past_values: bool = False,
     return_masks: bool = False,
-) -> Tuple[
-    Optional[Dict[str, np.ndarray]],
-    Optional[Dict[str, np.ndarray]],
-    Optional[Dict[str, np.ndarray]],
-    Dict[str, Dict[str, float]],
+) -> tuple[
+    dict[str, np.ndarray] | None,
+    dict[str, np.ndarray] | None,
+    dict[str, np.ndarray] | None,
+    dict[str, dict[str, float]],
 ]:
     """
     past_observed_mask (`torch.BoolTensor` of shape `(batch_size, sequence_length, num_input_channels)`, *optional*):
@@ -57,7 +59,7 @@ def evaluate_mlm_model(
 
     for system in tqdm(systems, desc="Evaluating MLM pretrain model"):
         dataset = systems[system]  # IterableDataset
-        log_on_main(f"Evaluating {system}", logger)
+        log(f"Evaluating {system}")
         all_completions = []
         all_processed_past_values = []
         all_timestep_masks = []
@@ -136,8 +138,6 @@ def evaluate_mlm_model(
                 all_timestep_masks.append(timestep_mask)
 
         if return_completions:
-            for i in range(len(all_completions)):
-                print(all_completions[i].shape)
             full_completion = np.concatenate(all_completions, axis=0)
             system_completions[system] = full_completion
         if return_processed_past_values:
@@ -164,21 +164,21 @@ def evaluate_mlm_model(
 
 def evaluate_forecasting_model(
     model: PatchTST,
-    systems: Dict[str, PatchTSTDataset],
+    systems: dict[str, PatchTSTDataset],
     batch_size: int,
     prediction_length: int,
     limit_prediction_length: bool = False,
-    metrics_names: Optional[List[str]] = None,
+    metrics_names: list[str] | None = None,
     parallel_sample_reduction: str = "none",
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
     redo_normalization: bool = False,
-) -> Tuple[
-    Optional[Dict[str, np.ndarray]],
-    Optional[Dict[str, np.ndarray]],
-    Optional[Dict[str, np.ndarray]],
-    Dict[str, Dict[str, float]],
+) -> tuple[
+    dict[str, np.ndarray] | None,
+    dict[str, np.ndarray] | None,
+    dict[str, np.ndarray] | None,
+    dict[str, dict[str, float]],
 ]:
     """
     Evaluate the model on each test system and save metrics.
@@ -215,13 +215,14 @@ def evaluate_forecasting_model(
     }.get(parallel_sample_reduction, lambda x: x)
 
     for system in tqdm(systems, desc="Forecasting..."):
-        print(f"Evaluating {system}")
+        log(f"Evaluating {system}")
         dataset = systems[system]
         predictions, labels, contexts, future_values = [], [], [], []
         for batch in batcher(dataset, batch_size=batch_size):
             past_values, future_values = zip(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
+            # shape: (batch_size, context_length, num_channels)
             past_batch = torch.stack(past_values, dim=0).to(model.device)
 
             # shape: (num_parallel_samples, batch_size, prediction_length, num_channels)
@@ -235,24 +236,20 @@ def evaluate_forecasting_model(
                 .numpy()
                 .transpose(1, 0, 2, 3)
             )
-
             context = past_batch.cpu().numpy()
+            breakpoint()
 
             # shape: (batch_size, sampler_prediction_length, num_channels)h
             future_batch = torch.stack(future_values, dim=0).cpu().numpy()
+
             # Truncate predictions to match future_batch length if needed
             if preds.shape[2] > future_batch.shape[1]:
                 preds = preds[..., : future_batch.shape[1], :]
 
+            # standardize using stats from the past_batch
             if redo_normalization:
-                # compute loc and scale from past_batch
-                loc = np.nanmean(context, axis=1)
-                scale = np.nanstd(context, axis=1)
-                scale = np.where(scale < 1e-10, 1e-10, scale)
-                loc = np.expand_dims(loc, axis=1)
-                scale = np.expand_dims(scale, axis=1)
-                future_batch = (future_batch - loc) / scale
-                context = (context - loc) / scale
+                future_batch = safe_standardize(future_batch, context=context)
+                context = safe_standardize(context)
 
             labels.append(future_batch)
             predictions.append(preds)
@@ -262,12 +259,9 @@ def evaluate_forecasting_model(
         # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         predictions = np.concatenate(predictions, axis=1)
-        print(f"predictions.shape: {predictions.shape}")
         # shape: (num_windows*num_datasets, prediction_length, num_channels)
         labels = np.concatenate(labels, axis=0)
-        print(f"labels.shape: {labels.shape}")
         contexts = np.concatenate(contexts, axis=0)
-        print(f"contexts.shape: {contexts.shape}")
 
         if metrics_names is not None:
             system_metrics[system] = compute_metrics(
@@ -298,10 +292,10 @@ def evaluate_forecasting_model(
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
     checkpoint_path = cfg.eval.checkpoint_path
-    log_on_main(f"Using checkpoint: {checkpoint_path}", logger)
+    log(f"Using checkpoint: {checkpoint_path}")
     training_info_path = os.path.join(checkpoint_path, "training_info.json")
     if os.path.exists(training_info_path):
-        log_on_main(f"Training info file found at: {training_info_path}", logger)
+        log(f"Training info file found at: {training_info_path}")
         with open(training_info_path, "r") as f:
             training_info = json.load(f)
             train_config = training_info.get("train_config", None)
@@ -309,7 +303,7 @@ def main(cfg):
                 train_config = training_info.get("training_config", None)
             dataset_config = training_info.get("dataset_config", None)
     else:
-        log_on_main(f"No training info file found at: {training_info_path}", logger)
+        log(f"No training info file found at: {training_info_path}")
         train_config = None
         dataset_config = None
 
@@ -323,20 +317,19 @@ def main(cfg):
     dataset_config = dataset_config or dict(cfg)
     # set floating point precision
     use_tf32 = train_config.get("tf32", False)
-    log_on_main(f"use tf32: {use_tf32}", logger)
+    log(f"use tf32: {use_tf32}")
     if use_tf32 and not (
         torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
     ):
         # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
-        log_on_main(
+        log(
             "TF32 format is only available on devices with compute capability >= 8. "
             "Setting tf32 to False.",
-            logger,
         )
         use_tf32 = False
 
     rseed = train_config.get("seed", cfg.train.seed)
-    log_on_main(f"Using SEED: {rseed}", logger)
+    log(f"Using SEED: {rseed}")
     transformers.set_seed(seed=rseed)
 
     # use_quadratic_embedding may not exist for older checkpoints
@@ -350,31 +343,17 @@ def main(cfg):
         )
     context_length = model_config["context_length"]
     prediction_length = model_config["prediction_length"]
-    log_on_main(f"Using fixed_dim: {fixed_dim}", logger)
-    log_on_main(f"use_quadratic_embedding: {use_quadratic_embedding}", logger)
-    log_on_main(f"context_length: {context_length}", logger)
-    log_on_main(f"prediction_length: {prediction_length}", logger)
+    log(f"Using fixed_dim: {fixed_dim}")
+    log(f"use_quadratic_embedding: {use_quadratic_embedding}")
+    log(f"context_length: {context_length}")
+    log(f"prediction_length: {prediction_length}")
     model.eval()
 
     # get test data paths
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
-
-    # Get all system directories and randomly sample num_systems of them
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-    # if cfg.eval.num_systems and cfg.eval.num_systems < len(system_dirs):
-    #     rng = np.random.default_rng(cfg.eval.seed)
-    #     system_dirs = rng.choice(
-    #         np.array(system_dirs, dtype=object),
-    #         size=cfg.eval.num_systems,
-    #         replace=False,
-    #     ).tolist()
-    # print(system_dirs)
-    # print(len(system_dirs))
-
-    for i, system_dir in enumerate(system_dirs):
-        if i >= cfg.eval.num_systems:
-            break
+    for system_dir in random.sample(system_dirs, cfg.eval.num_systems):
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
         test_data_dict[system_name] = [
@@ -383,7 +362,7 @@ def main(cfg):
             if file_path.is_file()
         ]
 
-    log_on_main(f"Running evaluation on {list(test_data_dict.keys())}", logger)
+    log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     transforms: list = [FixedDimensionDelayEmbeddingTransform(embedding_dim=fixed_dim)]
     if use_quadratic_embedding:
@@ -413,7 +392,7 @@ def main(cfg):
         split_coords=cfg.eval.split_coords,
         verbose=cfg.eval.verbose,
     )
-    logger.info(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
+    log(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
 
     if cfg.eval.mode == "predict":
         predictions, contexts, labels, metrics = evaluate_forecasting_model(
