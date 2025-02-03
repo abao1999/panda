@@ -112,7 +112,7 @@ def sampled_prediction_window_indices(
 
 
 def save_evaluation_results(
-    metrics: dict[str, dict[str, float]],
+    metrics: dict[int, dict[str, dict[str, float]]] | None = None,
     window_indices: dict[str, list[list[int]]] | None = None,
     window_dim: int = 0,
     coords: dict[str, np.ndarray] | None = None,
@@ -143,18 +143,24 @@ def save_evaluation_results(
     1. Saves evaluation metrics to a CSV file, appending to existing file if present.
     2. If specified in eval_cfg, saves forecast trajectories as arrow files.
     """
-    result_rows = [{"system": system, **metrics[system]} for system in metrics]
-    results_df = pd.DataFrame(result_rows)
+    if metrics is not None:
+        for forecast_length, metric_dict in metrics.items():
+            result_rows = [
+                {"system": system, **metric_dict[system]} for system in metric_dict
+            ]
+            results_df = pd.DataFrame(result_rows)
 
-    metrics_fname = f"{metrics_fname or 'metrics'}.csv"
-    metrics_save_path = os.path.join(metrics_save_dir, metrics_fname)
-    logger.info(f"Saving metrics to: {metrics_save_path}")
-    os.makedirs(os.path.dirname(metrics_save_path), exist_ok=True)
+            curr_metrics_fname = (
+                f"{metrics_fname or 'metrics'}_pred{forecast_length}.csv"
+            )
+            metrics_save_path = os.path.join(metrics_save_dir, curr_metrics_fname)
+            logger.info(f"Saving metrics to: {metrics_save_path}")
+            os.makedirs(os.path.dirname(metrics_save_path), exist_ok=True)
 
-    if os.path.isfile(metrics_save_path) and not overwrite:
-        existing_df = pd.read_csv(metrics_save_path)
-        results_df = pd.concat([existing_df, results_df], ignore_index=True)
-    results_df.to_csv(metrics_save_path, index=False)
+            if os.path.isfile(metrics_save_path) and not overwrite:
+                existing_df = pd.read_csv(metrics_save_path)
+                results_df = pd.concat([existing_df, results_df], ignore_index=True)
+            results_df.to_csv(metrics_save_path, index=False)
 
     # save predictions, which is a dictionary mapping system names to prediction numpy arrays, to arrow files
     if coords_save_dir is not None and coords is not None:

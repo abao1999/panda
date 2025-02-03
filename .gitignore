@@ -23,6 +23,9 @@ nohup.out
 tests/*.json
 tests/*.png
 
+# bash scripts for ablations
+*ablations*.sh
+
 # output and logging files
 output/
 eval_results/

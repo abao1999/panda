@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import random
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
@@ -44,7 +43,7 @@ def evaluate_mlm_model(
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
-    dict[str, dict[str, float]],
+    dict[int, dict[str, dict[str, float]]],
 ]:
     """
     past_observed_mask (`torch.BoolTensor` of shape `(batch_size, sequence_length, num_input_channels)`, *optional*):
@@ -55,7 +54,10 @@ def evaluate_mlm_model(
     system_completions = {}
     system_processed_past_values = {}
     system_timestep_masks = {}
-    system_metrics = {system: defaultdict(float) for system in systems}
+    system_metrics = defaultdict(dict)
+
+    context_length = model.config.context_length
+    # random_mask_ratio = model.config.random_mask_ratio
 
     for system in tqdm(systems, desc="Evaluating MLM pretrain model"):
         dataset = systems[system]  # IterableDataset
@@ -149,16 +151,11 @@ def evaluate_mlm_model(
             full_timestep_masks = np.concatenate(all_timestep_masks, axis=0)
             system_timestep_masks[system] = full_timestep_masks
 
-    # convert defaultdicts to regular dicts
-    system_metrics = {
-        system: dict(metrics) for system, metrics in system_metrics.items()
-    }
-
     return (
         system_completions if return_completions else None,
         system_processed_past_values if return_processed_past_values else None,
         system_timestep_masks if return_masks else None,
-        system_metrics,
+        {context_length: system_metrics},
     )
 
 
@@ -178,7 +175,7 @@ def evaluate_forecasting_model(
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
-    dict[str, dict[str, float]],
+    dict[int, dict[str, dict[str, float]]],
 ]:
     """
     Evaluate the model on each test system and save metrics.
@@ -207,7 +204,7 @@ def evaluate_forecasting_model(
     system_predictions = {}
     system_contexts = {}
     system_labels = {}
-    system_metrics = {system: {} for system in systems}
+    system_metrics = defaultdict(dict)
 
     parallel_sample_reduction_fn = {
         "mean": lambda x: np.mean(x, axis=0),
@@ -245,7 +242,6 @@ def evaluate_forecasting_model(
                 preds = np.expand_dims(preds, axis=0)
 
             context = past_batch.cpu().numpy()
-            breakpoint()
 
             # shape: (batch size, sampler_prediction_length, num_channels)h
             future_batch = torch.stack(future_values, dim=0).cpu().numpy()
@@ -256,8 +252,8 @@ def evaluate_forecasting_model(
 
             # standardize using stats from the past_batch
             if redo_normalization:
-                future_batch = safe_standardize(future_batch, context=context)
-                context = safe_standardize(context)
+                future_batch = safe_standardize(future_batch, context=context, axis=1)
+                context = safe_standardize(context, axis=1)
 
             labels.append(future_batch)
             predictions.append(preds)
@@ -271,12 +267,22 @@ def evaluate_forecasting_model(
         labels = np.concatenate(labels, axis=0)
         contexts = np.concatenate(contexts, axis=0)
 
+        log(f"system: {system}")
+        log(f"predictions shape: {predictions.shape}")
+        log(f"labels shape: {labels.shape}")
+        log(f"contexts shape: {contexts.shape}")
+
         if metrics_names is not None:
-            system_metrics[system] = compute_metrics(
-                np.squeeze(predictions),
-                labels,
-                include=metrics_names,  # type: ignore
-            )
+            forecast_length_for_metrics = np.arange(64, prediction_length + 64, 64)
+
+            reduced_predictions = parallel_sample_reduction_fn(predictions)
+
+            for forecast_length in forecast_length_for_metrics:
+                system_metrics[forecast_length][system] = compute_metrics(
+                    reduced_predictions[:, :forecast_length, :],
+                    labels[:, :forecast_length, :],
+                    include=metrics_names,  # type: ignore
+                )
 
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
@@ -361,7 +367,9 @@ def main(cfg):
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-    for system_dir in random.sample(system_dirs, cfg.eval.num_systems):
+    for i, system_dir in enumerate(system_dirs):
+        if i >= cfg.eval.num_systems:
+            break
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
         test_data_dict[system_name] = [
@@ -382,7 +390,7 @@ def main(cfg):
             probabilities=[1.0 / len(test_data_dict[system_name])]
             * len(test_data_dict[system_name]),
             context_length=context_length,
-            prediction_length=prediction_length,
+            prediction_length=cfg.eval.prediction_length,
             num_test_instances=cfg.eval.num_test_instances,
             window_style=cfg.eval.window_style,
             window_stride=cfg.eval.window_stride,
@@ -449,7 +457,7 @@ def main(cfg):
                     [contexts[system], labels[system]], axis=2
                 )
             save_eval_results(
-                metrics,
+                None,  # do not save metrics again
                 coords=full_trajs,
                 window_indices=window_indices,
                 coords_save_dir=cfg.eval.labels_save_dir,
@@ -476,13 +484,13 @@ def main(cfg):
             )
         if processed_past_values is not None:
             save_eval_results(
-                metrics,
+                None,  # do not save metrics again
                 coords=processed_past_values,
                 coords_save_dir=cfg.eval.patch_input_save_dir,
             )
         if timestep_masks is not None:
             save_eval_results(
-                metrics,
+                None,  # do not save metrics again
                 coords=timestep_masks,
                 coords_save_dir=cfg.eval.timestep_masks_save_dir,
             )

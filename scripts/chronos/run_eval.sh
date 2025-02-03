@@ -13,10 +13,10 @@ python scripts/chronos/evaluate.py \
         eval.num_test_instances=1 \
         eval.window_style=sampled \
         eval.batch_size=64 \
-        eval.prediction_length=128 \
+        eval.prediction_length=512 \
         eval.limit_prediction_length=false \
-        eval.metrics_save_dir=$main_dir/eval_results/chronos \
-        eval.metrics_fname=zeroshot_forecast_${run_num}_metrics \
+        eval.metrics_save_dir=$main_dir/eval_results/chronos/${run_num}_metrics/zeroshot \
+        eval.metrics_fname=null \
         eval.overwrite=true \
         eval.device=cuda:0 \
         eval.forecast_save_dir=$WORK/data/eval/chronos/run-${run_num}/forecasts \

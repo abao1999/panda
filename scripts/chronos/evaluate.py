@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from collections import defaultdict
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -71,12 +72,13 @@ def evaluate_chronos_forecast(
     return_labels: bool = False,
     redo_normalization: bool = False,
     system_dims: dict[str, int] | None = None,
+    ndims_for_metrics: int = 1,
     **predict_kwargs: Any,
 ) -> tuple[
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
-    dict[str, dict[str, float]],
+    dict[int, dict[str, dict[str, float]]],
 ]:
     """
     Evaluate the model on each test system and save metrics.
@@ -108,10 +110,13 @@ def evaluate_chronos_forecast(
     else:
         log("System dims provided, will use dimension-aware batching")
 
+    if ndims_for_metrics < 1:
+        raise ValueError("ndims_for_metrics must be >= 1")
+
     system_predictions = {}
     system_contexts = {}
     system_labels = {}
-    system_metrics = {system: {} for system in systems}
+    system_metrics = defaultdict(dict)
 
     parallel_sample_reduction_fn = {
         "mean": lambda x: np.mean(x, axis=0),
@@ -153,6 +158,7 @@ def evaluate_chronos_forecast(
                 .cpu()
                 .numpy()
             ).transpose(1, 0, 2)
+
             context = past_batch.numpy()
 
             # shape: (dim * num_samples if dim-aware batching else batch_size, sampler_prediction_length)
@@ -165,6 +171,7 @@ def evaluate_chronos_forecast(
             # standardize using the context from the past_batch
             if redo_normalization:
                 future_batch = safe_standardize(future_batch, context=context)
+                preds = safe_standardize(preds, context=context[None, :, :])
                 context = safe_standardize(context)
 
             labels.append(future_batch)
@@ -175,10 +182,48 @@ def evaluate_chronos_forecast(
         labels = np.concatenate(labels, axis=0)
         contexts = np.concatenate(contexts, axis=0)
 
+        log(f"system: {system}, dim: {dim}")
+        log(f"predictions shape: {predictions.shape}")
+        log(f"labels shape: {labels.shape}")
+        log(f"contexts shape: {contexts.shape}")
+
         if metrics_names is not None:
-            system_metrics[system] = compute_metrics(
-                parallel_sample_reduction_fn(predictions), labels, include=metrics_names
+            assert prediction_length % 64 == 0, (
+                "prediction_length must be a multiple of 64"
             )
+            forecast_length_for_metrics = np.arange(64, prediction_length + 64, 64)
+
+            reduced_predictions = parallel_sample_reduction_fn(predictions)
+
+            if ndims_for_metrics > 1:
+                if dim is None:
+                    raise ValueError("Dimension is not available for this system")
+                multivar_predictions = reduced_predictions.reshape(
+                    -1, prediction_length, dim
+                )[:, :, :ndims_for_metrics]
+                multivar_labels = labels.reshape(-1, prediction_length, dim)[
+                    :, :, :ndims_for_metrics
+                ]
+                log(f"multivar_predictions shape: {multivar_predictions.shape}")
+                log(f"multivar_labels shape: {multivar_labels.shape}")
+
+                for forecast_length in forecast_length_for_metrics:
+                    system_metrics[forecast_length][system] = compute_metrics(
+                        multivar_predictions[:, :forecast_length, :],
+                        multivar_labels[:, :forecast_length, :],
+                        include=metrics_names,
+                    )
+            elif ndims_for_metrics == 1:
+                for forecast_length in forecast_length_for_metrics:
+                    system_metrics[forecast_length][system] = compute_metrics(
+                        reduced_predictions[:, :forecast_length, :],
+                        labels[:, :forecast_length, :],
+                        include=metrics_names,
+                    )
+            else:
+                raise ValueError(
+                    f"Invalid number of dimensions for metrics: {ndims_for_metrics}"
+                )
 
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
         # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
@@ -257,7 +302,7 @@ def main(cfg):
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
 
     for i, system_dir in enumerate(system_dirs):
-        if i > cfg.eval.num_systems:
+        if i >= cfg.eval.num_systems:
             break
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
@@ -322,6 +367,7 @@ def main(cfg):
         temperature=model_config["temperature"],
         top_k=model_config["top_k"],
         top_p=model_config["top_p"],
+        ndims_for_metrics=3,
     )
     window_indices = None
 
@@ -351,7 +397,7 @@ def main(cfg):
                 [contexts[system], labels[system]], axis=1
             )
         save_eval_results(
-            metrics,
+            None,  # do not save metrics again
             coords=full_trajs,
             window_indices=window_indices,
             coords_save_dir=None,  # cfg.eval.labels_save_dir,
