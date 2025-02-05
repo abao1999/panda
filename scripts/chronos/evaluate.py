@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
@@ -133,18 +134,21 @@ def evaluate_chronos_forecast(
         batching_fn = (
             partial(dim_aware_batcher, dim=dim) if dim is not None else batcher
         )
+
+        # length of the dataset iterator is equal to len(dataset.datasets)*num_eval_windows
+        # for each eval window style:
+        # - sampled: num_eval_windows = num_test_instances
+        # - rolling: num_eval_windows = (T - context_length - prediction_length) // window_stride + 1
+        # - single: num_eval_windows = 1
         for batch in batching_fn(dataset, batch_size=batch_size):
             past_values, future_values = zip(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
 
             # num_samples = number of arrow files in this system's subdirectory
-            # num_windows depends on the eval window sampling strategy:
-            # - "rolling" -> num_windows = (T - context_length - prediction_length) // eval.window_stride + 1
-            # - "sampled" -> num_windows = eval.num_test_instances
-            # - "single" -> num_windows = 1
             # shape: (dim * num_samples if dim-aware batching else batch_size, context_length)
-            past_batch = (torch.cat(past_values, dim=0).to(pipeline.model.device)).cpu()
+            past_batch = torch.cat(past_values, dim=0).to(pipeline.model.device).cpu()
+            context = past_batch.numpy()
 
             # shape: (num_parallel_samples, dim * num_samples if dim-aware batching else batch_size, prediction_length)
             preds = (
@@ -158,8 +162,6 @@ def evaluate_chronos_forecast(
                 .cpu()
                 .numpy()
             ).transpose(1, 0, 2)
-
-            context = past_batch.numpy()
 
             # shape: (dim * num_samples if dim-aware batching else batch_size, sampler_prediction_length)
             future_batch = torch.cat(future_values, dim=0).cpu().numpy()
@@ -178,14 +180,12 @@ def evaluate_chronos_forecast(
             predictions.append(preds)
             contexts.append(context)
 
+        # shape: (num_windows*num_datasets, prediction_length, num_channels)
         predictions = np.concatenate(predictions, axis=1)
+        predictions = parallel_sample_reduction_fn(predictions)
         labels = np.concatenate(labels, axis=0)
+        # shape: (num_windows*num_datasets, context_length, num_channels)
         contexts = np.concatenate(contexts, axis=0)
-
-        log(f"system: {system}, dim: {dim}")
-        log(f"predictions shape: {predictions.shape}")
-        log(f"labels shape: {labels.shape}")
-        log(f"contexts shape: {contexts.shape}")
 
         if metrics_names is not None:
             assert prediction_length % 64 == 0, (
@@ -193,14 +193,12 @@ def evaluate_chronos_forecast(
             )
             forecast_length_for_metrics = np.arange(64, prediction_length + 64, 64)
 
-            reduced_predictions = parallel_sample_reduction_fn(predictions)
-
             if ndims_for_metrics > 1:
                 if dim is None:
                     raise ValueError("Dimension is not available for this system")
-                multivar_predictions = reduced_predictions.reshape(
-                    -1, prediction_length, dim
-                )[:, :, :ndims_for_metrics]
+                multivar_predictions = predictions.reshape(-1, prediction_length, dim)[
+                    :, :, :ndims_for_metrics
+                ]
                 multivar_labels = labels.reshape(-1, prediction_length, dim)[
                     :, :, :ndims_for_metrics
                 ]
@@ -216,7 +214,7 @@ def evaluate_chronos_forecast(
             elif ndims_for_metrics == 1:
                 for forecast_length in forecast_length_for_metrics:
                     system_metrics[forecast_length][system] = compute_metrics(
-                        reduced_predictions[:, :forecast_length, :],
+                        predictions[:, :forecast_length, :],
                         labels[:, :forecast_length, :],
                         include=metrics_names,
                     )
@@ -225,10 +223,12 @@ def evaluate_chronos_forecast(
                     f"Invalid number of dimensions for metrics: {ndims_for_metrics}"
                 )
 
+        # if no parallel sample reduction, then predictions shape is:
         # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
-        # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
+        # otherwise, predictions shape is:
+        # shape: (num_windows*num_datasets, prediction_length, num_channels)
         if return_predictions:
-            system_predictions[system] = parallel_sample_reduction_fn(predictions)
+            system_predictions[system] = predictions
         if return_contexts:
             system_contexts[system] = contexts
         if return_labels:
@@ -300,10 +300,7 @@ def main(cfg):
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-
-    for i, system_dir in enumerate(system_dirs):
-        if i >= cfg.eval.num_systems:
-            break
+    for system_dir in random.sample(system_dirs, cfg.eval.num_systems):
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
         test_data_dict[system_name] = [

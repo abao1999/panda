@@ -1,9 +1,11 @@
 import json
 import logging
 import os
+import random
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
+from typing import Callable
 
 import hydra
 import numpy as np
@@ -14,10 +16,6 @@ from gluonts.dataset.common import FileDataset
 from gluonts.itertools import batcher
 from tqdm.auto import tqdm
 
-from dystformer.augmentations import (
-    FixedDimensionDelayEmbeddingTransform,
-    QuadraticEmbeddingTransform,
-)
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.model import PatchTST
 from dystformer.utils import (
@@ -106,7 +104,6 @@ def evaluate_mlm_model(
                 .numpy()
                 .transpose(0, 2, 1)
             )
-            # processed_past_values = past_batch.detach().cpu().numpy()
 
             if undo_normalization:
                 if completions_output.loc is None or completions_output.scale is None:
@@ -165,12 +162,13 @@ def evaluate_forecasting_model(
     batch_size: int,
     prediction_length: int,
     limit_prediction_length: bool = False,
-    metrics_names: list[str] | None = None,
-    parallel_sample_reduction: str = "none",
+    metric_names: list[str] | None = None,
+    parallel_sample_reduction_fn: Callable | None = None,
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
     redo_normalization: bool = False,
+    eval_subintervals: list[tuple[int, int]] | None = None,
 ) -> tuple[
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
@@ -184,12 +182,15 @@ def evaluate_forecasting_model(
         model: The PatchTST model to evaluate.
         systems: A dictionary mapping system names to their respective PatchTSTDataset.
         batch_size: The batch size to use for evaluation.
-        metrics_names: Optional list of metric names to compute.
-        parallel_sample_reduction: How to reduce the parallel samples over dim 0,
-            only used if return_predictions is True
+        prediction_length: The length of the predictions to make.
+        limit_prediction_length: Whether to limit the prediction length to the prediction length.
+        metric_names: Optional list of metric names to compute.
+        parallel_sample_reduction_fn: How to reduce the parallel samples over dim 0
         return_predictions: Whether to return the predictions.
         return_contexts: Whether to return the contexts.
         return_labels: Whether to return the future values.
+        redo_normalization: Whether to redo the normalization of the future values.
+
     Returns:
         A tuple containing:
         - system_predictions: A dictionary mapping system names to their predictions.
@@ -206,23 +207,33 @@ def evaluate_forecasting_model(
     system_labels = {}
     system_metrics = defaultdict(dict)
 
-    parallel_sample_reduction_fn = {
-        "mean": lambda x: np.mean(x, axis=0),
-        "median": lambda x: np.median(x, axis=0),
-    }.get(parallel_sample_reduction, lambda x: x)
+    if eval_subintervals is None:
+        eval_subintervals = [(0, prediction_length)]
+    elif (0, prediction_length) not in eval_subintervals:
+        eval_subintervals.append((0, prediction_length))
+
+    if parallel_sample_reduction_fn is None:
+        parallel_sample_reduction_fn = lambda x: x
 
     for system in tqdm(systems, desc="Forecasting..."):
         log(f"Evaluating {system}")
         dataset = systems[system]
         predictions, labels, contexts, future_values = [], [], [], []
+
+        # length of the dataset iterator is equal to len(dataset.datasets)*num_eval_windows
+        # for each eval window style:
+        # - sampled: num_eval_windows = num_test_instances
+        # - rolling: num_eval_windows = (T - context_length - prediction_length) // window_stride + 1
+        # - single: num_eval_windows = 1
         for batch in batcher(dataset, batch_size=batch_size):
             past_values, future_values = zip(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
             # shape: (batch_size, context_length, num_channels)
             past_batch = torch.stack(past_values, dim=0).to(model.device)
+            context = past_batch.cpu().numpy()
 
-            # shape: (batch size, prediction_length, num_channels)
+            # shape: (num_parallel_samples, batch size, prediction_length, num_channels)
             preds = (
                 model.predict(
                     past_batch,
@@ -231,19 +242,9 @@ def evaluate_forecasting_model(
                 )
                 .cpu()
                 .numpy()
-            )
-            if preds.ndim == 4:
-                # NOTE: something changed with augmetnations, dataset, so that new runs don't output singleton dimension anymore
-                # i.e. preds of shape (15, 128, 3) instead of (15, 1, 128, 3)
-                preds = preds.transpose(1, 0, 2, 3)
-            else:
-                # add singleton dimension to axis 0
-                # NOTE: this makes preds into shape (num_samples, batch size, prediction_length, num_channels)
-                preds = np.expand_dims(preds, axis=0)
+            ).transpose(1, 0, 2, 3)
 
-            context = past_batch.cpu().numpy()
-
-            # shape: (batch size, sampler_prediction_length, num_channels)h
+            # shape: (batch size, sampler_prediction_length, num_channels)
             future_batch = torch.stack(future_values, dim=0).cpu().numpy()
 
             # Truncate predictions to match future_batch length if needed
@@ -253,47 +254,46 @@ def evaluate_forecasting_model(
             # standardize using stats from the past_batch
             if redo_normalization:
                 future_batch = safe_standardize(future_batch, context=context, axis=1)
+                preds = safe_standardize(preds, context=context[None, :, :], axis=2)
                 context = safe_standardize(context, axis=1)
 
             labels.append(future_batch)
             predictions.append(preds)
             contexts.append(context)
 
-        # num_windows is either config.eval.num_test_instances for the sampled window style
-        # or (T - context_length - prediction_length) // dataset.window_stride + 1 for the rolling window style
-        # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
+        # if num_parallel_reduction_fn is None, the shape is:
+        # shape: (num_parallel_samples, num_eval_windows*num_datasets, prediction_length, num_channels)
+        # otherwise, the shape is:
+        # shape: (num_eval_windows*num_datasets, prediction_length, num_channels)
         predictions = np.concatenate(predictions, axis=1)
-        # shape: (num_windows*num_datasets, prediction_length, num_channels)
+        predictions = parallel_sample_reduction_fn(predictions)
+        # shape: (num_eval_windows*num_datasets, context_length, num_channels)
         labels = np.concatenate(labels, axis=0)
         contexts = np.concatenate(contexts, axis=0)
 
-        log(f"system: {system}")
-        log(f"predictions shape: {predictions.shape}")
-        log(f"labels shape: {labels.shape}")
-        log(f"contexts shape: {contexts.shape}")
-
-        if metrics_names is not None:
-            forecast_length_for_metrics = np.arange(64, prediction_length + 64, 64)
-
-            reduced_predictions = parallel_sample_reduction_fn(predictions)
-
-            for forecast_length in forecast_length_for_metrics:
-                system_metrics[forecast_length][system] = compute_metrics(
-                    reduced_predictions[:, :forecast_length, :],
-                    labels[:, :forecast_length, :],
-                    include=metrics_names,  # type: ignore
+        # evaluate metrics for multiple forecast lengths on user-specified subintervals
+        # as well as the full prediction length interval
+        if metric_names is not None:
+            assert all(start < prediction_length for start, _ in eval_subintervals), (
+                "All start indices must be less than the prediction length"
+            )
+            for start, end in eval_subintervals:
+                system_metrics[end - start][system] = compute_metrics(
+                    predictions[:, start:end, :],
+                    labels[:, start:end, :],
+                    include=metric_names,
                 )
 
-        # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
-        # or (num_windows*num_datasets, prediction_length, num_channels) if parallel_sample_reduction is not none
+        # if parallel_sample_reduction_fn is not None, the shape is:
+        # shape: (num_eval_windows*num_datasets, prediction_length, num_channels)
+        # otherwise, the shape is:
+        # shape: (num_parallel_samples, num_eval_windows*num_datasets, prediction_length, num_channels)
         if return_predictions:
-            system_predictions[system] = parallel_sample_reduction_fn(
-                predictions
-            ).transpose(0, 2, 1)
+            system_predictions[system] = predictions
         if return_contexts:
-            system_contexts[system] = contexts.transpose(0, 2, 1)
+            system_contexts[system] = contexts
         if return_labels:
-            system_labels[system] = labels.transpose(0, 2, 1)
+            system_labels[system] = labels
 
     return (
         system_predictions if return_predictions else None,
@@ -350,26 +350,19 @@ def main(cfg):
     use_quadratic_embedding = dataset_config.get(
         "use_quadratic_embedding", cfg.use_quadratic_embedding
     )
-    fixed_dim = dataset_config["fixed_dim"]
-    if fixed_dim > 3 and not use_quadratic_embedding:
-        raise ValueError(
-            "Quadratic embedding should be on for time delay embedding (fixed dim > 3)"
-        )
     context_length = model_config["context_length"]
     prediction_length = model_config["prediction_length"]
-    log(f"Using fixed_dim: {fixed_dim}")
     log(f"use_quadratic_embedding: {use_quadratic_embedding}")
     log(f"context_length: {context_length}")
-    log(f"prediction_length: {prediction_length}")
+    log(f"model prediction_length: {prediction_length}")
+    log(f"prediction_length: {cfg.eval.prediction_length}")
     model.eval()
 
     # get test data paths
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-    for i, system_dir in enumerate(system_dirs):
-        if i >= cfg.eval.num_systems:
-            break
+    for system_dir in random.sample(system_dirs, cfg.eval.num_systems):
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
         test_data_dict[system_name] = [
@@ -379,10 +372,6 @@ def main(cfg):
         ]
 
     log(f"Running evaluation on {list(test_data_dict.keys())}")
-
-    transforms: list = [FixedDimensionDelayEmbeddingTransform(embedding_dim=fixed_dim)]
-    if use_quadratic_embedding:
-        transforms.append(QuadraticEmbeddingTransform())
 
     test_datasets = {
         system_name: PatchTSTDataset(
@@ -394,7 +383,6 @@ def main(cfg):
             num_test_instances=cfg.eval.num_test_instances,
             window_style=cfg.eval.window_style,
             window_stride=cfg.eval.window_stride,
-            transforms=transforms,
             mode="test",
         )
         for system_name in test_data_dict
@@ -411,18 +399,26 @@ def main(cfg):
     log(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
 
     if cfg.eval.mode == "predict":
+        parallel_sample_reduction_fn = {
+            "mean": lambda x: np.mean(x, axis=0),
+            "median": lambda x: np.median(x, axis=0),
+        }.get(cfg.eval.parallel_sample_reduction, lambda x: x)
+
         predictions, contexts, labels, metrics = evaluate_forecasting_model(
             model,
             test_datasets,
             batch_size=cfg.eval.batch_size,
             prediction_length=cfg.eval.prediction_length,
             limit_prediction_length=cfg.eval.limit_prediction_length,
-            metrics_names=cfg.eval.metrics_names,
+            metric_names=cfg.eval.metrics_names,
             return_predictions=True,
             return_contexts=True,
             return_labels=True,
-            parallel_sample_reduction="mean",
+            parallel_sample_reduction_fn=parallel_sample_reduction_fn,
             redo_normalization=True,
+            eval_subintervals=[
+                (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
+            ],
         )
         window_indices = None
         # # get the indices of each prediction window for each timeseries in each system
@@ -438,8 +434,9 @@ def main(cfg):
             for system in predictions:
                 if system not in contexts:
                     raise ValueError(f"System {system} not in contexts")
+                # shape: (num_eval_windows*num_datasets, context_length + prediction_length, num_channels)
                 full_trajs[system] = np.concatenate(
-                    [contexts[system], predictions[system]], axis=2
+                    [contexts[system], predictions[system]], axis=1
                 )
             save_eval_results(
                 metrics,
@@ -453,8 +450,9 @@ def main(cfg):
             for system in labels:
                 if system not in contexts:
                     raise ValueError(f"System {system} not in contexts")
+                # shape: (num_eval_windows*num_datasets, context_length + prediction_length, num_channels)
                 full_trajs[system] = np.concatenate(
-                    [contexts[system], labels[system]], axis=2
+                    [contexts[system], labels[system]], axis=1
                 )
             save_eval_results(
                 None,  # do not save metrics again

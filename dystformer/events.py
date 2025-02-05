@@ -73,11 +73,11 @@ class TimeStepEvent:
         self.last_t = float("inf")
 
     def __call__(self, t, y):
-        t_diff = abs(t - self.last_t)
-        if t_diff < self.min_step:
+        dt = abs(t - self.last_t)
+        if dt < self.min_step:
             if self.verbose:
                 logger.warning(
-                    f"{self.system.name} integration terminated: step size {t_diff:.3e} < {self.min_step:.3e}"
+                    f"{self.system.name} integration terminated: step size {dt:.3e} < {self.min_step:.3e}"
                 )
             return 0
         self.last_t = t

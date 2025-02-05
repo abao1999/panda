@@ -252,9 +252,6 @@ class PatchTST(nn.Module):
         # shape: [bs x num_samples x prediction_length x num_channels]
         predictions = torch.cat(predictions, dim=2)
 
-        if self.config.loss == "mse" or self.config.num_parallel_samples == 1:
-            predictions = predictions.squeeze(1)
-
         return predictions
 
     @torch.no_grad()

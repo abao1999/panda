@@ -164,7 +164,6 @@ def save_evaluation_results(
 
     # save predictions, which is a dictionary mapping system names to prediction numpy arrays, to arrow files
     if coords_save_dir is not None and coords is not None:
-        logger.info(f"forecast dysts: {coords.keys()}")
         for system in coords:
             logger.info(f"{system}: {coords[system].shape}")
 
