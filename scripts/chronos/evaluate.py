@@ -5,7 +5,7 @@ import random
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import hydra
 import numpy as np
@@ -67,7 +67,7 @@ def evaluate_chronos_forecast(
     prediction_length: int,
     limit_prediction_length: bool = False,
     metrics_names: list[str] | None = None,
-    parallel_sample_reduction: str = "none",
+    parallel_sample_reduction_fn: Callable | None = None,
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
@@ -119,10 +119,8 @@ def evaluate_chronos_forecast(
     system_labels = {}
     system_metrics = defaultdict(dict)
 
-    parallel_sample_reduction_fn = {
-        "mean": lambda x: np.mean(x, axis=0),
-        "median": lambda x: np.median(x, axis=0),
-    }.get(parallel_sample_reduction, lambda x: x)
+    if parallel_sample_reduction_fn is None:
+        parallel_sample_reduction_fn = lambda x: x
 
     for system in tqdm(systems, desc="Forecasting..."):
         log(f"Evaluating {system}")
@@ -348,6 +346,11 @@ def main(cfg):
     )
     log(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
 
+    parallel_sample_reduction_fn = {
+        "mean": lambda x: np.mean(x, axis=0),
+        "median": lambda x: np.median(x, axis=0),
+    }[cfg.eval.parallel_sample_reduction]
+
     predictions, contexts, labels, metrics = evaluate_chronos_forecast(
         pipeline,
         test_datasets,
@@ -359,7 +362,7 @@ def main(cfg):
         return_predictions=True,
         return_contexts=True,
         return_labels=True,
-        parallel_sample_reduction="mean",
+        parallel_sample_reduction_fn=parallel_sample_reduction_fn,
         redo_normalization=True,
         temperature=model_config["temperature"],
         top_k=model_config["top_k"],

@@ -45,14 +45,21 @@ def test_prediction_basic(model, cfg):
     )
 
     # test predict method with a channel sampler for handling a batch of heterogeneous num_channels
+    num_samples = 2
+    num_channels = 3
     x = torch.rand(512, 5).to("cuda")
     y = torch.rand(512, 7).to("cuda")
     z = torch.rand(512, 4).to("cuda")
-    sampler = FixedSubsetChannelSampler(num_channels=3, num_samples=2)
-    prediction = model.predict([x, y, z], channel_sampler=sampler)
-    total_samples = sum(map(len, sampler.inds))
+    tensor_list = [x, y, z]
+    sampler = FixedSubsetChannelSampler(
+        num_channels=num_channels, num_samples=num_samples
+    )
+    prediction = model.predict(tensor_list, channel_sampler=sampler)
+    total_samples = sum(
+        num_samples * (c - num_channels + 1) for c in [d.shape[-1] for d in tensor_list]
+    )
     assert prediction.shape == torch.Size(
-        [total_samples, cfg.patchtst.prediction_length, 3]
+        [total_samples, 1, cfg.patchtst.prediction_length, num_channels]
     )
 
 

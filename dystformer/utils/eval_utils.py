@@ -35,86 +35,8 @@ def left_pad_and_stack_multivariate(tensors: list[torch.Tensor]) -> torch.Tensor
     return torch.stack(padded)
 
 
-def rolling_prediction_window_indices(
-    datasets: dict[str, list],
-    window_stride: int,
-    context_length: int,
-    prediction_length: int,
-) -> dict[str, list[list[int]]]:
-    """
-    Get the indices of individual windows for each timeseries in each system
-    in the stacked prediction window array from a rolling sampler.
-
-    This can handle multiple timeseries for each system, possible with different lengths
-
-    For each system with stack prediction window array W of shape (..., num_windows*num_datasets, ...),
-    return a list of tuples where each tuple contains the indices of the windows of its
-    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
-    i-th timeseries of that system.
-
-    Args:
-        datasets: Dictionary mapping system names to lists of datasets
-        window_stride: Stride length between consecutive windows
-        context_length: Length of context window
-        prediction_length: Length of prediction window
-        window_dim: Dimension along which to count windows (default: 0)
-
-    Returns:
-        Dictionary mapping system names to shape of the unpacked window arrays
-    """
-    indices = {}
-    for system_name, timeseries in datasets.items():
-        indices[system_name] = []
-        for i, dataset in enumerate(timeseries):
-            ts_shape = next(iter(dataset))["target"].shape
-            assert len(ts_shape) == 2, "Target must be 2D"
-            T = ts_shape[-1]
-            windows = (T - context_length - prediction_length) // window_stride + 1
-            indices[system_name].append(list(range(i * windows, (i + 1) * windows)))
-    return indices
-
-
-def sampled_prediction_window_indices(
-    datasets: dict[str, list],
-    num_samples: int,
-) -> dict[str, list[list[int]]]:
-    """
-    Get the indices of individual windows for each timeseries in each system
-    in the stacked prediction window array from a sampled sampler.
-
-    This can handle multiple timeseries for each system, possibly with different lengths.
-
-    For each system with stack prediction window array W of shape (..., num_samples*num_datasets, ...),
-    return a list of tuples where each tuple contains the indices of the windows of its
-    predictions e.g. W[..., shapes[system_name][i], ...] extracts the windows for the
-    i-th timeseries of that system.
-
-    NOTE: Assumes that the sample-style window sampler sampled a fixed number of
-    windows for each timeseries
-
-    Args:
-        datasets: Dictionary mapping system names to lists of datasets
-        num_samples: Number of samples to draw for each timeseries
-        context_length: Length of context window
-        prediction_length: Length of prediction window
-
-    Returns:
-        Dictionary mapping system names to shape of the unpacked window arrays
-    """
-    indices = {
-        system_name: [
-            list(range(i * num_samples, (i + 1) * num_samples))
-            for i in range(len(datasets[system_name]))
-        ]
-        for system_name in datasets
-    }
-    return indices
-
-
 def save_evaluation_results(
     metrics: dict[int, dict[str, dict[str, float]]] | None = None,
-    window_indices: dict[str, list[list[int]]] | None = None,
-    window_dim: int = 0,
     coords: dict[str, np.ndarray] | None = None,
     metrics_save_dir: str = "results",
     metrics_fname: str | None = None,
@@ -129,8 +51,6 @@ def save_evaluation_results(
     Args:
         coords: Dictionary mapping system names to coordinate numpy arrays.
         metrics: Nested dictionary containing computed metrics for each system.
-        window_indices: Optional dictionary mapping system names to indices of the windows of its predictions.
-        window_dim: Dimension along which to count windows (default: 0)
         metrics_save_dir: Directory to save metrics to.
         metrics_fname: Name of the metrics file to save.
         overwrite: Whether to overwrite an existing metrics file
@@ -171,22 +91,6 @@ def save_evaluation_results(
         logger.info(
             f"Saving all valid sampled trajectories from {len(coords)} systems to arrow files within {coords_save_dir}",
         )
-
-        # regroup the predictions by the window indices before writing to arrow files
-        # currently each prediction array (for each system) has shape:
-        # [num_parallel_samples, sum(num_windows for each timeseries), prediction_length, num_channels]
-        # or if a reduction was applied to the parallel sample dim:
-        # [sum(num_windows for each timeseries), prediction_length, num_channels]
-        if window_indices is not None:
-            for system in coords:
-                regrouped_coords = [
-                    np.take(coords[system], indices, axis=window_dim)
-                    for indices in window_indices[system]
-                ]
-
-                # regrouped_predictions is a ragged list of arrays of shape:
-                # (num_windows_for_this_timeseries, prediction_length, num_channels)
-                coords[system] = regrouped_coords  # type: ignore
 
         process_trajs(
             coords_save_dir,

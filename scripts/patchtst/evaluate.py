@@ -17,7 +17,7 @@ from gluonts.itertools import batcher
 from tqdm.auto import tqdm
 
 from dystformer.patchtst.dataset import PatchTSTDataset
-from dystformer.patchtst.model import PatchTST
+from dystformer.patchtst.model import FixedSubsetChannelSampler, PatchTST
 from dystformer.utils import (
     log_on_main,
     safe_standardize,
@@ -55,7 +55,6 @@ def evaluate_mlm_model(
     system_metrics = defaultdict(dict)
 
     context_length = model.config.context_length
-    # random_mask_ratio = model.config.random_mask_ratio
 
     for system in tqdm(systems, desc="Evaluating MLM pretrain model"):
         dataset = systems[system]  # IterableDataset
@@ -164,6 +163,7 @@ def evaluate_forecasting_model(
     limit_prediction_length: bool = False,
     metric_names: list[str] | None = None,
     parallel_sample_reduction_fn: Callable | None = None,
+    channel_sampler: Callable | None = None,
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
@@ -186,6 +186,7 @@ def evaluate_forecasting_model(
         limit_prediction_length: Whether to limit the prediction length to the prediction length.
         metric_names: Optional list of metric names to compute.
         parallel_sample_reduction_fn: How to reduce the parallel samples over dim 0
+        channel_sampler: callable which subsamples channels from context via the model.predict method
         return_predictions: Whether to return the predictions.
         return_contexts: Whether to return the contexts.
         return_labels: Whether to return the future values.
@@ -231,18 +232,22 @@ def evaluate_forecasting_model(
             )
             # shape: (batch_size, context_length, num_channels)
             past_batch = torch.stack(past_values, dim=0).to(model.device)
-            context = past_batch.cpu().numpy()
 
             # shape: (num_parallel_samples, batch size, prediction_length, num_channels)
+            # shit changes when using a channel sampler. notably, the batch dim, but it doesnt
+            # matter if one just needs to aggregate over that to get metrics
             preds = (
                 model.predict(
                     past_batch,
                     prediction_length=prediction_length,
                     limit_prediction_length=limit_prediction_length,
+                    channel_sampler=channel_sampler,
                 )
+                .transpose(0, 1)
                 .cpu()
                 .numpy()
-            ).transpose(1, 0, 2, 3)
+            )
+            context = past_batch.cpu().numpy()
 
             # shape: (batch size, sampler_prediction_length, num_channels)
             future_batch = torch.stack(future_values, dim=0).cpu().numpy()
@@ -250,6 +255,16 @@ def evaluate_forecasting_model(
             # Truncate predictions to match future_batch length if needed
             if preds.shape[2] > future_batch.shape[1]:
                 preds = preds[..., : future_batch.shape[1], :]
+
+            # if channel sampler is used, the preds batch size and num_channels changes
+            # reflect the changes in the other tensors as well
+            if channel_sampler is not None:
+                future_batch = channel_sampler(
+                    torch.from_numpy(future_batch), resample_inds=False
+                ).numpy()
+                context = channel_sampler(
+                    torch.from_numpy(context), resample_inds=False
+                ).numpy()
 
             # standardize using stats from the past_batch
             if redo_normalization:
@@ -404,6 +419,14 @@ def main(cfg):
             "median": lambda x: np.median(x, axis=0),
         }.get(cfg.eval.parallel_sample_reduction, lambda x: x)
 
+        if cfg.eval.use_channel_sampler:
+            channel_sampler = FixedSubsetChannelSampler(
+                num_channels=cfg.eval.channel_sampler.num_channels,
+                num_samples=cfg.eval.channel_sampler.num_samples,
+            )
+        else:
+            channel_sampler = None
+
         predictions, contexts, labels, metrics = evaluate_forecasting_model(
             model,
             test_datasets,
@@ -415,19 +438,12 @@ def main(cfg):
             return_contexts=True,
             return_labels=True,
             parallel_sample_reduction_fn=parallel_sample_reduction_fn,
+            channel_sampler=channel_sampler,
             redo_normalization=True,
             eval_subintervals=[
                 (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
             ],
         )
-        window_indices = None
-        # # get the indices of each prediction window for each timeseries in each system
-        # window_indices = rolling_prediction_window_indices(
-        #     test_data_dict,
-        #     cfg.eval.window_stride,
-        #     context_length,
-        #     prediction_length,
-        # )
 
         if predictions is not None and contexts is not None:
             full_trajs = {}
@@ -441,7 +457,6 @@ def main(cfg):
             save_eval_results(
                 metrics,
                 coords=full_trajs,
-                window_indices=window_indices,
                 coords_save_dir=cfg.eval.forecast_save_dir,
             )
 
@@ -457,7 +472,6 @@ def main(cfg):
             save_eval_results(
                 None,  # do not save metrics again
                 coords=full_trajs,
-                window_indices=window_indices,
                 coords_save_dir=cfg.eval.labels_save_dir,
             )
 

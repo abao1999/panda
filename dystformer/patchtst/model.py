@@ -34,34 +34,79 @@ class FixedSubsetChannelSampler:
             raise ValueError("Indices not sampled yet")
         return self._inds
 
-    def _sample_indices(self, num_channels: int) -> torch.Tensor:
+    def _sample_indices(self, C: int) -> torch.Tensor:
         """
         This method is heuristic.
-        Sliding window of size num_channels over a random permutation of the channels -
+
+        Sliding window of size C over a random permutation of the channels -
         guarantees that each channel is sampled at least once.
+
+        For a given C and num_channels, the number of samples will be
+        equal to: (C - num_channels + 1)
         """
-        assert num_channels >= self.num_channels, (
-            "cannot sample more channels than available"
-        )
+        assert C >= self.num_channels, "cannot sample more channels than available"
         idx_samples = [
-            torch.randperm(num_channels).unfold(0, self.num_channels, 1)
+            torch.randperm(C).unfold(0, self.num_channels, 1)
             for _ in range(self.num_samples)
         ]
         return torch.cat(idx_samples, dim=0)
 
-    def __call__(self, context: torch.Tensor | list[torch.Tensor]) -> torch.Tensor:
-        """Each context tensor is expected to have shape (bs, context_length, num_channels)"""
+    def __call__(
+        self, context: torch.Tensor | list[torch.Tensor], resample_inds: bool = True
+    ) -> torch.Tensor:
+        """
+        Generates samples of subsets of channels from a context tensor or a list of context tensors
+
+        The context tensors are expected to have shape:
+        (bs, context_length, C) or (context_length, C)
+
+        For each context tensor with channel dim C, the number of samples produced will
+        be (C - num_channels + 1), each of shape (bs, context_length, num_channels).
+        Fixing the channel dim to num_channels allows for aggregation of the context
+        tensor list into a new tensor of shape (bs, S, context_length, num_channels)
+        where S is the sum of all samples from all context tensors.
+
+        Args:
+            context: A tensor or a list of tensors
+            resample_inds: If True, resample the indices for each context tensor
+
+        Returns:
+            A tensor with shape (bs, S, context_length, num_channels)
+            where S is the sum of all samples from all context tensors
+        """
         if not isinstance(context, list):
             context = [context]
 
-        channels = [t.shape[-1] for t in context]
+        # only subsample context tensors with more than num_channels
+        valid_contexts = [c.shape[-1] > self.num_channels for c in context]
+        valid_inds = [sum(valid_contexts[:i]) for i in range(len(valid_contexts))]
 
-        # save this for deconstructing the context tensor later
-        self._inds = [self._sample_indices(c) for c in channels]
+        # ensure each context tensor has a batch dimension
+        for i in range(len(context)):
+            if context[i].ndim == 2:
+                context[i] = context[i].unsqueeze(0)
 
-        selected = torch.cat([t[..., idx] for t, idx in zip(context, self.inds)], dim=1)
-        assert selected.ndim == 3
-        return selected.transpose(0, 1)
+        channels = [
+            context[i].shape[-1] for i, valid in enumerate(valid_contexts) if valid
+        ]
+
+        if (self._inds is None or resample_inds) and sum(valid_contexts) > 0:
+            self._inds = [self._sample_indices(c) for c in channels]
+
+        # shape: (batch_size, S, context_length, num_channels)
+        selected = torch.cat(
+            [
+                c[..., self.inds[i]]  # subsample only if valid
+                if valid
+                else c.unsqueeze(-2)
+                for c, valid, i in zip(context, valid_contexts, valid_inds)
+            ],
+            dim=1,
+        ).transpose(2, 1)
+        assert selected.ndim == 4
+
+        # shape: (batch_size * S, context_length, num_channels)
+        return selected.reshape(-1, *selected.shape[2:])
 
 
 class PatchTST(nn.Module):
