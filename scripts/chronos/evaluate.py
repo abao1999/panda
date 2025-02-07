@@ -31,33 +31,9 @@ log = partial(log_on_main, logger=logger)
 
 def get_dim_from_dataset(dataset: FileDataset) -> int:
     """
-    Helper function to get system dimension from file dataset
+    helper function to get system dimension from file dataset
     """
     return next(iter(dataset))["target"].shape[0]
-
-
-def dim_aware_batcher(iterator, batch_size: int, dim: int):
-    """Yields batches from iterator where batch sizes are multiples of dim.
-
-    Args:
-        iterator: Iterator to batch
-        batch_size: Target batch size
-        dim: Dimension to align batches with
-    """
-    # Round batch_size to nearest multiple of dim that's <= batch_size
-    aligned_batch_size = (batch_size // dim) * dim
-    if aligned_batch_size == 0:
-        aligned_batch_size = dim
-
-    batch = []
-    for item in iterator:
-        batch.append(item)
-        if len(batch) >= aligned_batch_size:
-            yield batch
-            batch = []
-
-    if batch:  # Yield any remaining items
-        yield batch
 
 
 def evaluate_chronos_forecast(
@@ -65,15 +41,16 @@ def evaluate_chronos_forecast(
     systems: dict[str, ChronosDataset],
     batch_size: int,
     prediction_length: int,
+    system_dims: dict[str, int],
+    num_samples: int = 1,
     limit_prediction_length: bool = False,
-    metrics_names: list[str] | None = None,
+    metric_names: list[str] | None = None,
+    eval_subintervals: list[tuple[int, int]] | None = None,
     parallel_sample_reduction_fn: Callable | None = None,
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
     redo_normalization: bool = False,
-    system_dims: dict[str, int] | None = None,
-    ndims_for_metrics: int = 1,
     **predict_kwargs: Any,
 ) -> tuple[
     dict[str, np.ndarray] | None,
@@ -88,7 +65,7 @@ def evaluate_chronos_forecast(
         pipeline: The Chronos Pipeline for evaluation.
         systems: A dictionary mapping system names to their respective ChronosDataset.
         batch_size: The batch size to use for evaluation.
-        metrics_names: Optional list of metric names to compute.
+        metric_names: Optional list of metric names to compute.
         parallel_sample_reduction: How to reduce the parallel samples over dim 0,
             only used if return_predictions is True
         return_predictions: Whether to return the predictions.
@@ -106,18 +83,18 @@ def evaluate_chronos_forecast(
             Only returned if `return_labels` is True.
         - system_metrics: A nested dictionary containing computed metrics for each system.
     """
-    if system_dims is None:
-        system_dims = {}
-    else:
-        log("System dims provided, will use dimension-aware batching")
-
-    if ndims_for_metrics < 1:
-        raise ValueError("ndims_for_metrics must be >= 1")
-
+    assert isinstance(num_samples, int) and num_samples > 0, (
+        "num_samples must be a positive integer"
+    )
     system_predictions = {}
     system_contexts = {}
     system_labels = {}
     system_metrics = defaultdict(dict)
+
+    if eval_subintervals is None:
+        eval_subintervals = [(0, prediction_length)]
+    elif (0, prediction_length) not in eval_subintervals:
+        eval_subintervals.append((0, prediction_length))
 
     if parallel_sample_reduction_fn is None:
         parallel_sample_reduction_fn = lambda x: x
@@ -125,43 +102,40 @@ def evaluate_chronos_forecast(
     for system in tqdm(systems, desc="Forecasting..."):
         log(f"Evaluating {system}")
         dataset = systems[system]
-        dim = system_dims.get(system)
+        num_sys = len(dataset.datasets)
+        dim = system_dims[system]
         predictions, labels, contexts, future_values = [], [], [], []
-
-        # if system dim is available, use dim-aware batching
-        batching_fn = (
-            partial(dim_aware_batcher, dim=dim) if dim is not None else batcher
-        )
 
         # length of the dataset iterator is equal to len(dataset.datasets)*num_eval_windows
         # for each eval window style:
         # - sampled: num_eval_windows = num_test_instances
         # - rolling: num_eval_windows = (T - context_length - prediction_length) // window_stride + 1
         # - single: num_eval_windows = 1
-        for batch in batching_fn(dataset, batch_size=batch_size):
+        for batch in batcher(dataset, batch_size=batch_size):
             past_values, future_values = zip(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
 
             # num_samples = number of arrow files in this system's subdirectory
-            # shape: (dim * num_samples if dim-aware batching else batch_size, context_length)
+            # shape: (batch_size, context_length)
             past_batch = torch.cat(past_values, dim=0).to(pipeline.model.device).cpu()
             context = past_batch.numpy()
 
-            # shape: (num_parallel_samples, dim * num_samples if dim-aware batching else batch_size, prediction_length)
+            # shape: (num_parallel_samples, batch_size, prediction_length)
             preds = (
                 pipeline.predict(
                     past_batch,
                     prediction_length=prediction_length,
-                    num_samples=1,  # if None, defaults to chronos config
+                    num_samples=num_samples,
                     limit_prediction_length=limit_prediction_length,
                     **predict_kwargs,
                 )
+                .transpose(0, 1)
                 .cpu()
                 .numpy()
-            ).transpose(1, 0, 2)
+            )
 
-            # shape: (dim * num_samples if dim-aware batching else batch_size, sampler_prediction_length)
+            # shape: (batch_size, sampler_prediction_length)
             future_batch = torch.cat(future_values, dim=0).cpu().numpy()
 
             # Truncate predictions to match future_batch length if needed
@@ -178,53 +152,42 @@ def evaluate_chronos_forecast(
             predictions.append(preds)
             contexts.append(context)
 
-        # shape: (num_windows*num_datasets, prediction_length, num_channels)
-        predictions = np.concatenate(predictions, axis=1)
+        # if parallel_sample_reduction_fn is None, then predictions shape is:
+        # shape: (num_parallel_samples, num_systems*num_eval_windows, prediction_length, dim)
+        # otherwise, predictions shape is:
+        # shape: (num_systems*num_eval_windows, prediction_length, dim)
+        predictions = (
+            np.concatenate(predictions, axis=1)
+            .reshape(num_samples, num_sys, dim, -1, prediction_length)
+            .transpose(0, 1, 3, 4, 2)
+            .reshape(num_samples, -1, prediction_length, dim)
+        )
         predictions = parallel_sample_reduction_fn(predictions)
-        labels = np.concatenate(labels, axis=0)
-        # shape: (num_windows*num_datasets, context_length, num_channels)
-        contexts = np.concatenate(contexts, axis=0)
+        labels = (
+            np.concatenate(labels, axis=0)
+            .reshape(num_sys, dim, -1, prediction_length)
+            .transpose(0, 2, 3, 1)
+            .reshape(-1, prediction_length, dim)
+        )
+        # shape: (num_systems*num_eval_windows, context_length, dim)
+        contexts = (
+            np.concatenate(contexts, axis=0)
+            .reshape(num_sys, dim, -1, contexts[0].shape[-1])
+            .transpose(0, 2, 3, 1)
+            .reshape(-1, contexts[0].shape[-1], dim)
+        )
 
-        if metrics_names is not None:
-            assert prediction_length % 64 == 0, (
-                "prediction_length must be a multiple of 64"
+        if metric_names is not None:
+            assert all(start < prediction_length for start, _ in eval_subintervals), (
+                "All start indices must be less than the prediction length"
             )
-            forecast_length_for_metrics = np.arange(64, prediction_length + 64, 64)
-
-            if ndims_for_metrics > 1:
-                if dim is None:
-                    raise ValueError("Dimension is not available for this system")
-                multivar_predictions = predictions.reshape(-1, prediction_length, dim)[
-                    :, :, :ndims_for_metrics
-                ]
-                multivar_labels = labels.reshape(-1, prediction_length, dim)[
-                    :, :, :ndims_for_metrics
-                ]
-                log(f"multivar_predictions shape: {multivar_predictions.shape}")
-                log(f"multivar_labels shape: {multivar_labels.shape}")
-
-                for forecast_length in forecast_length_for_metrics:
-                    system_metrics[forecast_length][system] = compute_metrics(
-                        multivar_predictions[:, :forecast_length, :],
-                        multivar_labels[:, :forecast_length, :],
-                        include=metrics_names,
-                    )
-            elif ndims_for_metrics == 1:
-                for forecast_length in forecast_length_for_metrics:
-                    system_metrics[forecast_length][system] = compute_metrics(
-                        predictions[:, :forecast_length, :],
-                        labels[:, :forecast_length, :],
-                        include=metrics_names,
-                    )
-            else:
-                raise ValueError(
-                    f"Invalid number of dimensions for metrics: {ndims_for_metrics}"
+            for start, end in eval_subintervals:
+                system_metrics[end - start][system] = compute_metrics(
+                    predictions[:, start:end, :],
+                    labels[:, start:end, :],
+                    include=metric_names,
                 )
 
-        # if no parallel sample reduction, then predictions shape is:
-        # shape: (num_parallel_samples, num_windows*num_datasets, prediction_length, num_channels)
-        # otherwise, predictions shape is:
-        # shape: (num_windows*num_datasets, prediction_length, num_channels)
         if return_predictions:
             system_predictions[system] = predictions
         if return_contexts:
@@ -292,7 +255,8 @@ def main(cfg):
     context_length = model_config["context_length"]
     prediction_length = model_config["prediction_length"]
     log(f"context_length: {context_length}")
-    log(f"prediction_length: {prediction_length}")
+    log(f"model prediction_length: {prediction_length}")
+    log(f"eval prediction_length: {cfg.eval.prediction_length}")
 
     # get test data paths, collect all time series for each system in a dict (system_name -> list of FileDatasets)
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
@@ -357,7 +321,7 @@ def main(cfg):
         batch_size=cfg.eval.batch_size,
         prediction_length=cfg.eval.prediction_length,
         limit_prediction_length=cfg.eval.limit_prediction_length,
-        metrics_names=cfg.eval.metrics_names,
+        metric_names=cfg.eval.metric_names,
         system_dims=system_dims,
         return_predictions=True,
         return_contexts=True,
@@ -367,9 +331,10 @@ def main(cfg):
         temperature=model_config["temperature"],
         top_k=model_config["top_k"],
         top_p=model_config["top_p"],
-        ndims_for_metrics=3,
+        eval_subintervals=[
+            (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
+        ],
     )
-    window_indices = None
 
     log("Saving predictions...")
     if predictions is not None and contexts is not None:
@@ -383,7 +348,6 @@ def main(cfg):
         save_eval_results(
             metrics,
             coords=full_trajs,
-            window_indices=window_indices,
             coords_save_dir=None,  # cfg.eval.forecast_save_dir,
         )
 
@@ -399,7 +363,6 @@ def main(cfg):
         save_eval_results(
             None,  # do not save metrics again
             coords=full_trajs,
-            window_indices=window_indices,
             coords_save_dir=None,  # cfg.eval.labels_save_dir,
         )
 

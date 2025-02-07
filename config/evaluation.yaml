@@ -8,7 +8,7 @@ eval:
   batch_size: 32
   num_systems: 10
 
-  metrics_names:
+  metric_names:
     - mse
     - mae
     - smape

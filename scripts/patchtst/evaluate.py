@@ -32,7 +32,7 @@ def evaluate_mlm_model(
     model: PatchTST,
     systems: dict[str, PatchTSTDataset],
     batch_size: int,
-    metrics_names: list[str] | None = None,
+    metric_names: list[str] | None = None,
     undo_normalization: bool = False,
     return_completions: bool = False,
     return_processed_past_values: bool = False,
@@ -116,11 +116,11 @@ def evaluate_mlm_model(
             completions = completions.transpose(0, 2, 1)
             processed_past_values = processed_past_values.transpose(0, 2, 1)
 
-            if metrics_names is not None:
+            if metric_names is not None:
                 eval_metrics = compute_metrics(
                     completions,
                     processed_past_values,
-                    include=metrics_names,  # type: ignore
+                    include=metric_names,  # type: ignore
                 )
                 # compute running average of metrics over batches
                 for metric, value in eval_metrics.items():
@@ -268,8 +268,8 @@ def evaluate_forecasting_model(
 
             # standardize using stats from the past_batch
             if redo_normalization:
-                future_batch = safe_standardize(future_batch, context=context, axis=1)
                 preds = safe_standardize(preds, context=context[None, :, :], axis=2)
+                future_batch = safe_standardize(future_batch, context=context, axis=1)
                 context = safe_standardize(context, axis=1)
 
             labels.append(future_batch)
@@ -282,8 +282,8 @@ def evaluate_forecasting_model(
         # shape: (num_eval_windows*num_datasets, prediction_length, num_channels)
         predictions = np.concatenate(predictions, axis=1)
         predictions = parallel_sample_reduction_fn(predictions)
-        # shape: (num_eval_windows*num_datasets, context_length, num_channels)
         labels = np.concatenate(labels, axis=0)
+        # shape: (num_eval_windows*num_datasets, context_length, num_channels)
         contexts = np.concatenate(contexts, axis=0)
 
         # evaluate metrics for multiple forecast lengths on user-specified subintervals
@@ -299,10 +299,6 @@ def evaluate_forecasting_model(
                     include=metric_names,
                 )
 
-        # if parallel_sample_reduction_fn is not None, the shape is:
-        # shape: (num_eval_windows*num_datasets, prediction_length, num_channels)
-        # otherwise, the shape is:
-        # shape: (num_parallel_samples, num_eval_windows*num_datasets, prediction_length, num_channels)
         if return_predictions:
             system_predictions[system] = predictions
         if return_contexts:
@@ -433,7 +429,7 @@ def main(cfg):
             batch_size=cfg.eval.batch_size,
             prediction_length=cfg.eval.prediction_length,
             limit_prediction_length=cfg.eval.limit_prediction_length,
-            metric_names=cfg.eval.metrics_names,
+            metric_names=cfg.eval.metric_names,
             return_predictions=True,
             return_contexts=True,
             return_labels=True,
@@ -480,7 +476,7 @@ def main(cfg):
             evaluate_mlm_model(
                 model,
                 test_datasets,
-                metrics_names=cfg.eval.metrics_names,
+                metric_names=cfg.eval.metric_names,
                 batch_size=cfg.eval.batch_size,
                 undo_normalization=False,
                 return_completions=True,

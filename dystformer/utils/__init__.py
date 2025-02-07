@@ -16,8 +16,6 @@ from .eval_utils import (
     left_pad_and_stack_1D,
     left_pad_and_stack_multivariate,
     load_and_split_dataset_from_arrow,
-    rolling_prediction_window_indices,
-    sampled_prediction_window_indices,
     save_evaluation_results,
 )
 from .plot_utils import (

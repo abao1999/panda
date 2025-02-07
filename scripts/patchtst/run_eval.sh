@@ -35,7 +35,7 @@ python scripts/patchtst/evaluate.py \
     eval.num_test_instances=1 \
     eval.window_style=sampled \
     eval.batch_size=64 \
-    eval.prediction_length=512 \
+    eval.prediction_length=256 \
     eval.limit_prediction_length=false \
     eval.metrics_save_dir=$main_dir/eval_results/patchtst/${run_num}_metrics/zeroshot \
     eval.metrics_fname=metrics \
