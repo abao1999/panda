@@ -25,25 +25,28 @@ checkpoint_dir=$WORK/checkpoints
 #     eval.seed=42 \
 #     "$@"
 
-run_num=388 #363
+run_nums=(391 393 380 400)
 # forecast eval
-python scripts/patchtst/evaluate.py \
-    eval.mode=predict \
-    eval.checkpoint_path=$checkpoint_dir/run-${run_num}/checkpoint-final \
-    eval.data_path=$WORK/data/final_skew40/test_base \
-    eval.num_systems=325 \
-    eval.num_test_instances=1 \
-    eval.window_style=sampled \
-    eval.batch_size=64 \
-    eval.prediction_length=256 \
-    eval.limit_prediction_length=false \
-    eval.metrics_save_dir=$main_dir/eval_results/patchtst/${run_num}_metrics/zeroshot \
-    eval.metrics_fname=metrics \
-    eval.overwrite=true \
-    eval.device=cuda:1 \
-    eval.forecast_save_dir=$WORK/data/eval/patchtst/run-${run_num}/forecasts \
-    eval.labels_save_dir=$WORK/data/eval/patchtst/run-${run_num}/labels \
-    use_quadratic_embedding=false \
-    fixed_dim=3 \
-    eval.seed=99 \
-    "$@"
+for run_num in "${run_nums[@]}"; do
+    echo "Evaluating run ${run_num}"
+    python scripts/patchtst/evaluate.py \
+        eval.mode=predict \
+        eval.checkpoint_path=$checkpoint_dir/run-${run_num}/checkpoint-final \
+        eval.data_path=$WORK/data/final_skew40/test_base \
+        eval.num_systems=325 \
+        eval.num_test_instances=1 \
+        eval.window_style=sampled \
+        eval.batch_size=64 \
+        eval.prediction_length=512 \
+        eval.limit_prediction_length=false \
+        eval.metrics_save_dir=$main_dir/eval_results/patchtst/${run_num}_metrics/zeroshot \
+        eval.metrics_fname=metrics \
+        eval.overwrite=true \
+        eval.device=cuda:1 \
+        eval.forecast_save_dir=$WORK/data/eval/patchtst/run-${run_num}/forecasts \
+        eval.labels_save_dir=$WORK/data/eval/patchtst/run-${run_num}/labels \
+        use_quadratic_embedding=false \
+        fixed_dim=3 \
+        eval.seed=99 \
+        "$@"
+done

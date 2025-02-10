@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import random
 from collections import defaultdict
 from functools import partial
 from pathlib import Path
@@ -268,7 +267,7 @@ def evaluate_forecasting_model(
 
             # standardize using stats from the past_batch
             if redo_normalization:
-                preds = safe_standardize(preds, context=context[None, :, :], axis=2)
+                # preds = safe_standardize(preds, context=context[None, :, :], axis=2)
                 future_batch = safe_standardize(future_batch, context=context, axis=1)
                 context = safe_standardize(context, axis=1)
 
@@ -373,7 +372,8 @@ def main(cfg):
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-    for system_dir in random.sample(system_dirs, cfg.eval.num_systems):
+
+    for system_dir in system_dirs[: cfg.eval.num_systems]:
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
         test_data_dict[system_name] = [
