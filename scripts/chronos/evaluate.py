@@ -186,6 +186,7 @@ def evaluate_chronos_forecast(
                     predictions[:, start:end, :],
                     labels[:, start:end, :],
                     include=metric_names,
+                    batch_axis=0,
                 )
 
         if return_predictions:

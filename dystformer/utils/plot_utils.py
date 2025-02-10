@@ -165,6 +165,40 @@ def plot_trajs_multivariate(
     plt.close()
 
 
+def plot_univariate_trajs(
+    ensemble: dict[str, np.ndarray],
+    save_path: str,
+    figsize: tuple[int, int] = (6, 6),
+    max_samples: int = 6,
+    standardize: bool = False,
+    ndims: int | None = None,
+) -> None:
+    """
+    Plot univariate coordinates of multivariate timeseries
+
+    Args:
+        ensemble (dict[str, np.ndarray]): Dictionary of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
+        save_path (str): Path to save the plots.
+        standardize (bool): Whether to standardize the trajectories
+        figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
+        max_samples (int): Maximum number of samples to plot. Defaults to 6.
+    """
+    os.makedirs(save_path, exist_ok=True)
+
+    for system_name, trajectories in ensemble.items():
+        if standardize:
+            trajectories = safe_standardize(trajectories)
+
+        if ndims is None:
+            ndims = trajectories.shape[1]
+
+        fig, axes = plt.subplots(nrows=ndims, ncols=1, figsize=figsize, sharex=True)
+        for i in range(ndims):
+            axes[i].plot(trajectories[:max_samples, i, :].T)
+        fig.savefig(os.path.join(save_path, f"{system_name}_coords.png"))
+        plt.close()
+
+
 def plot_grid_trajs_multivariate(
     ensemble: dict[str, np.ndarray],
     save_path: str,
