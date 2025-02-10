@@ -12,10 +12,8 @@ eval:
     - mse
     - mae
     - smape
-    - mape
     - r2_score
     - spearman
-    - pearson
 
   forecast_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/forecasts
   labels_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/labels

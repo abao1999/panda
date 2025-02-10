@@ -297,6 +297,7 @@ def evaluate_forecasting_model(
                     predictions[:, start:end, :],
                     labels[:, start:end, :],
                     include=metric_names,
+                    batch_axis=0,
                 )
 
         if return_predictions:
@@ -366,7 +367,7 @@ def main(cfg):
     log(f"use_quadratic_embedding: {use_quadratic_embedding}")
     log(f"context_length: {context_length}")
     log(f"model prediction_length: {prediction_length}")
-    log(f"prediction_length: {cfg.eval.prediction_length}")
+    log(f"eval prediction_length: {cfg.eval.prediction_length}")
     model.eval()
 
     # get test data paths
