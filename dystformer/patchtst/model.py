@@ -292,7 +292,7 @@ class PatchTST(nn.Module):
             # need to contract over the num_samples dimension, use median
             context_tensor = torch.cat(
                 [context_tensor, prediction.median(dim=1).values], dim=1
-            )
+            )[:, -self.model.config.context_length :, :]
 
         # shape: [bs x num_samples x prediction_length x num_channels]
         predictions = torch.cat(predictions, dim=2)

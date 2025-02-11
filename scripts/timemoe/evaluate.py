@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import random
@@ -11,10 +10,10 @@ import torch
 import transformers
 from gluonts.dataset.common import FileDataset
 from gluonts.transform import LastValueImputation
+from transformers import AutoModelForCausalLM
 
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.evaluation import evaluate_chronos_forecast
-from dystformer.chronos.pipeline import ChronosPipeline
 from dystformer.utils import (
     log_on_main,
     save_evaluation_results,
@@ -22,6 +21,35 @@ from dystformer.utils import (
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
+
+
+class TimeMoePipeline:
+    def __init__(self, model_path: str, device: str, torch_dtype: torch.dtype):
+        self.device = device
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            device_map=device,
+            trust_remote_code=True,
+            torch_dtype=torch_dtype,
+        )
+        self.model.eval()
+
+    @torch.no_grad()
+    def predict(
+        self,
+        seqs: torch.Tensor,
+        prediction_length: int,
+        num_samples: int = 1,
+        limit_prediction_length: bool = True,
+        **kwargs,
+    ) -> torch.Tensor:
+        mean, std = seqs.mean(dim=-1, keepdim=True), seqs.std(dim=-1, keepdim=True)
+        normed_seqs = (seqs - mean) / std
+        # shape: (batch_size, context_length + prediction_length)
+        output = self.model.generate(normed_seqs, max_new_tokens=prediction_length)
+        # shape: (batch_size, prediction_length)
+        normed_predictions = output[:, -prediction_length:]
+        return (normed_predictions * std + mean).unsqueeze(1)
 
 
 def get_dim_from_dataset(dataset: FileDataset) -> int:  # type: ignore
@@ -33,32 +61,15 @@ def get_dim_from_dataset(dataset: FileDataset) -> int:  # type: ignore
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
-    checkpoint_path = cfg.eval.checkpoint_path
-    log(f"Using checkpoint: {checkpoint_path}")
-    training_info_path = os.path.join(checkpoint_path, "training_info.json")
-    if os.path.exists(training_info_path):
-        log(f"Training info file found at: {training_info_path}")
-        with open(training_info_path, "r") as f:
-            training_info = json.load(f)
-            train_config = training_info.get("train_config", None)
-            if train_config is None:  # for backwards compatibility
-                train_config = training_info.get("training_config", None)
-    else:
-        log(f"No training info file found at: {training_info_path}")
-        train_config = None
-
     # init model for inference
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
-    pipeline = ChronosPipeline.from_pretrained(
-        cfg.eval.checkpoint_path,
-        device_map=cfg.eval.device,
-        torch_dtype=torch_dtype,
+    pipeline = TimeMoePipeline(
+        "Maple728/TimeMoE-50M", device=cfg.eval.device, torch_dtype=torch_dtype
     )
     pipeline.model.eval()
 
-    model_config = dict(vars(pipeline.model.config))
-    train_config = train_config or dict(cfg.train)
+    train_config = dict(cfg.train)
 
     # set floating point precision
     use_tf32 = train_config.get("tf32", False)
@@ -77,8 +88,8 @@ def main(cfg):
     log(f"Using SEED: {rseed}")
     transformers.set_seed(seed=rseed)
 
-    context_length = model_config["context_length"]
-    prediction_length = model_config["prediction_length"]
+    context_length = cfg.chronos.context_length
+    prediction_length = cfg.eval.prediction_length
     log(f"context_length: {context_length}")
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
@@ -109,7 +120,7 @@ def main(cfg):
             datasets=test_data_dict[system_name],
             probabilities=[1.0 / len(test_data_dict[system_name])]
             * len(test_data_dict[system_name]),
-            tokenizer=pipeline.tokenizer,
+            tokenizer=None,  # type: ignore # not relevant for evaluation
             context_length=cfg.chronos.context_length,
             prediction_length=cfg.eval.prediction_length,  # NOTE: should match the forecast prediction length
             min_past=cfg.min_past,
@@ -141,7 +152,7 @@ def main(cfg):
     }[cfg.eval.parallel_sample_reduction]
 
     predictions, contexts, labels, metrics = evaluate_chronos_forecast(
-        pipeline,
+        pipeline,  # type: ignore
         test_datasets,
         batch_size=cfg.eval.batch_size,
         prediction_length=cfg.eval.prediction_length,
@@ -153,9 +164,6 @@ def main(cfg):
         return_labels=True,
         parallel_sample_reduction_fn=parallel_sample_reduction_fn,
         redo_normalization=True,
-        temperature=model_config["temperature"],
-        top_k=model_config["top_k"],
-        top_p=model_config["top_p"],
         eval_subintervals=[
             (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
         ],
