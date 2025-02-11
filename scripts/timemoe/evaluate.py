@@ -15,6 +15,7 @@ from transformers import AutoModelForCausalLM
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.evaluation import evaluate_chronos_forecast
 from dystformer.utils import (
+    get_dim_from_dataset,
     log_on_main,
     save_evaluation_results,
 )
@@ -51,13 +52,6 @@ class TimeMoePipeline:
         # shape: (batch_size, prediction_length)
         normed_predictions = output[:, -prediction_length:]
         return (normed_predictions * std + mean).unsqueeze(1)
-
-
-def get_dim_from_dataset(dataset: FileDataset) -> int:  # type: ignore
-    """
-    helper function to get system dimension from file dataset
-    """
-    return next(iter(dataset))["target"].shape[0]
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
