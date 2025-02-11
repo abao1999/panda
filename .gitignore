@@ -22,6 +22,7 @@ data/
 nohup.out
 tests/*.json
 tests/*.png
+excluded_notebooks/
 
 # bash scripts for ablations
 *ablations*.sh
@@ -140,7 +141,6 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-notebooks/
 
 # IPython
 profile_default/
