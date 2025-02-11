@@ -43,6 +43,7 @@ class TimeMoePipeline:
         limit_prediction_length: bool = True,
         **kwargs,
     ) -> torch.Tensor:
+        seqs = seqs.to(self.device)
         mean, std = seqs.mean(dim=-1, keepdim=True), seqs.std(dim=-1, keepdim=True)
         normed_seqs = (seqs - mean) / std
         # shape: (batch_size, context_length + prediction_length)
