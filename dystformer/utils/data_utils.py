@@ -14,6 +14,13 @@ from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
 
 
+def get_dim_from_dataset(dataset: FileDataset) -> int:  # type: ignore
+    """
+    helper function to get system dimension from file dataset
+    """
+    return next(iter(dataset))["target"].shape[0]
+
+
 def safe_standardize(
     arr: np.ndarray,
     epsilon: float = 1e-10,

@@ -3,6 +3,7 @@ from .data_utils import (
     convert_to_arrow,
     demote_from_numpy,
     dict_demote_from_numpy,
+    get_dim_from_dataset,
     get_system_filepaths,
     make_ensemble_from_arrow_dir,
     process_trajs,

@@ -1,11 +1,12 @@
-import json
 import logging
 import os
+import random
 from functools import partial
 from pathlib import Path
 
 import hydra
 import numpy as np
+import timesfm
 import torch
 import transformers
 from gluonts.dataset.common import FileDataset
@@ -13,7 +14,6 @@ from gluonts.transform import LastValueImputation
 
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.evaluation import evaluate_chronos_forecast
-from dystformer.chronos.pipeline import ChronosPipeline
 from dystformer.utils import (
     get_dim_from_dataset,
     log_on_main,
@@ -24,34 +24,50 @@ logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
 
 
+class TimesFMPipeline:
+    def __init__(self, model_id: str, device: str, prediction_length: int):
+        self.device = device
+
+        self.model = timesfm.TimesFm(
+            hparams=timesfm.TimesFmHparams(
+                backend=device,  # type: ignore
+                per_core_batch_size=32,
+                horizon_len=prediction_length,
+            ),
+            checkpoint=timesfm.TimesFmCheckpoint(huggingface_repo_id=model_id),
+        )
+        # for compatibility with dystformer
+        self.model.device = self.model._device  # type: ignore
+
+    @torch.no_grad()
+    def predict(
+        self,
+        seqs: torch.Tensor,
+        prediction_length: int = -1,
+        num_samples: int = -1,
+        limit_prediction_length: bool = True,
+        **kwargs,
+    ) -> torch.Tensor:
+        """Generate forecasts for input sequences.
+
+        Returns point forecasts and experimental quantile forecasts.
+        """
+        assert seqs.ndim == 2, "seqs must be of shape (batch_size, seq_len)"
+
+        point_forecast, quantile_forecast = self.model.forecast(seqs, normalize=True)  # type: ignore
+        # unsqueeze to add sample dimension
+        return torch.from_numpy(point_forecast).unsqueeze(1)
+
+
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
-    checkpoint_path = cfg.eval.checkpoint_path
-    log(f"Using checkpoint: {checkpoint_path}")
-    training_info_path = os.path.join(checkpoint_path, "training_info.json")
-    if os.path.exists(training_info_path):
-        log(f"Training info file found at: {training_info_path}")
-        with open(training_info_path, "r") as f:
-            training_info = json.load(f)
-            train_config = training_info.get("train_config", None)
-            if train_config is None:  # for backwards compatibility
-                train_config = training_info.get("training_config", None)
-    else:
-        log(f"No training info file found at: {training_info_path}")
-        train_config = None
-
-    # init model for inference
-    torch_dtype = getattr(torch, cfg.eval.torch_dtype)
-    assert isinstance(torch_dtype, torch.dtype)
-    pipeline = ChronosPipeline.from_pretrained(
-        cfg.eval.checkpoint_path,
-        device_map=cfg.eval.device,
-        torch_dtype=torch_dtype,
+    pipeline = TimesFMPipeline(
+        "google/timesfm-1.0-200m-pytorch",
+        device="gpu",
+        prediction_length=cfg.eval.prediction_length,
     )
-    pipeline.model.eval()
 
-    model_config = dict(vars(pipeline.model.config))
-    train_config = train_config or dict(cfg.train)
+    train_config = dict(cfg.train)
 
     # set floating point precision
     use_tf32 = train_config.get("tf32", False)
@@ -70,8 +86,8 @@ def main(cfg):
     log(f"Using SEED: {rseed}")
     transformers.set_seed(seed=rseed)
 
-    context_length = model_config["context_length"]
-    prediction_length = model_config["prediction_length"]
+    context_length = cfg.chronos.context_length
+    prediction_length = cfg.eval.prediction_length
     log(f"context_length: {context_length}")
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
@@ -80,7 +96,7 @@ def main(cfg):
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-    for system_dir in system_dirs[: cfg.eval.num_systems]:
+    for system_dir in random.sample(system_dirs, cfg.eval.num_systems):
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
         test_data_dict[system_name] = [
@@ -102,7 +118,7 @@ def main(cfg):
             datasets=test_data_dict[system_name],
             probabilities=[1.0 / len(test_data_dict[system_name])]
             * len(test_data_dict[system_name]),
-            tokenizer=pipeline.tokenizer,
+            tokenizer=None,  # type: ignore # not relevant for evaluation
             context_length=cfg.chronos.context_length,
             prediction_length=cfg.eval.prediction_length,  # NOTE: should match the forecast prediction length
             min_past=cfg.min_past,
@@ -134,7 +150,7 @@ def main(cfg):
     }[cfg.eval.parallel_sample_reduction]
 
     predictions, contexts, labels, metrics = evaluate_chronos_forecast(
-        pipeline,
+        pipeline,  # type: ignore
         test_datasets,
         batch_size=cfg.eval.batch_size,
         prediction_length=cfg.eval.prediction_length,
@@ -146,9 +162,6 @@ def main(cfg):
         return_labels=True,
         parallel_sample_reduction_fn=parallel_sample_reduction_fn,
         redo_normalization=True,
-        temperature=model_config["temperature"],
-        top_k=model_config["top_k"],
-        top_p=model_config["top_p"],
         eval_subintervals=[
             (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
         ],
@@ -161,13 +174,12 @@ def main(cfg):
             if system not in contexts:
                 raise ValueError(f"System {system} not in contexts")
             full_trajs[system] = np.concatenate(
-                [contexts[system], predictions[system]], axis=2
+                [contexts[system], predictions[system]], axis=1
             )
-            print(full_trajs[system].shape)
         save_eval_results(
             metrics,
             coords=full_trajs,
-            coords_save_dir=cfg.eval.forecast_save_dir,
+            coords_save_dir=None,  # cfg.eval.forecast_save_dir,
         )
 
     log("Saving labels...")
@@ -177,13 +189,12 @@ def main(cfg):
             if system not in contexts:
                 raise ValueError(f"System {system} not in contexts")
             full_trajs[system] = np.concatenate(
-                [contexts[system], labels[system]], axis=2
+                [contexts[system], labels[system]], axis=1
             )
-            print(full_trajs[system].shape)
         save_eval_results(
             None,  # do not save metrics again
             coords=full_trajs,
-            coords_save_dir=cfg.eval.labels_save_dir,
+            coords_save_dir=None,  # cfg.eval.labels_save_dir,
         )
 
 
