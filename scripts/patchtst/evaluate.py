@@ -10,6 +10,9 @@ import torch
 import transformers
 from gluonts.dataset.common import FileDataset
 
+from dystformer.augmentations import (
+    FixedDimensionDelayEmbeddingTransform,
+)
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.evaluation import (
     evaluate_forecasting_model,
@@ -85,6 +88,8 @@ def main(cfg):
 
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
+    transforms: list = [FixedDimensionDelayEmbeddingTransform(embedding_dim=3)]
+
     test_datasets = {
         system_name: PatchTSTDataset(
             datasets=test_data_dict[system_name],
@@ -95,6 +100,7 @@ def main(cfg):
             num_test_instances=cfg.eval.num_test_instances,
             window_style=cfg.eval.window_style,
             window_stride=cfg.eval.window_stride,
+            transforms=transforms,
             mode="test",
         )
         for system_name in test_data_dict
@@ -147,9 +153,9 @@ def main(cfg):
             for system in predictions:
                 if system not in contexts:
                     raise ValueError(f"System {system} not in contexts")
-                # shape: (num_eval_windows*num_datasets, context_length + prediction_length, num_channels)
+                # shape: (num_eval_windows*num_datasets, num_channels, context_length + prediction_length)
                 full_trajs[system] = np.concatenate(
-                    [contexts[system], predictions[system]], axis=1
+                    [contexts[system], predictions[system]], axis=2
                 )
             save_eval_results(
                 metrics,
@@ -162,9 +168,9 @@ def main(cfg):
             for system in labels:
                 if system not in contexts:
                     raise ValueError(f"System {system} not in contexts")
-                # shape: (num_eval_windows*num_datasets, context_length + prediction_length, num_channels)
+                # shape: (num_eval_windows*num_datasets, num_channels, context_length + prediction_length)
                 full_trajs[system] = np.concatenate(
-                    [contexts[system], labels[system]], axis=1
+                    [contexts[system], labels[system]], axis=2
                 )
             save_eval_results(
                 None,  # do not save metrics again

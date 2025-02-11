@@ -49,7 +49,7 @@ def default_attractor_tests() -> list[Callable]:
         partial(
             check_power_spectrum, rel_peak_height=1e-5, rel_prominence=1e-5, min_peaks=3
         ),
-        partial(check_lyapunov_exponent, traj_len=150),
+        partial(check_lyapunov_exponent, traj_len=200),
         partial(check_stationarity, p_value=0.05),
     ]
     return tests

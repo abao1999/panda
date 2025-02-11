@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import random
 from functools import partial
 from pathlib import Path
 
@@ -87,7 +86,7 @@ def main(cfg):
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-    for system_dir in random.sample(system_dirs, cfg.eval.num_systems):
+    for system_dir in system_dirs[: cfg.eval.num_systems]:
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
         test_data_dict[system_name] = [
@@ -168,12 +167,13 @@ def main(cfg):
             if system not in contexts:
                 raise ValueError(f"System {system} not in contexts")
             full_trajs[system] = np.concatenate(
-                [contexts[system], predictions[system]], axis=1
+                [contexts[system], predictions[system]], axis=2
             )
+            print(full_trajs[system].shape)
         save_eval_results(
             metrics,
             coords=full_trajs,
-            coords_save_dir=None,  # cfg.eval.forecast_save_dir,
+            coords_save_dir=cfg.eval.forecast_save_dir,
         )
 
     log("Saving labels...")
@@ -183,12 +183,13 @@ def main(cfg):
             if system not in contexts:
                 raise ValueError(f"System {system} not in contexts")
             full_trajs[system] = np.concatenate(
-                [contexts[system], labels[system]], axis=1
+                [contexts[system], labels[system]], axis=2
             )
+            print(full_trajs[system].shape)
         save_eval_results(
             None,  # do not save metrics again
             coords=full_trajs,
-            coords_save_dir=None,  # cfg.eval.labels_save_dir,
+            coords_save_dir=cfg.eval.labels_save_dir,
         )
 
 

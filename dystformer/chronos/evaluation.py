@@ -165,11 +165,11 @@ def evaluate_chronos_forecast(
                 )
 
         if return_predictions:
-            system_predictions[system] = predictions
+            system_predictions[system] = predictions.transpose(0, 2, 1)
         if return_contexts:
-            system_contexts[system] = contexts
+            system_contexts[system] = contexts.transpose(0, 2, 1)
         if return_labels:
-            system_labels[system] = labels
+            system_labels[system] = labels.transpose(0, 2, 1)
 
     return (
         system_predictions if return_predictions else None,

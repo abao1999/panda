@@ -45,7 +45,7 @@ eval:
   split_coords: false
   verbose: false
 
-  use_channel_sampler: true
+  use_channel_sampler: false
   channel_sampler:
     num_channels: 3
     num_samples: 2

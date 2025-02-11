@@ -282,12 +282,13 @@ def evaluate_forecasting_model(
                     batch_axis=0,
                 )
 
+        # NOTE: these all need to be of shape: (num_eval_windows*num_datasets, num_channels, prediction_length)
         if return_predictions:
-            system_predictions[system] = predictions
+            system_predictions[system] = predictions.transpose(0, 2, 1)
         if return_contexts:
-            system_contexts[system] = contexts
+            system_contexts[system] = contexts.transpose(0, 2, 1)
         if return_labels:
-            system_labels[system] = labels
+            system_labels[system] = labels.transpose(0, 2, 1)
 
     return (
         system_predictions if return_predictions else None,

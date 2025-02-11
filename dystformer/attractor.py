@@ -440,8 +440,10 @@ def check_not_linear(
     try:
         _, s, _ = np.linalg.svd(standardized_points, full_matrices=False)
         explained_variance_ratio = s**2 / (np.sum(s**2) + eps)
-        return explained_variance_ratio[0] <= r2_threshold
-    except np.linalg.LinAlgError:
+        res = explained_variance_ratio[0] <= r2_threshold
+        return res
+    except Exception as e:
+        print(f"Error in check_not_linear: {e}")
         return True  # fallback if SVD fails
 
 
