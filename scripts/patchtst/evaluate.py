@@ -67,9 +67,11 @@ def main(cfg):
 
     context_length = model_config["context_length"]
     prediction_length = model_config["prediction_length"]
+    channel_attention = model_config["channel_attention"]
     log(f"context_length: {context_length}")
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
+    log(f"channel_attention: {channel_attention}")
     model.eval()
 
     # get test data paths

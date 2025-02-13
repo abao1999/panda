@@ -348,10 +348,6 @@ def main(cfg):
     log_on_main("Training", logger)
     trainer.train()  # Transformers trainer will save model checkpoints automatically
 
-    # terminate wandb run after training
-    if cfg.wandb.log:
-        run.finish()
-
     # save final model checkpoint and training info locally
     if is_main_process():
         model.save_pretrained(output_dir / "checkpoint-final")  # type: ignore
@@ -361,6 +357,10 @@ def main(cfg):
             train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
             all_config=OmegaConf.to_container(cfg, resolve=True),  # type: ignore
         )
+
+    # terminate wandb run after training
+    if cfg.wandb.log:
+        run.finish()
 
 
 if __name__ == "__main__":

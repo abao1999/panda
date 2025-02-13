@@ -462,8 +462,7 @@ class DynSysSampler:
         # TEMPORARY: remove driver dims from trajectories
         if perturbed_systems is not None:
             dims = {
-                sys.name: getattr(sys, "driver_dim", sys.dimension)
-                for sys in perturbed_systems
+                sys.name: getattr(sys, "driver_dim", 0) for sys in perturbed_systems
             }
             ensemble = {sys: traj[:, dims[sys] :, :] for sys, traj in ensemble.items()}
 
