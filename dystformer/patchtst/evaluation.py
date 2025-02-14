@@ -8,12 +8,12 @@ from gluonts.itertools import batcher
 from tqdm import tqdm
 
 from dystformer.patchtst.dataset import PatchTSTDataset
-from dystformer.patchtst.model import PatchTST
+from dystformer.patchtst.pipeline import PatchTSTPipeline
 from dystformer.utils import safe_standardize
 
 
 def evaluate_mlm_model(
-    model: PatchTST,
+    pipeline: PatchTSTPipeline,
     systems: dict[str, PatchTSTDataset],
     batch_size: int,
     metric_names: list[str] | None = None,
@@ -32,13 +32,13 @@ def evaluate_mlm_model(
     Boolean mask to indicate which `past_values` were observed and which were missing. Mask values selected
     in `[0, 1]`:
     """
-    assert model.mode == "pretrain", "Model must be in pretrain mode"
+    assert pipeline.mode == "pretrain", "Model must be in pretrain mode"
     system_completions = {}
     system_processed_past_values = {}
     system_timestep_masks = {}
     system_metrics = defaultdict(dict)
 
-    context_length = model.config.context_length
+    context_length = pipeline.model.config.context_length
 
     for system in tqdm(systems, desc="Evaluating MLM pretrain model"):
         dataset = systems[system]  # IterableDataset
@@ -48,11 +48,10 @@ def evaluate_mlm_model(
         for i, batch in enumerate(batcher(dataset, batch_size=batch_size)):
             past_values = [data["past_values"] for data in batch]
 
-            # past_batch = torch.from_numpy(np.stack(past_values)).to(model.device)
-            past_batch = torch.stack(past_values, dim=0).to(model.device)
+            past_batch = torch.stack(past_values, dim=0).to(pipeline.device)
 
             # note past_observed_mask is None because we don't have any missing values in the training data
-            completions_output = model.model.generate_completions(
+            completions_output = pipeline.model.generate_completions(
                 past_batch, past_observed_mask=None
             )
             completions = (
@@ -139,7 +138,7 @@ def evaluate_mlm_model(
 
 
 def evaluate_forecasting_model(
-    model: PatchTST,
+    pipeline: PatchTSTPipeline,
     systems: dict[str, PatchTSTDataset],
     batch_size: int,
     prediction_length: int,
@@ -185,7 +184,7 @@ def evaluate_forecasting_model(
             Only returned if `return_labels` is True.
         - system_metrics: A nested dictionary containing computed metrics for each system.
     """
-    assert model.mode == "predict", "Model must be in predict mode"
+    assert pipeline.mode == "predict", "Model must be in predict mode"
     system_predictions = {}
     system_contexts = {}
     system_labels = {}
@@ -213,13 +212,13 @@ def evaluate_forecasting_model(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
             # shape: (batch_size, context_length, num_channels)
-            past_batch = torch.stack(past_values, dim=0).to(model.device)
+            past_batch = torch.stack(past_values, dim=0).to(pipeline.device)
 
             # shape: (num_parallel_samples, batch size, prediction_length, num_channels)
             # shit changes when using a channel sampler. notably, the batch dim, but it doesnt
             # matter if one just needs to aggregate over that to get metrics
             preds = (
-                model.predict(
+                pipeline.predict(
                     past_batch,
                     prediction_length=prediction_length,
                     limit_prediction_length=limit_prediction_length,

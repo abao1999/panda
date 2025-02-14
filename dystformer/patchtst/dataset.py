@@ -14,7 +14,6 @@ from gluonts.transform import (
     ExpectedNumInstanceSampler,
     InstanceSampler,
     InstanceSplitter,
-    MissingValueImputation,
     NumInstanceSampler,
     ValidationSplitSampler,
 )
@@ -90,12 +89,9 @@ class PatchTSTDataset(IterableDataset):
     probabilities: list[float]
     context_length: int = 512
     prediction_length: int = 64
-    min_past: int | None = None
-    imputation_method: MissingValueImputation | None = None
+    model_type: str = "pretrain"
     mode: str = "train"
     np_dtype: np.dtype = np.dtype(np.float32)
-    fixed_dim: int | None = None
-    delay_embed_prob: float = 0.0
     num_test_instances: int = 1
     window_style: str = "sampled"
     window_stride: int = 1
@@ -201,11 +197,13 @@ class PatchTSTDataset(IterableDataset):
 
     def to_hf_format(self, entry: dict) -> dict:
         past_target = torch.tensor(entry["past_target"], dtype=torch.float32)
+
+        # pretraining models do not need labels
+        if self.model_type == "pretrain":
+            return {"past_values": past_target}
+
         future_target = torch.tensor(entry["future_target"], dtype=torch.float32)
-        return {
-            "past_values": past_target,
-            "future_values": future_target,
-        }
+        return {"past_values": past_target, "future_values": future_target}
 
     def __iter__(self) -> Iterator:
         preprocessed_datasets = [

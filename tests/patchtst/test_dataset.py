@@ -8,10 +8,10 @@ import numpy as np
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from tqdm import tqdm
-from transformers import Trainer, TrainingArguments, set_seed
+from transformers import TrainingArguments, set_seed
 
 from dystformer.patchtst.dataset import PatchTSTDataset
-from dystformer.patchtst.model import PatchTST
+from dystformer.patchtst.pipeline import PatchTSTPipeline
 from dystformer.utils import (
     has_enough_observations,
 )
@@ -41,20 +41,9 @@ def plot_distribution(num_batches: int, batch_size: int, dataset, cfg):
         remove_unused_columns=cfg.train.remove_unused_columns,
     )
 
-    model = PatchTST(dict(cfg.patchtst), mode="pretrain")
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=dataset,
+    model = PatchTSTPipeline.from_pretrained(
+        mode="pretrain", pretrain_path=cfg.patchtst.pretrain_path
     )
-    dataloader = trainer.get_train_dataloader()
-
-    outputs = model(**next(iter(dataloader)))
-    print(outputs)
-
-    for batch in dataloader:
-        print(batch)
-        break
 
 
 def test_train_dataset(cfg):

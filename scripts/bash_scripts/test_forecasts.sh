@@ -21,11 +21,11 @@
 #     --split_ground_truth eval/patchtst/run-${run_num}/labels \
 
 
-run_num=386
+run_num=380
 
 python tests/test_forecasts.py \
     all \
-    --plot_save_dir figs/patchtst_eval_debug/forecasts/run-${run_num} \
+    --plot_save_dir figures/patchtst_eval_debug/forecasts/run-${run_num} \
     --split_forecasts eval_debug/patchtst/run-${run_num}/forecasts \
     --split_ground_truth eval_debug/patchtst/run-${run_num}/labels \
 

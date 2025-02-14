@@ -3,8 +3,6 @@ Training augmentations for multivariate time series
 """
 
 from dataclasses import dataclass
-from itertools import combinations_with_replacement
-from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,7 +13,7 @@ class RandomDimSelectionTransform:
     """Randomly select a subset of dimensions from a timeseries"""
 
     num_dims: int
-    random_seed: Optional[int] = 0
+    random_seed: int = 0
 
     def __post_init__(self) -> None:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
@@ -25,34 +23,6 @@ class RandomDimSelectionTransform:
             timeseries.shape[axis], self.num_dims, replace=False
         )
         return np.take(timeseries, selected_dims, axis=axis)
-
-
-@dataclass
-class RandomDelayEmbeddingsTransform:
-    """Delay embeddings of a randomly selected dimension of a timeseries
-
-    NOTE: this changes the length of the timeseries due to truncating the rolling artifacts
-
-    :param embedding_dim: embedding dimension for the delay embeddings
-    :param random_seed: RNG seed
-    """
-
-    random_seed: Optional[int] = 0
-
-    def __post_init__(self) -> None:
-        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
-
-    def __call__(self, timeseries: NDArray) -> NDArray:
-        num_dims = timeseries.shape[0]
-        selected_dim = self.rng.integers(num_dims)
-        selected_series = timeseries[selected_dim]
-
-        # Create delay embeddings
-        delay_embeddings = np.stack(
-            [np.roll(selected_series, shift) for shift in range(num_dims)]
-        )[:, num_dims - 1 :]  # cut off rolling artifacts
-
-        return delay_embeddings
 
 
 @dataclass
@@ -70,7 +40,7 @@ class FixedDimensionDelayEmbeddingTransform:
     """
 
     embedding_dim: int
-    random_seed: Optional[int] = 0
+    random_seed: int = 0
 
     def __post_init__(self) -> None:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
@@ -79,9 +49,9 @@ class FixedDimensionDelayEmbeddingTransform:
         """
         :param timeseries: (num_channels, num_timepoints) timeseries to delay embed
         """
-        assert (
-            timeseries.shape[1] > self.embedding_dim
-        ), "Embedding dimension cannot be larger than the number of timepoints"
+        assert timeseries.shape[1] > self.embedding_dim, (
+            "Embedding dimension cannot be larger than the number of timepoints"
+        )
         num_channels = timeseries.shape[0]
         per_dim_embed_dim = (self.embedding_dim - num_channels) // num_channels
         remaining_dims = (self.embedding_dim - num_channels) % num_channels
@@ -110,30 +80,6 @@ class FixedDimensionDelayEmbeddingTransform:
 
 
 @dataclass
-class PolynomialEmbeddingTransform:
-    """Embed the channel dimension with a polynomial basis
-
-    NOTE: this embeds along the channel dimension unlike the PatchTSTEmbedding which embeds along the patch length dimension
-    """
-
-    degree: int
-
-    def __call__(self, timeseries: NDArray) -> NDArray:
-        """
-        Parameters:
-            timeseries (`NDArray` of shape `(num_channels, num_timepoints)`, *required*):
-                Timeseries to embed
-        """
-        indices = list(
-            combinations_with_replacement(range(timeseries.shape[0]), self.degree)
-        )
-        features = np.stack(
-            [np.prod(timeseries[:, :, idx], axis=-1) for idx in indices], axis=-1
-        )
-        return np.concatenate([timeseries, features], axis=-1)
-
-
-@dataclass
 class QuadraticEmbeddingTransform:
     """Embed the channel dimension with a quadratic basis
 
@@ -153,26 +99,6 @@ class QuadraticEmbeddingTransform:
 
 
 @dataclass
-class QuantileTransform:
-    """Quantize a timeseries into discrete bins
-
-    TODO: this is just a template, migrate this inside patchtst right after
-    standardization and rewrite in torch
-
-    :param num_bins: number of bins to quantize into
-    """
-
-    num_bins: int
-
-    def __call__(self, timeseries: NDArray) -> NDArray:
-        bins = np.linspace(
-            np.floor(timeseries.min()), np.ceil(timeseries.max()), self.num_bins + 1
-        )
-        bin_indices = np.digitize(timeseries, bins)
-        return bins[bin_indices]
-
-
-@dataclass
 class RandomConvexCombinationTransform:
     """Random convex combinations of coordinates with coefficients sampled from a dirichlet distribution
 
@@ -183,8 +109,7 @@ class RandomConvexCombinationTransform:
 
     num_combinations: int
     alpha: float
-    random_seed: Optional[int] = 0
-    split_coords: bool = False
+    random_seed: int = 0
 
     def __post_init__(self) -> None:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
@@ -207,7 +132,7 @@ class RandomAffineTransform:
 
     out_dim: int
     scale: float
-    random_seed: Optional[int] = 0
+    random_seed: int = 0
 
     def __post_init__(self) -> None:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
@@ -238,7 +163,7 @@ class RandomProjectedSkewTransform:
 
     embedding_dim: int
     scale: float
-    random_seed: Optional[int] = 0
+    random_seed: int = 0
 
     def __post_init__(self) -> None:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)

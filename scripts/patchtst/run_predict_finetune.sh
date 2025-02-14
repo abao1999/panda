@@ -1,6 +1,7 @@
 # default mlm: 386
 # default ablations mlm: 392
 # On multiple GPUs (example with 4 GPUs)
+ulimit -n 99999
 CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/patchtst/train.py \
@@ -21,8 +22,6 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.pooling_type=mean \
         patchtst.loss=mse \
         patchtst.huber_delta=10.0 \
-        patchtst.clamp_low=-15.0 \
-        patchtst.clamp_high=15.0 \
         patchtst.distribution_output=null \
         train.per_device_train_batch_size=512 \
         train.max_steps=100_000 \
@@ -32,8 +31,5 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         train.torch_compile=true \
         train.weight_decay=1e-4 \
         noiser.enabled=false \
-        fixed_dim=3 \
-        use_quadratic_embedding=false \
         "$@"
 
-# TODO: try playing with: patch_stride, pre_norm, pooling_type, dropout, head_dropout, attention_dropout, positional_dropout, ff_dropout, norm_type, mask_type

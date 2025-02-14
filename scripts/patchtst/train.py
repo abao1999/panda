@@ -3,10 +3,12 @@ import os
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import hydra
 import torch
 import transformers
+import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
@@ -18,15 +20,17 @@ from transformers import (
     TrainingArguments,
 )
 
-import wandb
 from dystformer.augmentations import (
-    FixedDimensionDelayEmbeddingTransform,
-    QuadraticEmbeddingTransform,
     RandomAffineTransform,
     RandomConvexCombinationTransform,
+    RandomDimSelectionTransform,
 )
 from dystformer.patchtst.dataset import PatchTSTDataset
-from dystformer.patchtst.model import PatchTST
+from dystformer.patchtst.patchtst import (
+    PatchTSTConfig,
+    PatchTSTForPrediction,
+    PatchTSTForPretraining,
+)
 from dystformer.utils import (
     ensure_contiguous,
     get_next_path,
@@ -123,7 +127,7 @@ class NoiseScaleLoggingCallback(TrainerCallback):
 class CustomTrainer(Trainer):
     def __init__(
         self,
-        model: PatchTST,
+        model: PatchTSTForPretraining | PatchTSTForPrediction,
         args: TrainingArguments,
         noise_scale_scheduler: NoiseScaleScheduler,
         **kwargs,
@@ -154,6 +158,47 @@ class CustomTrainer(Trainer):
         loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         return (loss, outputs) if return_outputs else loss
+
+
+def load_model(
+    mode: str,
+    model_config: dict[str, Any],
+    pretrained_encoder_path: str | None = None,
+    device: str | torch.device | None = None,
+) -> PatchTSTForPretraining | PatchTSTForPrediction:
+    """
+    Load a PatchTST model in either pretraining or prediction mode.
+
+    Args:
+        mode: Either "pretrain" or "predict" to specify model type
+        model_config: Dictionary containing model configuration parameters
+        pretrained_encoder_path: Optional path to pretrained encoder weights for prediction mode
+
+    Returns:
+        PatchTSTForPretraining or PatchTSTForPrediction model instance
+    """
+    config = PatchTSTConfig(**model_config)
+    if mode == "pretrain":
+        model = PatchTSTForPretraining(config)
+    elif mode == "predict":
+        model = PatchTSTForPrediction(config)
+    else:
+        raise ValueError(f"Invalid mode: {mode}")
+
+    if pretrained_encoder_path is not None and mode == "predict":
+        pretrained_model = PatchTSTForPretraining.from_pretrained(
+            pretrained_encoder_path
+        )
+
+        # Replace the current encoder with the pretrained encoder
+        if hasattr(pretrained_model, "model"):
+            pretained_trunk = getattr(pretrained_model, "model")
+            assert hasattr(pretained_trunk, "encoder"), "PatchTST must have an encoder"
+            model.model.encoder = pretained_trunk.encoder
+        else:
+            raise Exception("No model found in pretrained model")
+
+    return model
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -199,7 +244,11 @@ def main(cfg):
             filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
         )
     # create a new output directory to save results
-    output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
+    output_dir = get_next_path(
+        cfg.run_name if cfg.run_name else "run",
+        base_dir=Path(cfg.train.output_dir),
+        file_type="",
+    )
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(
@@ -245,11 +294,7 @@ def main(cfg):
     ]
     log_on_main(f"Using augmentations: {augmentations}", logger)
 
-    transforms: list = [
-        FixedDimensionDelayEmbeddingTransform(embedding_dim=cfg.fixed_dim)
-    ]
-    if cfg.use_quadratic_embedding:
-        transforms.append(QuadraticEmbeddingTransform())
+    transforms: list = [RandomDimSelectionTransform(num_dims=cfg.fixed_dim)]
 
     shuffled_train_dataset = PatchTSTDataset(
         datasets=train_datasets,
@@ -257,7 +302,6 @@ def main(cfg):
         context_length=cfg.patchtst.context_length,
         prediction_length=cfg.patchtst.prediction_length,
         mode="train",
-        fixed_dim=cfg.fixed_dim,
         augmentations=augmentations,
         augmentation_rate=cfg.augmentations.augmentation_rate,
         transforms=transforms,
@@ -274,11 +318,11 @@ def main(cfg):
 
     log_on_main("Initializing model", logger)
 
-    model = PatchTST(
-        dict(cfg.patchtst),
+    model = load_model(
         mode=cfg.patchtst.mode,
+        model_config=dict(cfg.patchtst),
         pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
-    )  # .to("cuda")
+    )
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_on_main(f"Total trainable parameters: {trainable_params:,}", logger)
@@ -348,10 +392,6 @@ def main(cfg):
     log_on_main("Training", logger)
     trainer.train()  # Transformers trainer will save model checkpoints automatically
 
-    # terminate wandb run after training
-    if cfg.wandb.log:
-        run.finish()
-
     # save final model checkpoint and training info locally
     if is_main_process():
         model.save_pretrained(output_dir / "checkpoint-final")  # type: ignore
@@ -361,6 +401,10 @@ def main(cfg):
             train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
             all_config=OmegaConf.to_container(cfg, resolve=True),  # type: ignore
         )
+
+    # terminate wandb run after training
+    if cfg.wandb.log:
+        run.finish()
 
 
 if __name__ == "__main__":

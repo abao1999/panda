@@ -24,7 +24,7 @@ train:
   output_dir: /stor/work/AMDG_Gilpin_Summer2024/checkpoints/
 
   # not currently used, but part of TrainingArguments
-  ddp_find_unused_parameters: false
+  ddp_find_unused_parameters: true
   remove_unused_columns: false
 
 noiser:

@@ -10,15 +10,12 @@ import torch
 import transformers
 from gluonts.dataset.common import FileDataset
 
-from dystformer.augmentations import (
-    FixedDimensionDelayEmbeddingTransform,
-)
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.evaluation import (
     evaluate_forecasting_model,
     evaluate_mlm_model,
 )
-from dystformer.patchtst.model import FixedSubsetChannelSampler, PatchTST
+from dystformer.patchtst.pipeline import PatchTSTPipeline
 from dystformer.utils import log_on_main, save_evaluation_results
 
 logger = logging.getLogger(__name__)
@@ -41,12 +38,10 @@ def main(cfg):
         log(f"No training info file found at: {training_info_path}")
         train_config = None
 
-    model = PatchTST.from_pretrained(
-        mode=cfg.eval.mode,
-        pretrain_path=checkpoint_path,
-        device=cfg.eval.device,
+    pipeline = PatchTSTPipeline.from_pretrained(
+        mode=cfg.eval.mode, pretrain_path=checkpoint_path
     )
-    model_config = dict(vars(model.config))
+    model_config = dict(vars(pipeline.model.config))
     train_config = train_config or dict(cfg.train)
     # set floating point precision
     use_tf32 = train_config.get("tf32", False)
@@ -70,7 +65,7 @@ def main(cfg):
     log(f"context_length: {context_length}")
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
-    model.eval()
+    pipeline.model.eval()
 
     # get test data paths
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
@@ -88,8 +83,6 @@ def main(cfg):
 
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
-    transforms: list = [FixedDimensionDelayEmbeddingTransform(embedding_dim=3)]
-
     test_datasets = {
         system_name: PatchTSTDataset(
             datasets=test_data_dict[system_name],
@@ -100,7 +93,7 @@ def main(cfg):
             num_test_instances=cfg.eval.num_test_instances,
             window_style=cfg.eval.window_style,
             window_stride=cfg.eval.window_stride,
-            transforms=transforms,
+            model_type=cfg.eval.mode,
             mode="test",
         )
         for system_name in test_data_dict
@@ -122,16 +115,8 @@ def main(cfg):
             "median": lambda x: np.median(x, axis=0),
         }.get(cfg.eval.parallel_sample_reduction, lambda x: x)
 
-        if cfg.eval.use_channel_sampler:
-            channel_sampler = FixedSubsetChannelSampler(
-                num_channels=cfg.eval.channel_sampler.num_channels,
-                num_samples=cfg.eval.channel_sampler.num_samples,
-            )
-        else:
-            channel_sampler = None
-
         predictions, contexts, labels, metrics = evaluate_forecasting_model(
-            model,
+            pipeline,
             test_datasets,
             batch_size=cfg.eval.batch_size,
             prediction_length=cfg.eval.prediction_length,
@@ -141,7 +126,6 @@ def main(cfg):
             return_contexts=True,
             return_labels=True,
             parallel_sample_reduction_fn=parallel_sample_reduction_fn,
-            channel_sampler=channel_sampler,
             redo_normalization=True,
             eval_subintervals=[
                 (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
@@ -181,7 +165,7 @@ def main(cfg):
     elif cfg.eval.mode == "pretrain":
         completions, processed_past_values, timestep_masks, metrics = (
             evaluate_mlm_model(
-                model,
+                pipeline,
                 test_datasets,
                 metric_names=cfg.eval.metric_names,
                 batch_size=cfg.eval.batch_size,

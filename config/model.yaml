@@ -6,9 +6,7 @@ patchtst:
   prediction_length: 64
   distribution_output: "student_t"
   loss: "mse"
-  huber_delta: 10.0 # NOTE: only used if loss is Huber loss
-  clamp_low: -15.0 # Optional, can be null
-  clamp_high: 15.0 # Optional, can be null
+  huber_delta: 1.0 # NOTE: only used if loss is Huber loss
 
   patch_length: 16
   patch_stride: 16
@@ -44,10 +42,6 @@ patchtst:
   # rope positional embeddings
   max_wavelength: 500
   rope_percent: 0.75
-
-  # channel embedding
-  channel_embedding: "quadratic"
-  polynomial_degree: 2
 
   pretrained_encoder_path: null
 

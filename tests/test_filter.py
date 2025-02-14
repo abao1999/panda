@@ -38,7 +38,7 @@ def compute_autocorrelation(data: np.ndarray, max_lag: int = 100) -> np.ndarray:
 
 
 def is_smooth(
-    time_series: np.ndarray, decay_threshold: float = 0.1, window_size: int = 30
+    time_series: np.ndarray, decay_threshold: float = 0.1, window_size: int = 10
 ) -> bool:
     """Test if a time series is smooth using autocorrelation decay rate.
 

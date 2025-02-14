@@ -9,13 +9,13 @@ from pathlib import Path
 import hydra
 import torch
 import transformers
+import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
-import wandb
 from dystformer.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
@@ -91,7 +91,11 @@ def main(cfg):
         train_data_paths.extend(extra_paths)
 
     # create a new output directory to save results
-    output_dir = get_next_path("run", base_dir=Path(cfg.train.output_dir), file_type="")
+    output_dir = get_next_path(
+        cfg.run_name if cfg.run_name else "run",
+        base_dir=Path(cfg.train.output_dir),
+        file_type="",
+    )
 
     log_on_main(f"Logging dir: {output_dir}", logger)
     log_on_main(f"Loading and filtering {len(train_data_paths)} datasets ", logger)
@@ -230,20 +234,19 @@ def main(cfg):
     log_on_main("Training", logger)
     trainer.train()  # Transformers trainer will save model checkpoints automatically
 
-    # terminate wandb run after training
-    if cfg.wandb.log:
-        run.finish()
-
     # save final model checkpoint and training info locally
     if is_main_process():
         model.save_pretrained(output_dir / "checkpoint-final")
         save_training_info(
             output_dir / "checkpoint-final",
             model_config=vars(chronos_config),  # TODO: add model_id to this
-            # model_config=OmegaConf.to_container(cfg.chronos, resolve=True),  # type: ignore
             train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore
             all_config=OmegaConf.to_container(cfg, resolve=True),  # type: ignore
         )
+
+    # terminate wandb run after training
+    if cfg.wandb.log:
+        run.finish()
 
 
 if __name__ == "__main__":

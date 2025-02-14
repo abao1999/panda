@@ -252,7 +252,6 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
                 num_instances=1.0,
                 min_instances=1,
                 min_past=self.context_length,  # never sample behind the timeseries
-                # min_past=self.min_past,  # type: ignore
                 min_future=self.prediction_length,
             ),
             "test": test_sampler(

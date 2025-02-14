@@ -4,7 +4,7 @@ from itertools import accumulate
 import hydra
 import torch
 
-from dystformer.patchtst.model import FixedSubsetChannelSampler, PatchTST
+from dystformer.patchtst.pipeline import FixedSubsetChannelSampler, PatchTSTPipeline
 
 
 def create_block_attention_mask(
@@ -184,8 +184,9 @@ def test_interleaved_prediction(
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
-    model = PatchTST(dict(cfg.patchtst), mode="predict", device="cuda")
-    model.eval()
+    model = PatchTSTPipeline.from_pretrained(
+        mode="predict", pretrain_path=cfg.patchtst.pretrain_path
+    )
 
     test_prediction_basic(model, cfg)
     # test_attn_mask(batch_size=3, model=model, cfg=cfg)

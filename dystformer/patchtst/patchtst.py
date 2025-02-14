@@ -673,11 +673,12 @@ class PatchTSTNoiser(nn.Module):
         Returns:
             `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
         """
-        return torch.clamp(
-            timeseries + torch.randn_like(timeseries) * noise_scale,
-            min=self.clamp_low,
-            max=self.clamp_high,
-        )
+        return timeseries + torch.randn_like(timeseries) * noise_scale
+        # return torch.clamp(
+        #     timeseries + torch.randn_like(timeseries) * noise_scale,
+        #     min=self.clamp_low,
+        #     max=self.clamp_high,
+        # )
 
 
 class PatchTSTModel(PatchTSTPreTrainedModel):
@@ -1131,12 +1132,6 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         y_hat = self.head(model_output.last_hidden_state)
 
         loss_val = None
-        if self.distribution_output:
-            y_hat_out = y_hat
-
-        else:
-            # NOTE: keep the output of the prediction head standardized
-            y_hat_out = y_hat  # * model_output.scale + model_output.loc
 
         if future_values is not None:
             if self.distribution_output:
@@ -1148,10 +1143,14 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             else:
                 future_values = (future_values - model_output.loc) / model_output.scale
                 future_values = self.model.noiser(future_values, noise_scale)
-                loss_val = self.loss(y_hat_out, future_values)
+                loss_val = self.loss(y_hat, future_values)
 
         loc = model_output.loc
         scale = model_output.scale
+        if self.distribution_output:
+            y_hat_out = y_hat
+        else:
+            y_hat_out = y_hat * model_output.scale + model_output.loc
 
         if not return_dict:
             outputs = (

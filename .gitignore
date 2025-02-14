@@ -22,7 +22,6 @@ data/
 nohup.out
 tests/*.json
 tests/*.png
-excluded_notebooks/
 
 # bash scripts for ablations
 *ablations*.sh
@@ -47,6 +46,7 @@ logs/
 **/metrics/*
 **/eval_results/*
 **/checkpoints/*
+**/notebooks/*
 **/wandb/*
 **/runs/*
 **/*.log
