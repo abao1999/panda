@@ -66,12 +66,8 @@ def main(cfg):
     log(f"context_length: {context_length}")
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
-<<<<<<< HEAD
-    pipeline.model.eval()
-=======
     log(f"channel_attention: {channel_attention}")
-    model.eval()
->>>>>>> e36465f95e7faec1def653fb72a794f3fd9c40bf
+    pipeline.model.eval()
 
     # get test data paths
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
