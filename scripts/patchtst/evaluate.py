@@ -62,10 +62,16 @@ def main(cfg):
 
     context_length = model_config["context_length"]
     prediction_length = model_config["prediction_length"]
+    channel_attention = model_config["channel_attention"]
     log(f"context_length: {context_length}")
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
+<<<<<<< HEAD
     pipeline.model.eval()
+=======
+    log(f"channel_attention: {channel_attention}")
+    model.eval()
+>>>>>>> e36465f95e7faec1def653fb72a794f3fd9c40bf
 
     # get test data paths
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
