@@ -6,9 +6,9 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         --nproc-per-node 4 \
         scripts/patchtst/train.py \
         shuffle_buffer_length=100_000 \
-        patchtst.pretrained_encoder_path=/stor/work/AMDG_Gilpin_Summer2024/checkpoints/run-392/checkpoint-final \
+        patchtst.pretrained_encoder_path=/stor/work/AMDG_Gilpin_Summer2024/checkpoints/run-386/checkpoint-final \
         patchtst.context_length=512 \
-        patchtst.prediction_length=256 \
+        patchtst.prediction_length=128 \
         patchtst.patch_length=16 \
         patchtst.patch_stride=16 \
         patchtst.num_hidden_layers=8 \
@@ -21,15 +21,14 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 torchrun \
         patchtst.rope_percent=0.75 \
         patchtst.pooling_type=mean \
         patchtst.loss=mse \
-        patchtst.huber_delta=10.0 \
         patchtst.distribution_output=null \
-        train.per_device_train_batch_size=512 \
-        train.max_steps=100_000 \
+        train.per_device_train_batch_size=1024 \
+        train.max_steps=200_000 \
         train.save_steps=50_000 \
         train.log_steps=1_000 \
         train.warmup_ratio=0.1 \
         train.torch_compile=true \
-        train.weight_decay=1e-4 \
-        noiser.enabled=false \
+        train.weight_decay=0.0 \
+        noiser.enabled=true \
         "$@"
 

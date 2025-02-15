@@ -40,7 +40,7 @@ python scripts/patchtst/evaluate.py \
     eval.metrics_save_dir=$main_dir/eval_results/patchtst/$run_name/zeroshot \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
-    eval.device=cuda:1 \
+    eval.device=cuda:0 \
     eval.forecast_save_dir=$WORK/garbage/patchtst/$run_name/forecasts \
     eval.labels_save_dir=$WORK/garbage/patchtst/$run_name/labels \
     fixed_dim=3 \

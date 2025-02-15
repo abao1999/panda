@@ -1,12 +1,11 @@
 train:
   seed: 99
-  ddp_backend: nccl
   # train, checkpoint, log steps
   max_steps: 100_000
   save_steps: 10_000
   log_steps: 100
 
-  per_device_train_batch_size: 8
+  per_device_train_batch_size: 512
   gradient_accumulation_steps: 1
   max_grad_norm: 1.0
   dataloader_num_workers: 16
@@ -20,11 +19,12 @@ train:
   learning_rate: 1e-3
   lr_scheduler_type: cosine
   warmup_ratio: 0.1
-  weight_decay: 1e-4
+  weight_decay: 0.0
   output_dir: /stor/work/AMDG_Gilpin_Summer2024/checkpoints/
 
-  # not currently used, but part of TrainingArguments
-  ddp_find_unused_parameters: true
+  # distributed training
+  ddp_backend: nccl
+  ddp_find_unused_parameters: false
   remove_unused_columns: false
 
 noiser:

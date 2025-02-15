@@ -647,14 +647,8 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
 
 
 class PatchTSTNoiser(nn.Module):
-    def __init__(
-        self,
-        clamp_low: Optional[float] = None,
-        clamp_high: Optional[float] = None,
-    ):
+    def __init__(self):
         super().__init__()
-        self.clamp_low = clamp_low
-        self.clamp_high = clamp_high
 
     def forward(
         self,
@@ -673,12 +667,10 @@ class PatchTSTNoiser(nn.Module):
         Returns:
             `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
         """
-        return timeseries + torch.randn_like(timeseries) * noise_scale
-        # return torch.clamp(
-        #     timeseries + torch.randn_like(timeseries) * noise_scale,
-        #     min=self.clamp_low,
-        #     max=self.clamp_high,
-        # )
+        noised = timeseries + torch.randn_like(timeseries) * noise_scale
+        std = noised.std(dim=1, keepdim=True)
+        std = torch.clamp(std, min=1e-6)
+        return noised / std
 
 
 class PatchTSTModel(PatchTSTPreTrainedModel):
@@ -686,10 +678,6 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         super().__init__(config)
 
         self.scaler = PatchTSTScaler(config)
-        self.noiser = PatchTSTNoiser(
-            clamp_low=config.clamp_low,
-            clamp_high=config.clamp_high,
-        )
         self.patchifier = PatchTSTPatchify(config)
 
         self.do_mask_input = config.do_mask_input
@@ -712,7 +700,6 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         output_attentions: Optional[bool] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
-        noise_scale: float = 0.0,
     ) -> Union[Tuple, PatchTSTModelOutput]:
         r"""
         Parameters:
@@ -756,8 +743,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
             past_observed_mask = torch.ones_like(past_values)
 
         scaled_past_values, loc, scale = self.scaler(past_values, past_observed_mask)
-        noised_past_values = self.noiser(scaled_past_values, noise_scale)
-        patched_values = self.patchifier(noised_past_values)
+        patched_values = self.patchifier(scaled_past_values)
 
         if self.do_mask_input:
             masked_values, mask = self.masking(patched_values)
@@ -1048,6 +1034,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         config.do_mask_input = False
 
         self.model = PatchTSTModel(config)
+        self.noiser = PatchTSTNoiser()
 
         if config.loss == "mse" or config.loss == "huber":
             self.distribution_output = None
@@ -1126,7 +1113,6 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             output_attentions=output_attentions,
             channel_attention_mask=channel_attention_mask,
             return_dict=True,
-            noise_scale=noise_scale,
         )
         # get output head
         y_hat = self.head(model_output.last_hidden_state)
@@ -1142,7 +1128,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 loss_val = weighted_average(loss_val)
             else:
                 future_values = (future_values - model_output.loc) / model_output.scale
-                future_values = self.model.noiser(future_values, noise_scale)
+                future_values = self.noiser(future_values, noise_scale)
                 loss_val = self.loss(y_hat, future_values)
 
         loc = model_output.loc

@@ -122,15 +122,16 @@ class PatchTSTPipeline:
         return self.model.device
 
     @classmethod
-    def from_pretrained(cls, mode: str, pretrain_path: str):
+    def from_pretrained(cls, mode: str, pretrain_path: str, **kwargs):
         """
         Load a pretrained model from a path and move it to the specified device.
         """
-        model = {
+        model_class = {
             "pretrain": PatchTSTForPretraining,
             "predict": PatchTSTForPrediction,
         }[mode]
-        return cls(mode=mode, model=model.from_pretrained(pretrain_path))
+        model = model_class.from_pretrained(pretrain_path, **kwargs)
+        return cls(mode=mode, model=model)
 
     def _prepare_and_validate_context(
         self, context: torch.Tensor | list[torch.Tensor]

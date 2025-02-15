@@ -213,7 +213,7 @@ def main(cfg):
             sync_tensorboard=False,  # auto-upload tensorboard metrics
             group=cfg.wandb.group_name,
             resume=cfg.wandb.resume,
-            tags=cfg.wandb.tags,
+            # tags=cfg.wandb.tags,
         )
 
     # set floating point precision
@@ -302,6 +302,7 @@ def main(cfg):
         context_length=cfg.patchtst.context_length,
         prediction_length=cfg.patchtst.prediction_length,
         mode="train",
+        model_type=cfg.patchtst.mode,
         augmentations=augmentations,
         augmentation_rate=cfg.augmentations.augmentation_rate,
         transforms=transforms,
@@ -353,7 +354,7 @@ def main(cfg):
         tf32=use_tf32,  # remove this if not using Ampere GPUs (e.g., A100)
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
-        ddp_backend="nccl",
+        ddp_backend=cfg.train.ddp_backend,
         remove_unused_columns=cfg.train.remove_unused_columns,
         seed=cfg.train.seed,
     )

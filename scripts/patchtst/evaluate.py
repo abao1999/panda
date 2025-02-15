@@ -38,8 +38,13 @@ def main(cfg):
         log(f"No training info file found at: {training_info_path}")
         train_config = None
 
+    torch_dtype = getattr(torch, cfg.eval.torch_dtype)
+    assert isinstance(torch_dtype, torch.dtype)
     pipeline = PatchTSTPipeline.from_pretrained(
-        mode=cfg.eval.mode, pretrain_path=checkpoint_path
+        mode=cfg.eval.mode,
+        pretrain_path=checkpoint_path,
+        device_map=cfg.eval.device,
+        torch_dtype=torch_dtype,
     )
     model_config = dict(vars(pipeline.model.config))
     train_config = train_config or dict(cfg.train)
@@ -201,3 +206,4 @@ def main(cfg):
 
 if __name__ == "__main__":
     main()
+false

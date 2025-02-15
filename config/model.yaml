@@ -3,7 +3,7 @@ patchtst:
   mode: "predict"
 
   context_length: 512
-  prediction_length: 64
+  prediction_length: 128
   distribution_output: "student_t"
   loss: "mse"
   huber_delta: 1.0 # NOTE: only used if loss is Huber loss
@@ -35,7 +35,7 @@ patchtst:
   channel_consistent_masking: false
   unmasked_channel_indices: null
   mask_value: 0
-  pooling_type: "mean"
+  pooling_type: "max"
   head_dropout: 0.0
   num_parallel_samples: 100
 
