@@ -116,13 +116,16 @@ class PatchTSTPipeline:
 
     mode: str
     model: PatchTSTForPretraining | PatchTSTForPrediction
+    sliding_context: bool = False
 
     @property
     def device(self):
         return self.model.device
 
     @classmethod
-    def from_pretrained(cls, mode: str, pretrain_path: str, **kwargs):
+    def from_pretrained(
+        cls, mode: str, pretrain_path: str, sliding_context: bool = False, **kwargs
+    ):
         """
         Load a pretrained model from a path and move it to the specified device.
         """
@@ -131,7 +134,7 @@ class PatchTSTPipeline:
             "predict": PatchTSTForPrediction,
         }[mode]
         model = model_class.from_pretrained(pretrain_path, **kwargs)
-        return cls(mode=mode, model=model)
+        return cls(mode=mode, model=model, sliding_context=sliding_context)
 
     def _prepare_and_validate_context(
         self, context: torch.Tensor | list[torch.Tensor]
@@ -230,7 +233,13 @@ class PatchTSTPipeline:
             # need to contract over the num_samples dimension, use median
             context_tensor = torch.cat(
                 [context_tensor, prediction.median(dim=1).values], dim=1
-            )[:, -self.model.config.context_length :, :]
+            )
+
+            # dont grow the context window, only keep the most recent context_length
+            if self.sliding_context:
+                context_tensor = context_tensor[
+                    :, -self.model.config.context_length :, :
+                ]
 
         # shape: [bs x num_samples x prediction_length x num_channels]
         predictions = torch.cat(predictions, dim=2)

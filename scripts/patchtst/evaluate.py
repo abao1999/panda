@@ -43,6 +43,7 @@ def main(cfg):
     pipeline = PatchTSTPipeline.from_pretrained(
         mode=cfg.eval.mode,
         pretrain_path=checkpoint_path,
+        sliding_context=cfg.eval.sliding_context,
         device_map=cfg.eval.device,
         torch_dtype=torch_dtype,
     )
@@ -206,4 +207,3 @@ def main(cfg):
 
 if __name__ == "__main__":
     main()
-false

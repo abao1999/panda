@@ -8,6 +8,9 @@ eval:
   batch_size: 32
   num_systems: 10
 
+  # inference mode for patchtst
+  sliding_context: false
+
   metric_names:
     - mse
     - mae
