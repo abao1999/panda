@@ -655,6 +655,7 @@ class PatchTSTNoiser(nn.Module):
         self,
         timeseries: torch.Tensor,
         noise_scale: float,
+        dim: int | tuple[int, ...] = 1,
     ) -> torch.Tensor:
         """
         Noise the timeseries with standard normal noise
@@ -669,7 +670,7 @@ class PatchTSTNoiser(nn.Module):
             `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
         """
         noised = timeseries + torch.randn_like(timeseries) * noise_scale
-        std = noised.std(dim=1, keepdim=True)
+        std = noised.std(dim=dim, keepdim=True)
         std = torch.clamp(std, min=1e-6)
         return noised / std
 
@@ -835,7 +836,9 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             head_dropout=config.head_dropout,
             use_cls_token=config.use_cls_token,
         )
-        # self.loss = nn.MSELoss(reduction="none")
+
+        self.noiser = PatchTSTNoiser()
+
         if config.loss == "mse":
             self.loss = nn.MSELoss(reduction="none")
         elif config.loss == "huber":
@@ -891,16 +894,16 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             return_dict=True,
         )
 
+        # last_hidden_state: [bs x num_channels x num_patches x d_model] or
         x_hat = model_output.last_hidden_state
 
-        # last_hidden_state: [bs x num_channels x num_patches x d_model] or
         # [bs x num_channels x (num_patches+1) x d_model] if use cls_token
         # x_hat: [bs x num_channels x num_patches x patch_length]
         x_hat = self.head(x_hat)
-        breakpoint()
 
         # reduce over the patch length dim first, then compute the masked loss over the tokens
-        loss_val = self.loss(x_hat, model_output.patch_input)
+        noised_labels = self.noiser(model_output.patch_input, noise_scale, dim=(2, 3))
+        loss_val = self.loss(x_hat, noised_labels)
         masked_loss = (loss_val.mean(dim=-1) * model_output.mask).sum() / (
             model_output.mask.sum() + 1e-10
         )
