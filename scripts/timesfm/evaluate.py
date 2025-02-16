@@ -179,7 +179,7 @@ def main(cfg):
         save_eval_results(
             metrics,
             coords=full_trajs,
-            coords_save_dir=None,  # cfg.eval.forecast_save_dir,
+            coords_save_dir=cfg.eval.forecast_save_dir,
         )
 
     log("Saving labels...")
@@ -194,7 +194,7 @@ def main(cfg):
         save_eval_results(
             None,  # do not save metrics again
             coords=full_trajs,
-            coords_save_dir=None,  # cfg.eval.labels_save_dir,
+            coords_save_dir=cfg.eval.labels_save_dir,
         )
 
 

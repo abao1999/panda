@@ -383,14 +383,15 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             max_wavelength=config.max_wavelength,
             rope_percent=config.rope_percent,
         )
-        self.channel_self_attn = PatchTSTRopeAttention(
-            embed_dim=config.d_model,
-            num_heads=config.num_attention_heads,
-            dropout=config.attention_dropout,
-            use_rope=False,  # channels are not positional
-            max_wavelength=config.max_wavelength,
-            rope_percent=config.rope_percent,
-        )
+        if self.channel_attention:
+            self.channel_self_attn = PatchTSTRopeAttention(
+                embed_dim=config.d_model,
+                num_heads=config.num_attention_heads,
+                dropout=config.attention_dropout,
+                use_rope=False,  # channels are not positional
+                max_wavelength=config.max_wavelength,
+                rope_percent=config.rope_percent,
+            )
 
         # Add & Norm of the sublayer 1
         self.dropout_path1 = (
@@ -673,6 +674,15 @@ class PatchTSTNoiser(nn.Module):
         return noised / std
 
 
+class PatchTSTFourierApproximator(nn.Module):
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+        self.config = config
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x
+
+
 class PatchTSTModel(PatchTSTPreTrainedModel):
     def __init__(self, config: PatchTSTConfig):
         super().__init__(config)
@@ -879,7 +889,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             output_attentions=output_attentions,
             channel_attention_mask=channel_attention_mask,
             return_dict=True,
-            noise_scale=noise_scale,
         )
 
         x_hat = model_output.last_hidden_state
@@ -888,6 +897,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         # [bs x num_channels x (num_patches+1) x d_model] if use cls_token
         # x_hat: [bs x num_channels x num_patches x patch_length]
         x_hat = self.head(x_hat)
+        breakpoint()
 
         # reduce over the patch length dim first, then compute the masked loss over the tokens
         loss_val = self.loss(x_hat, model_output.patch_input)

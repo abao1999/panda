@@ -8,7 +8,6 @@ from typing import Any
 import hydra
 import torch
 import transformers
-import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
@@ -20,6 +19,7 @@ from transformers import (
     TrainingArguments,
 )
 
+import wandb
 from dystformer.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
@@ -204,7 +204,7 @@ def load_model(
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
     # set up wandb project and logging if enabled
-    if cfg.wandb.log:
+    if cfg.wandb.log and is_main_process():
         run = wandb.init(
             project=cfg.wandb.project_name,
             entity=cfg.wandb.entity,
@@ -213,7 +213,6 @@ def main(cfg):
             sync_tensorboard=False,  # auto-upload tensorboard metrics
             group=cfg.wandb.group_name,
             resume=cfg.wandb.resume,
-            # tags=cfg.wandb.tags,
         )
 
     # set floating point precision
@@ -339,9 +338,10 @@ def main(cfg):
         max_grad_norm=cfg.train.max_grad_norm,
         weight_decay=cfg.train.weight_decay,
         optim=cfg.train.optim,
-        logging_dir=f"wandb/tbruns/{run.name}_{run.id}/logs"
-        if cfg.wandb.log
-        else str(output_dir / "logs"),
+        log_on_each_node=False,
+        logging_dir=str(output_dir / "logs")
+        if not (cfg.wandb.log and is_main_process())
+        else f"wandb/{run.name}_{run.id}/logs",
         logging_strategy="steps",
         logging_steps=cfg.train.log_steps,
         save_strategy="steps",
@@ -405,7 +405,7 @@ def main(cfg):
 
     # terminate wandb run after training
     if cfg.wandb.log:
-        run.finish()
+        wandb.finish()
 
 
 if __name__ == "__main__":

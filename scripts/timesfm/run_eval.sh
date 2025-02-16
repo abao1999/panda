@@ -11,11 +11,11 @@ python scripts/timesfm/evaluate.py \
         eval.batch_size=64 \
         eval.prediction_length=512 \
         eval.limit_prediction_length=false \
-        eval.metrics_save_dir=$main_dir/eval_results/timemoe/${name}_metrics/zeroshot \
+        eval.metrics_save_dir=$main_dir/eval_results/timesfm/${name}_metrics/zeroshot \
         eval.metrics_fname=null \
         eval.overwrite=true \
         eval.device=cuda:0 \
-        eval.forecast_save_dir=$WORK/data/eval/timemoe/${name}/forecasts \
-        eval.labels_save_dir=$WORK/data/eval/timemoe/${name}/labels \
+        eval.forecast_save_dir=$WORK/data/eval/timesfm/${name}/forecasts \
+        eval.labels_save_dir=$WORK/data/eval/timesfm/${name}/labels \
         eval.seed=99 \
         "$@"
