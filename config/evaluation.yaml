@@ -1,0 +1,61 @@
+eval:
+  # for evaluating saved checkpoint
+  mode: predict
+  data_path: /stor/work/AMDG_Gilpin_Summer2024/data/test/
+  checkpoint_path: /stor/work/AMDG_Gilpin_Summer2024/checkpoints
+  device: cuda:7
+  torch_dtype: float32 # bfloat16?
+  batch_size: 32
+  num_systems: 10
+
+  # inference mode for patchtst
+  sliding_context: false
+
+  metric_names:
+    - mse
+    - mae
+    - smape
+    - r2_score
+    - spearman
+
+  forecast_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/forecasts
+  labels_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/labels
+  completions_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/completions
+  patch_input_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/patch_input
+  timestep_masks_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/timestep_masks
+
+  metrics_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/metrics
+  metrics_fname: metrics.json
+  overwrite: false
+  seed: 42
+
+  # for generating forecasts and getting test split
+  parallel_sample_reduction: mean
+  limit_prediction_length: true
+  prediction_length: 64
+
+  # window style can be either sampled or rolling
+  # sampled: randomly samples windows from each timeseries (of length context_length) 
+  # rolling: takes consecutive windows of context_length with a stride of
+  #   window_stride from each timeseries
+  # (in this case, num_test_instances need not be specified - always number of sliding windows
+  #  conditioned on window stride, namely (T - context_length - prediction_length) // window_stride + 1)
+  # single: takes single window of length context_length from the beginning of each timeseries
+  # (in this case, num_test_instances need not be specified - always 1)
+  num_test_instances: 1
+  window_style: sampled
+  window_stride: 1
+  split_coords: false
+  verbose: false
+
+  use_channel_sampler: false
+  channel_sampler:
+    num_channels: 3
+    num_samples: 2
+
+# wandb run metrics, not to be confused with dysts eval metrics
+run_metrics:
+  wandb_run_id: null
+  plot_dir: figs
+  save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/run_metrics
+  save_fname: metrics.json

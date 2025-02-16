@@ -29,7 +29,6 @@ tests/*.png
 # output and logging files
 output/
 eval_results/
-evaluation/
 *.pt
 *.pth
 *.safetensors
