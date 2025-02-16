@@ -6,7 +6,7 @@ name=timemoe-50m
 python scripts/timemoe/evaluate.py \
         eval.data_path=$WORK/data/final_skew40/test_base \
         eval.num_systems=325 \
-        eval.num_test_instances=1 \
+        eval.num_test_instances=3 \
         eval.window_style=sampled \
         eval.batch_size=64 \
         eval.prediction_length=512 \

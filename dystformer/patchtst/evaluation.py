@@ -249,7 +249,7 @@ def evaluate_forecasting_model(
 
             # standardize using stats from the past_batch
             if redo_normalization:
-                # preds = safe_standardize(preds, context=context[None, :, :], axis=2)
+                preds = safe_standardize(preds, context=context[None, :, :], axis=2)
                 future_batch = safe_standardize(future_batch, context=context, axis=1)
                 context = safe_standardize(context, axis=1)
 
