@@ -46,7 +46,7 @@ logs/
 **/metrics/*
 **/eval_results/*
 **/checkpoints/*
-**/notebooks/*
+**/excluded_notebooks
 **/wandb/*
 **/runs/*
 **/*.log

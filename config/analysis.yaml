@@ -1,6 +1,6 @@
 analysis:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
-  split: debug40/bad
+  split: final_skew20
   save_dir: outputs
   plots_dir: plots
   compute_quantile_limits: true
