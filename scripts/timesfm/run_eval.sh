@@ -4,7 +4,7 @@ echo "main_dir: $main_dir"
 
 name=timesfm-200m
 python scripts/timesfm/evaluate.py \
-        eval.data_path=$WORK/data/final_skew40/test_base \
+        eval.data_path=$WORK/data/final_skew40/test_zeroshot \
         eval.num_systems=325 \
         eval.num_test_instances=3 \
         eval.window_style=sampled \

@@ -196,9 +196,10 @@ def main(cfg):
         valid_ensemble, failed_ensemble = validator.multiprocessed_filter_ensemble(
             ensemble,
         )
+        filter_json_fname = cfg.analysis.filter_json_fname
         if len(failed_ensemble) > 0:
             # plot the first 9 systems' failed samples
-            save_path = os.path.join(plot_save_dir, "failed_samples.png")
+            save_path = os.path.join(plot_save_dir, f"{filter_json_fname}.png")
             plot_grid_trajs_multivariate(
                 {k: v for k, v in list(failed_ensemble.items())[:9]},
                 save_path=save_path,
@@ -209,7 +210,7 @@ def main(cfg):
             logger.info(f"Plotted failed samples to {save_path}")
 
             failed_samples_dict = validator.failed_samples
-            summary_json_path = os.path.join(save_dir, "failed_samples.json")
+            summary_json_path = os.path.join(save_dir, f"{filter_json_fname}.json")
             num_failed_samples = sum(len(v) for v in failed_samples_dict.values())
             logger.info(
                 f"Saving summary of {num_failed_samples} failed samples to {summary_json_path}"

@@ -1,11 +1,12 @@
 analysis:
-  data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
-  split: final_skew20
+  data_dir: /stor/work/AMDG_Gilpin_Summer2024/data
+  split: final_base40/test_zeroshot
   save_dir: outputs
-  plots_dir: plots
-  compute_quantile_limits: true
+  plots_dir: figures
+  compute_quantile_limits: false
   compute_max_lyapunov_exponents: false
-  filter_ensemble: false
+  filter_ensemble: true
+  filter_json_fname: failed_samples
   verbose: true
   attractor_tests:
     - check_boundedness
@@ -21,5 +22,5 @@ analysis:
 
   check_boundedness:
     threshold: 1e4
-    max_zscore: 15
+    max_zscore: 5
     eps: 1e-10
