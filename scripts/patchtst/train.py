@@ -267,8 +267,6 @@ def main(cfg):
         for data_path in train_data_paths
     ]
 
-    log_on_main(f"number of train_datasets: {len(train_datasets)}", logger)
-
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
         probability = cfg.probability
@@ -288,8 +286,10 @@ def main(cfg):
         dataloader_num_workers = len(train_datasets)
 
     augmentations = [
-        RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
-        RandomAffineTransform(out_dim=6, scale=1.0),
+        RandomConvexCombinationTransform(
+            num_combinations=10, alpha=1.0, random_seed=cfg.train.seed
+        ),
+        RandomAffineTransform(out_dim=6, scale=1.0, random_seed=cfg.train.seed),
     ]
     log_on_main(f"Using augmentations: {augmentations}", logger)
 

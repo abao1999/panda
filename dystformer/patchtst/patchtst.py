@@ -676,9 +676,8 @@ class PatchTSTNoiser(nn.Module):
 
 
 class PatchTSTFourierApproximator(nn.Module):
-    def __init__(self, config: PatchTSTConfig):
+    def __init__(self):
         super().__init__()
-        self.config = config
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x
@@ -955,9 +954,9 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             channel_attention_mask=channel_attention_mask,
         )
 
+        # last_hidden_state: [bs x num_channels x num_patches x d_model] or
         x_hat = model_output.last_hidden_state
 
-        # last_hidden_state: [bs x num_channels x num_patches x d_model] or
         # [bs x num_channels x (num_patches+1) x d_model] if use cls_token
         # x_hat: [bs x num_channels x num_patches x patch_length]
         x_hat = self.head(x_hat)
@@ -1048,6 +1047,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
 
         self.model = PatchTSTModel(config)
         self.noiser = PatchTSTNoiser()
+        self.fourierer = PatchTSTFourierApproximator()
 
         if config.loss == "mse" or config.loss == "huber":
             self.distribution_output = None
@@ -1132,6 +1132,11 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
 
         loss_val = None
 
+        if self.distribution_output:
+            y_hat_out = y_hat
+        else:
+            y_hat_out = y_hat * model_output.scale + model_output.loc
+
         if future_values is not None:
             if self.distribution_output:
                 distribution = self.distribution_output.distribution(
@@ -1140,23 +1145,18 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 loss_val = nll(distribution, future_values)
                 loss_val = weighted_average(loss_val)
             else:
-                future_values = (future_values - model_output.loc) / model_output.scale
-                future_values = self.noiser(future_values, noise_scale)
-                loss_val = self.loss(y_hat, future_values)
+                # future_values = (future_values - model_output.loc) / model_output.scale
+                # future_values = torch.clamp(future_values, min=-15, max=15)
+                # future_values = self.noiser(future_values, noise_scale)
+                loss_val = self.loss(y_hat_out, future_values)
 
         loc = model_output.loc
         scale = model_output.scale
-        if self.distribution_output:
-            y_hat_out = y_hat
-        else:
-            y_hat_out = y_hat * model_output.scale + model_output.loc
 
         if not return_dict:
             outputs = (
-                past_values,
-                model_output.patch_input,
                 future_values,
-                y_hat,
+                y_hat_out,
                 loc,
                 scale,
             ) + model_output[1:-1]
