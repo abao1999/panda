@@ -86,7 +86,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         plot_trajs_multivariate(
             coords,
             samples_subset=samples_subset,
-            save_dir="figures",
+            save_dir="figs",
             plot_name=f"{system.name}_{subset_name}",
             plot_2d_slice=True,
             plot_projections=True,

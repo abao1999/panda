@@ -36,18 +36,18 @@ eval_results/
 logs/
 **/results/
 **/run/
-**/.ipynb_checkpoints/*
-**/figures/*
+**/.ipynb_checkpoints*
 **/figs*
-**/plots/*
-**/logs/*
-**/outputs/*
-**/metrics/*
-**/eval_results/*
-**/checkpoints/*
+**/figures*
+**/plots*
+**/logs*
+**/outputs*
+**/metrics*
+**/eval_results*
+**/checkpoints*
 **/excluded_notebooks
-**/wandb/*
-**/runs/*
+**/wandb*
+**/runs*
 **/*.log
 
 # run outputs

@@ -191,6 +191,11 @@ if __name__ == "__main__":
         default=False,
     )
     parser.add_argument(
+        "--standardize",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
         "--rseed",
         help="Random seed for reproducibility",
         type=int,
@@ -238,6 +243,7 @@ if __name__ == "__main__":
             plot_name_suffix=plot_name_suffix,
             plot_save_dir=args.plot_save_dir,
             subplot_size=subplot_size,
+            standardize=args.standardize,
         )
     else:
         plot_saved_data(
@@ -249,5 +255,5 @@ if __name__ == "__main__":
             plot_default_sample=not args.skip_default_sample,
             plot_name_suffix=plot_name_suffix,
             plot_save_dir=args.plot_save_dir,
-            standardize=True,
+            standardize=args.standardize,
         )

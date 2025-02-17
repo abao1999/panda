@@ -77,13 +77,11 @@ if __name__ == "__main__":
 
     ### Build attractor validator ###
     tests = [
-        partial(check_boundedness, threshold=1e3, max_num_stds=10),
+        partial(check_boundedness, threshold=1e3, max_zscore=10),
         partial(check_not_trajectory_decay, atol=1e-3, tail_prop=0.5),
         partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1),
     ]
-    validator = AttractorValidator(
-        verbose=True, transient_time_frac=0.05, plot_save_dir=None, tests=tests
-    )
+    validator = AttractorValidator(transient_time_frac=0.05, tests=tests)
 
     ### Make ensemble from Arrow files ###
     ensemble = make_ensemble_from_arrow_dir(
@@ -92,7 +90,6 @@ if __name__ == "__main__":
         dyst_names_lst=dyst_names_lst,
         one_dim_target=args.one_dim_target,
         samples_subset=samples_subset,
-        verbose=True,
     )
 
     ### Filter ensemble ###

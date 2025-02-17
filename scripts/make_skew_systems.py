@@ -54,7 +54,7 @@ def default_attractor_tests() -> list[Callable]:
         partial(
             check_power_spectrum, rel_peak_height=1e-5, rel_prominence=1e-5, min_peaks=4
         ),
-        partial(check_lyapunov_exponent, traj_len=150),
+        partial(check_lyapunov_exponent, traj_len=200),
         partial(check_stationarity, p_value=0.05),
     ]
     return tests
@@ -92,7 +92,7 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
         plot_trajs_multivariate(
             coords_response,
             samples_subset=samples_subset,
-            save_dir="figures",
+            save_dir="figs",
             plot_name=f"{system.name}_{subset_name}",
             plot_2d_slice=True,
             plot_projections=True,

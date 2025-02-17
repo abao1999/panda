@@ -10,7 +10,7 @@ from gluonts.dataset.common import FileDataset
 from dystformer.utils import plot_univariate_trajs, safe_standardize
 
 
-def load_dataset(path: Path, num_samples: int) -> dict[str, list[FileDataset]]:
+def load_dataset(path: Path, num_samples: int) -> dict[str, list[np.ndarray]]:
     data_dict = {}
     data_dir = os.path.expandvars(path)
     system_dirs = [d for d in Path(data_dir).iterdir() if d.is_dir()]

@@ -11,12 +11,12 @@ DATA_DIR=$1
 JSON_FILE=$2
 TARGET_DIR=$3
 
-# Ask for confirmation before proceeding
-read -p "Do you want to proceed? (yes/no): " confirm
-if [ "$confirm" != "yes" ]; then
-    echo "Aborting..."
-    exit 1
-fi
+# # Ask for confirmation before proceeding
+# read -p "Do you want to proceed? (yes/no): " confirm
+# if [ "$confirm" != "yes" ]; then
+#     echo "Aborting..."
+#     exit 1
+# fi
 
 
 # Check if jq is installed

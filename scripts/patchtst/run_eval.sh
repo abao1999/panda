@@ -8,7 +8,7 @@ checkpoint_dir=$WORK/checkpoints
 # python scripts/patchtst/evaluate.py \
 #     eval.mode=pretrain \
 #     eval.checkpoint_path=$checkpoint_dir/run-${run_num}/checkpoint-final \
-#     eval.data_path=$WORK/data/final_skew15/test_base \
+#     eval.data_path=$WORK/data/final_skew15/test_zeroshot \
 #     eval.num_systems=288 \
 #     eval.num_test_instances=1 \
 #     eval.batch_size=64 \
@@ -30,7 +30,7 @@ run_name=run-388
 python scripts/patchtst/evaluate.py \
     eval.mode=predict \
     eval.checkpoint_path=$checkpoint_dir/$run_name/checkpoint-final \
-    eval.data_path=$WORK/data/final_skew40/test_base \
+    eval.data_path=$WORK/data/final_skew40/test_zeroshot \
     eval.num_systems=325 \
     eval.num_test_instances=3 \
     eval.window_style=sampled \
