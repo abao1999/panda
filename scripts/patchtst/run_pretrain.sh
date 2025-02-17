@@ -1,4 +1,5 @@
 # read debug flag
+DEBUG=0
 while getopts "d" flag; do
         case "${flag}" in
                 d) DEBUG=1;;
