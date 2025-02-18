@@ -34,5 +34,5 @@ noiser:
   end: 0.0
   decay_rate: 8.0
   eps: 0.008
-  log_steps: 100
+  log_steps: 1000
   epoch_stop: 0.5

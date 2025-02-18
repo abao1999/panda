@@ -23,7 +23,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 scripts/patchtst/train.py \
                 shuffle_buffer_length=100_000 \
                 patchtst.mode=predict \
-                patchtst.pretrained_encoder_path=/stor/work/AMDG_Gilpin_Summer2024/checkpoints/run-386/checkpoint-final \
+                patchtst.pretrained_encoder_path=null \
                 patchtst.context_length=512 \
                 patchtst.prediction_length=128 \
                 patchtst.patch_length=16 \
@@ -39,7 +39,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 patchtst.loss=mse \
                 patchtst.distribution_output=null \
                 train.per_device_train_batch_size=1024 \
-                train.max_steps=200_000 \
+                train.max_steps=100_000 \
                 train.save_steps=50_000 \
                 train.log_steps=1_000 \
                 train.warmup_ratio=0.1 \

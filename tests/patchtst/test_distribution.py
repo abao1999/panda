@@ -194,6 +194,9 @@ def analyze_distribution(
             return_dict=False,
         )
 
+        horizon = (horizon - loc) / scale
+        preds = (preds - loc) / scale
+
         label_mean = horizon.mean(dim=1, keepdim=True)
         label_std = horizon.std(dim=1, keepdim=True)
         control = label_mean + label_std * torch.randn_like(horizon)
@@ -249,13 +252,15 @@ def main(cfg):
     context_min, context_max, future_min, future_max = dataset_range(dataset)
     print(f"Context range: {context_min} to {context_max}")
     print(f"Future range: {future_min} to {future_max}")
-    breakpoint()
+
+    save_dir = "figures/distribution"
+    os.makedirs(save_dir, exist_ok=True)
 
     analyze_distribution(
         model,
         dataset,
         num_samples=1000,
-        save_path="figures/distribution/noaug_unstandard_no_channel_attn_from_scratch.png",
+        save_path=os.path.join(save_dir, "distribution.png"),
     )
 
 

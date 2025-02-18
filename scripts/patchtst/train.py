@@ -405,7 +405,7 @@ def main(cfg):
 
     # terminate wandb run after training
     if cfg.wandb.log:
-        wandb.finish()
+        wandb.finish(exit_code=0)
 
 
 if __name__ == "__main__":
