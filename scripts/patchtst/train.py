@@ -102,18 +102,15 @@ class NoiseScaleLoggingCallback(TrainerCallback):
         self.noise_scale_scheduler = noise_scale_scheduler
         self.logger = logger
         self.log_interval = log_interval
-        # self.wandb_run = wandb.run if wandb.run is not None else None
 
     def on_step_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
-        # TODO: does this cause a slowdown? does not seem to be the case
         should_log = state.global_step % self.log_interval == 0 or state.epoch == 1.0
         if should_log and state.epoch < self.noise_scale_scheduler.epoch_stop:  # type: ignore
             epoch = float(state.epoch)  # type: ignore
             noise_scale = self.noise_scale_scheduler(epoch)
-            # log_on_main(f"Logging noise_scale to wandb: {noise_scale}", self.logger)
 
-            # If using wandb or tensorboard, log it there as well
-            if args.report_to:
+            # Check if wandb run is active before logging
+            if wandb.run is not None and args.report_to:
                 for report in args.report_to:
                     if report == "wandb":
                         wandb.log({"noise_scale": noise_scale}, step=state.global_step)
