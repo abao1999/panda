@@ -9,13 +9,13 @@ from pathlib import Path
 import hydra
 import torch
 import transformers
-import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
 from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
+import wandb
 from dystformer.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
@@ -36,7 +36,7 @@ from dystformer.utils import (
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
     # set up wandb project and logging if enabled
-    if cfg.wandb.log:
+    if cfg.wandb.log and is_main_process():
         run = wandb.init(
             project=cfg.wandb.project_name,
             entity=cfg.wandb.entity,
@@ -47,6 +47,7 @@ def main(cfg):
             resume=cfg.wandb.resume,
             tags=cfg.wandb.tags,
         )
+        log_on_main(f"Wandb initialized: {run.id}", logger)
 
     # check model type is valid
     assert cfg.chronos.model_type in ["seq2seq", "causal"]

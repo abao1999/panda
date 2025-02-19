@@ -164,6 +164,12 @@ class PatchTSTClamper(nn.Module):
         self, x: torch.Tensor, low_limit: float, high_limit: float
     ) -> torch.Tensor:
         return torch.clamp(x, min=low_limit, max=high_limit)
+        # # ReLU-like clamping that avoids direct comparisons
+        # x = x - low_limit
+        # x = torch.nn.functional.relu(x)
+        # x = torch.nn.functional.relu(high_limit - low_limit - x)
+        # x = high_limit - x
+        # return x
 
 
 class PatchTSTFourierApproximator(nn.Module):

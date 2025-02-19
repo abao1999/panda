@@ -56,7 +56,7 @@ class CustomTrainer(Trainer):
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
         """
         epoch = float(self.state.epoch)  # type: ignore
-        schedule_param = self.scheduler(epoch)
+        schedule_param = torch.tensor(self.scheduler(epoch))
 
         outputs = model(**inputs, schedule_param=schedule_param)
 
@@ -130,6 +130,7 @@ def main(cfg):
             group=cfg.wandb.group_name,
             resume=cfg.wandb.resume,
         )
+        log_on_main(f"Wandb initialized: {run.id}", logger)
 
     # set floating point precision
     use_tf32 = cfg.train.tf32

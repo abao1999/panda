@@ -991,8 +991,8 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         if self.distribution_output:
             y_hat_out = y_hat
         else:
-            y_hat_out = y_hat * model_output.scale + model_output.loc
-
+            # y_hat_out = y_hat * model_output.scale + model_output.loc
+            y_hat_out = y_hat
         if future_values is not None:
             if self.distribution_output:
                 distribution = self.distribution_output.distribution(
