@@ -1,6 +1,5 @@
 import logging
 import os
-from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -13,9 +12,6 @@ from gluonts.itertools import Filter
 from omegaconf import OmegaConf
 from transformers import (
     Trainer,
-    TrainerCallback,
-    TrainerControl,
-    TrainerState,
     TrainingArguments,
 )
 
@@ -31,6 +27,7 @@ from dystformer.patchtst.patchtst import (
     PatchTSTForPrediction,
     PatchTSTForPretraining,
 )
+from dystformer.schedulers import Scheduler, SchedulerLoggingCallback
 from dystformer.utils import (
     ensure_contiguous,
     get_next_path,
@@ -43,103 +40,25 @@ from dystformer.utils import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class NoiseScaleScheduler:
-    """
-    Noise scale scheduler for the training process. Noise to be applied to the instance-normalized trajectories
-    Args:
-        schedule_name: schedule for the noise scale. Options are "linear", "exponential", "cosine"
-            cosine schedule is inspired by IDDPM and is known to work well for training diffusion models
-        start: initial noise scale
-        end: final noise scale
-        decay_rate: decay rate for the exponential decay schedule
-        eps: epsilon for the cosine schedule (for numerical stability)
-        epoch_stop: epoch (as a fraction of total epochs) at which to stop the schedule
-    """
-
-    schedule_name: str
-    start: float
-    end: float
-    decay_rate: float = 8.0
-    eps: float = 0.008
-    epoch_stop: float = 1.0
-
-    def __post_init__(self):
-        if self.schedule_name not in ["linear", "exponential", "cosine"]:
-            raise ValueError("Invalid schedule for noise scale scheduler")
-        if self.start < self.end:
-            raise ValueError("Start noise scale must be greater than end noise scale")
-
-        if self.epoch_stop > 1.0 or self.epoch_stop < 0.0:
-            raise ValueError("Epoch stop must be between 0.0 and 1.0")
-
-        self.decay_rate = torch.tensor(self.decay_rate)  # type: ignore
-        self.eps = torch.tensor(self.eps)  # type: ignore
-
-        self.schedule_fn = {
-            "linear": lambda t: self.start + (self.end - self.start) * t,
-            "cosine": lambda t: self.end
-            + (self.start - self.end)
-            * torch.cos((t + self.eps) / (1 + self.eps) * torch.pi / 2) ** 2,
-            "exponential": lambda t: self.start * torch.exp(-self.decay_rate * t),
-        }[self.schedule_name]
-
-    def __call__(self, epoch: float) -> float | torch.Tensor:
-        t = epoch / self.epoch_stop
-        noise_scale = self.schedule_fn(t)
-        if epoch > self.epoch_stop or noise_scale < self.end:
-            noise_scale = self.end
-        return noise_scale
-
-
-class NoiseScaleLoggingCallback(TrainerCallback):
-    def __init__(
-        self,
-        noise_scale_scheduler: NoiseScaleScheduler,
-        logger: logging.Logger,
-        log_interval: int = 100,
-    ):
-        self.noise_scale_scheduler = noise_scale_scheduler
-        self.logger = logger
-        self.log_interval = log_interval
-
-    def on_step_end(self, args, state: TrainerState, control: TrainerControl, **kwargs):
-        should_log = state.global_step % self.log_interval == 0 or state.epoch == 1.0
-        if should_log and state.epoch < self.noise_scale_scheduler.epoch_stop:  # type: ignore
-            epoch = float(state.epoch)  # type: ignore
-            noise_scale = self.noise_scale_scheduler(epoch)
-
-            # Check if wandb run is active before logging
-            if wandb.run is not None and args.report_to:
-                for report in args.report_to:
-                    if report == "wandb":
-                        wandb.log({"noise_scale": noise_scale}, step=state.global_step)
-                    elif report == "tensorboard":
-                        if control.should_log:
-                            if not hasattr(self, "log_history"):
-                                self.log_history = []
-                            self.log_history.append({"noise_scale": noise_scale})
-
-
 class CustomTrainer(Trainer):
     def __init__(
         self,
         model: PatchTSTForPretraining | PatchTSTForPrediction,
         args: TrainingArguments,
-        noise_scale_scheduler: NoiseScaleScheduler,
+        scheduler: Scheduler,
         **kwargs,
     ):
         super().__init__(model, args, **kwargs)
-        self.noise_scale_scheduler = noise_scale_scheduler
+        self.scheduler = scheduler
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
         How the loss is computed by Trainer. By default, all models return the loss in the first element.
         """
         epoch = float(self.state.epoch)  # type: ignore
-        noise_scale = self.noise_scale_scheduler(epoch)
+        schedule_param = self.scheduler(epoch)
 
-        outputs = model(**inputs, noise_scale=noise_scale)
+        outputs = model(**inputs, schedule_param=schedule_param)
 
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later (HF comment)
@@ -360,26 +279,27 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    if cfg.noiser.enabled:
-        noise_scale_scheduler = NoiseScaleScheduler(
-            schedule_name=cfg.noiser.schedule_name,
-            start=cfg.noiser.start,
-            end=cfg.noiser.end,
-            decay_rate=cfg.noiser.decay_rate,
-            eps=cfg.noiser.eps,
-            epoch_stop=cfg.noiser.epoch_stop,
+    if cfg.scheduler.enabled:
+        scheduler = Scheduler(
+            schedule_name=cfg.scheduler.schedule_name,
+            init_value=cfg.scheduler.init_value,
+            final_value=cfg.scheduler.final_value,
+            decay_rate=cfg.scheduler.decay_rate,
+            eps=cfg.scheduler.eps,
+            epoch_stop=cfg.scheduler.epoch_stop,
         )
 
-        logging_callback = NoiseScaleLoggingCallback(
-            noise_scale_scheduler=noise_scale_scheduler,
+        logging_callback = SchedulerLoggingCallback(
+            scheduler=scheduler,
             logger=logger,
-            log_interval=cfg.noiser.log_steps,
+            log_interval=cfg.scheduler.log_steps,
+            log_value_name=cfg.scheduler.schedule_value_name,
         )
         trainer = CustomTrainer(
             model=model,
             args=training_args,
             train_dataset=shuffled_train_dataset,
-            noise_scale_scheduler=noise_scale_scheduler,
+            scheduler=scheduler,
             callbacks=[logging_callback],
         )
     else:

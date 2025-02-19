@@ -251,7 +251,6 @@ class PatchTSTPipeline:
         self,
         context: torch.Tensor | list[torch.Tensor],
         past_observed_mask: torch.Tensor | None = None,
-        noise_scale: float = 0.0,
     ) -> torch.Tensor:
         """
         Get completions for the given time series.
@@ -277,9 +276,7 @@ class PatchTSTPipeline:
 
         context_tensor = self._prepare_and_validate_context(context=context)
         completions_output = self.model.generate_completions(
-            context_tensor,
-            past_observed_mask=past_observed_mask,
-            noise_scale=noise_scale,
+            context_tensor, past_observed_mask=past_observed_mask
         )
         # TODO: need to check shapes
         completions = completions_output.completions.view_as(context_tensor).permute(
