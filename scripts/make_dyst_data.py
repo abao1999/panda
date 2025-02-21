@@ -141,9 +141,13 @@ def main(cfg):
         verbose=int(cfg.sampling.verbose),
     )
 
+    num_periods_lst = np.arange(
+        cfg.sampling.num_periods_min, cfg.sampling.num_periods_max + 1
+    ).tolist()
+
     sys_sampler = DynSysSampler(
         rseed=cfg.sampling.rseed,
-        num_periods=cfg.sampling.num_periods,
+        num_periods=num_periods_lst,
         num_points=cfg.sampling.num_points,
         num_ics=cfg.sampling.num_ics,
         num_param_perturbations=cfg.sampling.num_param_perturbations,

@@ -214,9 +214,7 @@ if __name__ == "__main__":
         dyst_names_lst = [
             folder.name for folder in Path(split_dir).iterdir() if folder.is_dir()
         ]
-        dyst_names_lst = list(
-            rng.choice(dyst_names_lst, args.n_systems_plot, replace=False)
-        )
+        dyst_names_lst = dyst_names_lst[: args.n_systems_plot]
     else:
         dyst_names_lst = args.dysts_names
 
@@ -234,7 +232,7 @@ if __name__ == "__main__":
     plot_name_suffix = "_".join(args.split.split("/"))
     plot_name_suffix += "_failures" if args.samples_subset == "failed_samples" else ""
     if args.plot_grid:
-        n_rows = round(args.n_systems_plot**0.5)
+        n_rows = round(1 + args.n_systems_plot**0.5)
         subplot_size = (n_rows, n_rows)
         plot_saved_data_grid(
             dyst_names_lst,

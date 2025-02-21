@@ -59,7 +59,7 @@ class DynSysSampler:
     """
 
     rseed: int = 999
-    num_periods: int = 5
+    num_periods: int | list[int] = 40
     num_points: int = 1024
 
     param_sampler: BaseSampler | None = None
@@ -77,6 +77,9 @@ class DynSysSampler:
     save_failed_trajs: bool = False
 
     def __post_init__(self) -> None:
+        if isinstance(self.num_periods, int):
+            self.num_periods = [self.num_periods]
+
         self.failed_integrations = defaultdict(list)
         self.rng = np.random.default_rng(self.rseed)
         if self.param_sampler is None:
@@ -172,12 +175,14 @@ class DynSysSampler:
             self.save_failed_integrations_callback,
         ]
 
+        num_periods = self.rng.choice(self.num_periods)
+        logger.info(f"Generating default ensemble with {num_periods} periods")
+
         # treat the default params as the zeroth sample
-        logger.info("Generating default ensemble...")
         default_ensemble = make_trajectory_ensemble(
             self.num_points,
             subset=systems,
-            pts_per_period=self.num_points // self.num_periods,
+            pts_per_period=self.num_points // num_periods,
             event_fns=self.events,
             use_multiprocessing=use_multiprocessing,
             silent_errors=silent_errors,
@@ -351,10 +356,15 @@ class DynSysSampler:
                         systems
                     )
 
+                    num_periods = self.rng.choice(self.num_periods)
+                    logger.info(
+                        f"Generating ensemble of param perturbation {i} and ic perturbation {j} with {num_periods} periods"
+                    )
+
                     ensemble = make_trajectory_ensemble(
                         self.num_points,
                         subset=perturbed_systems,
-                        pts_per_period=self.num_points // self.num_periods,
+                        pts_per_period=self.num_points // num_periods,
                         event_fns=self.events,
                         use_multiprocessing=use_multiprocessing,
                         silent_errors=silent_errors,

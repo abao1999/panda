@@ -8,7 +8,9 @@ sampling:
   reference_traj_transient: 0.2
   reference_traj_n_periods: 10
   num_points: 4096
-  num_periods: 10
+  num_periods: 40 # default/fallback number of periods, need to specify for traj cache in skew system generation
+  num_periods_min: 20
+  num_periods_max: 60
   num_ics: 1
   num_param_perturbations: 4
   param_scale: 0.5
