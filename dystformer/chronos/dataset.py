@@ -21,7 +21,6 @@ from gluonts.transform import (
     InstanceSplitter,
     LeavesMissingValues,
     MissingValueImputation,
-    NumInstanceSampler,
     ValidationSplitSampler,
 )
 from torch.utils.data import IterableDataset, get_worker_info
@@ -67,6 +66,32 @@ class SingleContextSampler(InstanceSampler):
             return np.array([], dtype=int)
 
         return np.array([a])
+
+
+class NumInstanceSampler(InstanceSampler):
+    """
+    Samples N time points from each series.
+
+    Parameters
+    ----------
+    N
+        number of time points to sample from each time series.
+    """
+
+    N: int
+    seed: int = 42
+
+    def __post_init__(self):
+        super().__init__()
+        assert self.N > 0
+        self.rng = np.random.RandomState(self.seed)
+
+    def __call__(self, ts: np.ndarray) -> np.ndarray:
+        a, b = self._get_bounds(ts)
+        if a > b:
+            return np.array([], dtype=int)
+
+        return self.rng.randint(a, b + 1, size=self.N)
 
 
 class PseudoShuffledIterableDataset(IterableDataset):

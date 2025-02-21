@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+from dystformer.utils import safe_standardize
+
 
 @dataclass
 class RandomDimSelectionTransform:
@@ -23,6 +25,19 @@ class RandomDimSelectionTransform:
             timeseries.shape[axis], self.num_dims, replace=False
         )
         return np.take(timeseries, selected_dims, axis=axis)
+
+
+@dataclass
+class StandardizeTransform:
+    """Standardize a timeseries"""
+
+    axis: int = -1
+
+    def __call__(self, timeseries: NDArray) -> NDArray:
+        """
+        :param timeseries: (num_channels, num_timepoints) timeseries to standardize
+        """
+        return safe_standardize(timeseries, axis=self.axis)
 
 
 @dataclass
@@ -80,22 +95,114 @@ class FixedDimensionDelayEmbeddingTransform:
 
 
 @dataclass
-class QuadraticEmbeddingTransform:
-    """Embed the channel dimension with a quadratic basis
+class RandomPhaseSurrogate:
+    """Creates a phase surrogate of a timeseries by randomizing the phases of the Fourier coefficients
 
-    NOTE: does the same thing as PatchTSTPolynomialEmbedding with degree=2,
-    but much more efficiently
+    :param cutoff: fraction of frequencies to keep
+    :param random_seed: RNG seed
     """
+
+    cutoff: float = 0.1
+    random_seed: int = 0
+
+    def __post_init__(self) -> None:
+        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
     def __call__(self, timeseries: NDArray) -> NDArray:
         """
-        Parameters:
-            timeseries (`NDArray` of shape `(num_channels, num_timepoints)`, *required*):
-                Timeseries to embed
+        :param timeseries: (num_channels, num_timepoints) timeseries to create a phase surrogate for
         """
-        indices = np.triu_indices(timeseries.shape[0])
-        features = timeseries[indices[0]] * timeseries[indices[1]]
-        return np.vstack([timeseries, features])
+        freqs = np.fft.rfft(timeseries, axis=1)
+        surrogate_freqs = freqs * np.exp(2j * np.pi * np.random.rand(*freqs.shape))
+
+        # cut off high frequencies
+        n_freqs = surrogate_freqs.shape[1]
+        surrogate_freqs[:, int(n_freqs * self.cutoff) :] = 0
+
+        # preserve the DC component
+        surrogate_freqs[:, 0] = freqs[:, 0]
+
+        surrogates = np.fft.irfft(surrogate_freqs, axis=1)
+
+        return surrogates
+
+
+@dataclass
+class RandomFourierSeries:
+    """Creates a random Fourier series of the same shape as the input timeseries.
+
+    Completely ignores the input content and generates a new signal by summing random sinusoids.
+    The frequencies are sampled uniformly from [0, max_freq], amplitudes from [0, max_amp],
+    and phases from [0, 2π].
+
+    Args:
+        max_freq: Maximum frequency component to include (Hz)
+        max_amp: Maximum amplitude for each sinusoid
+        num_components: Number of frequency components to sum
+        random_seed: RNG seed
+    """
+
+    max_freq: float = 10.0
+    max_amp: float = 1.0
+    num_components: int = 5
+    random_seed: int = 0
+
+    def __post_init__(self) -> None:
+        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
+
+    def __call__(self, timeseries: NDArray) -> NDArray:
+        """Generate random Fourier series matching input shape using FFT"""
+        num_channels, num_timepoints = timeseries.shape
+
+        freqs = self.rng.uniform(0, self.max_freq, (num_channels, self.num_components))
+        amps = self.rng.uniform(0, self.max_amp, (num_channels, self.num_components))
+        phases = self.rng.uniform(0, 2 * np.pi, (num_channels, self.num_components))
+
+        t = np.linspace(0, 1, num_timepoints)
+        fourier_series = np.sum(
+            amps[..., np.newaxis]
+            * np.sin(2 * np.pi * freqs[..., np.newaxis] * t + phases[..., np.newaxis]),
+            axis=1,
+        )
+
+        return fourier_series
+
+
+@dataclass
+class RandomTakensEmbedding:
+    """Random Takens embedding of a single coordinate with delay 1
+
+    Takes a (D,T) trajectory, randomly selects one dimension, and creates a delay embedding
+    with delay 1, preserving the original dimensionality.
+
+    :param random_seed: RNG seed
+    """
+
+    lag_range: tuple[int, int] = (1, 10)
+    random_seed: int = 0
+
+    def __post_init__(self) -> None:
+        self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
+
+    def __call__(self, timeseries: NDArray) -> NDArray:
+        """
+        :param timeseries: (num_channels, num_timepoints) timeseries to delay embed
+        """
+        lag = self.rng.integers(*self.lag_range, endpoint=True)
+
+        # select random dimension to embed
+        embed_dim = self.rng.integers(0, timeseries.shape[0])
+
+        # create delay embedding of selected dimension with specified time lag
+        N = timeseries.shape[1] - lag * (timeseries.shape[0] - 1)
+        delays = np.stack(
+            [
+                timeseries[embed_dim, i * lag : i * lag + N]
+                for i in range(timeseries.shape[0])
+            ]
+        )
+
+        return delays
 
 
 @dataclass
@@ -107,16 +214,17 @@ class RandomConvexCombinationTransform:
     :param random_seed: RNG seed
     """
 
-    num_combinations: int
     alpha: float
     random_seed: int = 0
+    dim_range: tuple[int, int] = (3, 10)
 
     def __post_init__(self) -> None:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
     def __call__(self, timeseries: NDArray) -> NDArray:
+        dims = self.rng.integers(self.dim_range[0], self.dim_range[1], endpoint=True)
         coeffs = self.rng.dirichlet(
-            self.alpha * np.ones(timeseries.shape[0]), size=self.num_combinations
+            self.alpha * np.ones(timeseries.shape[0]), size=dims
         )
         return coeffs @ timeseries
 
@@ -130,17 +238,18 @@ class RandomAffineTransform:
     :param random_seed: RNG seed
     """
 
-    out_dim: int
     scale: float
     random_seed: int = 0
+    dim_range: tuple[int, int] = (3, 10)
 
     def __post_init__(self) -> None:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
     def __call__(self, timeseries: NDArray) -> NDArray:
+        dims = self.rng.integers(self.dim_range[0], self.dim_range[1], endpoint=True)
         affine_transform = self.rng.normal(
-            scale=self.scale, size=(self.out_dim, 1 + timeseries.shape[0])
-        )
+            scale=self.scale, size=(dims, 1 + timeseries.shape[0])
+        ) / np.sqrt(dims)
         return (
             affine_transform[:, :-1] @ timeseries + affine_transform[:, -1, np.newaxis]
         )

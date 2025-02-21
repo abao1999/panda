@@ -42,6 +42,23 @@ class ExponentialSchedule:
 
 
 @dataclass
+class StepSchedule:
+    v_init: float
+    v_final: float
+    num_steps: int = 4
+
+    def __call__(self, t: float) -> float:
+        current_step = int(t * self.num_steps)
+        if current_step >= self.num_steps:
+            return self.v_final
+
+        step_value = self.v_init + (self.v_final - self.v_init) * (
+            current_step / self.num_steps
+        )
+        return step_value
+
+
+@dataclass
 class Scheduler:
     """
     General Scheduler for the training process in the model forward pass.
@@ -62,12 +79,10 @@ class Scheduler:
     final_value: float
     decay_rate: float = 8.0
     eps: float = 0.008
+    num_steps: int = 4
     epoch_stop: float = 1.0
 
     def __post_init__(self):
-        if self.schedule_name not in ["linear", "exponential", "cosine"]:
-            raise ValueError("Invalid schedule for noise scale scheduler")
-
         if self.epoch_stop > 1.0 or self.epoch_stop < 0.0:
             raise ValueError("Epoch stop must be between 0.0 and 1.0")
 
@@ -75,6 +90,7 @@ class Scheduler:
             "linear": LinearSchedule(self.init_value, self.final_value),
             "cosine": CosineSchedule(self.init_value, self.final_value, self.eps),
             "exponential": ExponentialSchedule(self.init_value, self.decay_rate),
+            "step": StepSchedule(self.init_value, self.final_value, self.num_steps),
         }[self.schedule_name]
 
     def __call__(self, epoch: float) -> float:

@@ -46,9 +46,10 @@ if [ "$DEBUG" -eq 0 ]; then
                 train.torch_compile=true \
                 train.weight_decay=0.0 \
                 scheduler.enabled=true \
+                scheduler.schedule_name=step \
                 scheduler.init_value=4.0 \
                 scheduler.final_value=10000.0 \
-                scheduler.log_steps=1000 \
+                scheduler.num_steps=300 \
                 "$@"
 else  # this mode allows for breakpoints inside model code
         CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py \

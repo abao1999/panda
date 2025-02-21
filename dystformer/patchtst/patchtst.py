@@ -1001,8 +1001,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 loss_val = nll(distribution, future_values)
                 loss_val = weighted_average(loss_val)
             else:
-                # future_values = (future_values - model_output.loc) / model_output.scale
-                # future_values = torch.clamp(future_values, min=-15, max=15)
+                future_values = (future_values - model_output.loc) / model_output.scale
                 future_values = self.clamper(
                     future_values, -schedule_param, schedule_param
                 )

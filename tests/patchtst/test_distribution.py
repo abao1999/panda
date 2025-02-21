@@ -28,6 +28,9 @@ from dystformer.patchtst.patchtst import (
 from dystformer.utils import (
     has_enough_observations,
     log_on_main,
+    plot_trajs_multivariate,
+    plot_univariate_trajs,
+    safe_standardize,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,7 +90,7 @@ def load_model(
     return model.to(device)  # type: ignore
 
 
-def load_datasets(cfg) -> DataLoader:
+def load_systems(cfg) -> tuple[list[str], list[FileDataset]]:  # type: ignore
     # get train data paths
     train_data_dir_lst = cfg.train_data_dirs
     train_data_paths = []
@@ -102,6 +105,7 @@ def load_datasets(cfg) -> DataLoader:
         logger,
     )
 
+    system_names = [sys.parent.stem for sys in train_data_paths]
     train_datasets = [
         Filter(
             partial(
@@ -114,6 +118,11 @@ def load_datasets(cfg) -> DataLoader:
         for data_path in train_data_paths
     ]
 
+    return system_names, train_datasets
+
+
+def load_datasets(cfg) -> DataLoader:
+    system_names, train_datasets = load_systems(cfg)
     # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
         probability = cfg.probability
@@ -158,6 +167,48 @@ def load_datasets(cfg) -> DataLoader:
         num_workers=dataloader_num_workers,
         pin_memory=True,
     )
+
+
+def system_range(
+    systems: list[FileDataset],  # type: ignore
+    standardize: bool = False,
+    system_names: list[str] | None = None,
+):
+    bad_ensemble = {}
+    mins, maxs = [], []
+    for i, system in tqdm(enumerate(systems), total=len(systems)):
+        traj = next(iter(system))["target"]
+        if standardize:
+            traj = safe_standardize(traj)
+        min_val = traj.min()
+        max_val = traj.max()
+        mins.append(min_val)
+        maxs.append(max_val)
+
+        if min_val < -1000 or max_val > 1000:
+            if system_names is not None:
+                name = f"{system_names[i]}_{i}"
+            else:
+                name = f"system_{i}"
+
+            if name not in bad_ensemble:
+                bad_ensemble[name] = traj[None, :]
+            else:
+                bad_ensemble[name] = np.concatenate(
+                    [bad_ensemble[name], traj[None, :]], axis=0
+                )
+
+            plot_trajs_multivariate(
+                bad_ensemble[name],
+                save_dir="figures/distribution/bad_systems",
+                plot_name=name,
+            )
+
+    plt.hist(mins, bins=1000, log=True)
+    plt.hist(maxs, bins=1000, log=True)
+    plt.savefig("figures/distribution/system_range.png")
+
+    plot_univariate_trajs(bad_ensemble, save_path="figures/distribution/bad_systems")
 
 
 def dataset_range(dataset: DataLoader, num_samples: int = 1000):
@@ -249,9 +300,9 @@ def main(cfg):
 
     dataset = load_datasets(cfg)
 
-    # context_min, context_max, future_min, future_max = dataset_range(dataset)
-    # print(f"Context range: {context_min} to {context_max}")
-    # print(f"Future range: {future_min} to {future_max}")
+    system_names, train_datasets = load_systems(cfg)
+    system_range(train_datasets, system_names=system_names, standardize=False)
+    exit()
 
     save_dir = "figures/distribution"
     os.makedirs(save_dir, exist_ok=True)

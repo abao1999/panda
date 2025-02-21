@@ -20,6 +20,8 @@ from dystformer.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
     RandomDimSelectionTransform,
+    RandomTakensEmbedding,
+    StandardizeTransform,
 )
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.patchtst import (
@@ -203,14 +205,27 @@ def main(cfg):
         dataloader_num_workers = len(train_datasets)
 
     augmentations = [
-        RandomConvexCombinationTransform(
-            num_combinations=10, alpha=1.0, random_seed=cfg.train.seed
+        RandomTakensEmbedding(
+            lag_range=cfg.augmentations.lag_range,
+            random_seed=cfg.train.seed,
         ),
-        RandomAffineTransform(out_dim=6, scale=1.0, random_seed=cfg.train.seed),
+        RandomConvexCombinationTransform(
+            alpha=1.0,
+            random_seed=cfg.train.seed,
+            dim_range=cfg.augmentations.dim_range,
+        ),
+        RandomAffineTransform(
+            dim_range=cfg.augmentations.dim_range,
+            scale=1.0,
+            random_seed=cfg.train.seed,
+        ),
     ]
     log_on_main(f"Using augmentations: {augmentations}", logger)
 
-    transforms: list = [RandomDimSelectionTransform(num_dims=cfg.fixed_dim)]
+    transforms: list = [
+        StandardizeTransform(),
+        RandomDimSelectionTransform(num_dims=cfg.fixed_dim),
+    ]
 
     shuffled_train_dataset = PatchTSTDataset(
         datasets=train_datasets,
@@ -280,21 +295,16 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    if cfg.scheduler.enabled:
-        scheduler = Scheduler(
-            schedule_name=cfg.scheduler.schedule_name,
-            init_value=cfg.scheduler.init_value,
-            final_value=cfg.scheduler.final_value,
-            decay_rate=cfg.scheduler.decay_rate,
-            eps=cfg.scheduler.eps,
-            epoch_stop=cfg.scheduler.epoch_stop,
-        )
+    scheduler_args = dict(cfg.scheduler)
+    if scheduler_args.pop("enabled", False):
+        value_name = scheduler_args.pop("schedule_value_name", "schedule_param")
+        scheduler = Scheduler(**scheduler_args)
 
         logging_callback = SchedulerLoggingCallback(
             scheduler=scheduler,
             logger=logger,
-            log_interval=cfg.scheduler.log_steps,
-            log_value_name=cfg.scheduler.schedule_value_name,
+            log_interval=cfg.train.log_steps,
+            log_value_name=value_name,
         )
         trainer = CustomTrainer(
             model=model,

@@ -33,7 +33,7 @@ scheduler:
   schedule_name: cosine
   init_value: 1.0
   final_value: 0.0
+  num_steps: 4
   decay_rate: 8.0
   eps: 0.008
-  log_steps: 1000
   epoch_stop: 0.5

@@ -7,6 +7,14 @@ import torch.nn as nn
 from transformers import PatchTSTConfig
 
 
+class PatchTSTKernelEmbedding(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x
+
+
 class PatchTSTRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
         """
