@@ -192,10 +192,11 @@ def analyze_distribution(
             past_values=past_values,
             future_values=future_values,
             return_dict=False,
+            schedule_param=15,
         )
 
-        horizon = (horizon - loc) / scale
-        preds = (preds - loc) / scale
+        # horizon = (horizon - loc) / scale
+        # preds = (preds - loc) / scale
 
         label_mean = horizon.mean(dim=1, keepdim=True)
         label_std = horizon.std(dim=1, keepdim=True)
@@ -206,7 +207,6 @@ def analyze_distribution(
 
         predictions.append(preds.detach().cpu())
         controls.append(control.detach().cpu())
-        print(horizon.min(), horizon.max())
         labels.append(horizon.detach().cpu())
 
     predictions = torch.cat(predictions, dim=0)
@@ -249,9 +249,9 @@ def main(cfg):
 
     dataset = load_datasets(cfg)
 
-    context_min, context_max, future_min, future_max = dataset_range(dataset)
-    print(f"Context range: {context_min} to {context_max}")
-    print(f"Future range: {future_min} to {future_max}")
+    # context_min, context_max, future_min, future_max = dataset_range(dataset)
+    # print(f"Context range: {context_min} to {context_max}")
+    # print(f"Future range: {future_min} to {future_max}")
 
     save_dir = "figures/distribution"
     os.makedirs(save_dir, exist_ok=True)

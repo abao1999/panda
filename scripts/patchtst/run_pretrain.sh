@@ -43,7 +43,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 train.log_steps=1_000 \
                 train.warmup_ratio=0.1 \
                 train.torch_compile=true \
-                noiser.enabled=true \
+                scheduler.enabled=true \
                 "$@"
 else  # this mode allows for breakpoints inside model code
         CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py \
