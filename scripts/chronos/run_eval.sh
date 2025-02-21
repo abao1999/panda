@@ -9,7 +9,7 @@ run_num=387
 python scripts/chronos/evaluate.py \
         eval.checkpoint_path=$checkpoint_dir/run-${run_num}/checkpoint-200000 \
         eval.data_path=$WORK/data/final_skew40/test_zeroshot \
-        eval.num_systems=1 \
+        eval.num_systems=20 \
         eval.num_test_instances=1 \
         eval.window_style=sampled \
         eval.batch_size=64 \

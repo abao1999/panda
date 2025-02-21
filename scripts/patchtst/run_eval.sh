@@ -25,14 +25,14 @@ checkpoint_dir=$WORK/checkpoints
 #     eval.seed=42 \
 #     "$@"
 
-run_name=run-388
+run_name=run-393
 
 python scripts/patchtst/evaluate.py \
     eval.mode=predict \
     eval.checkpoint_path=$checkpoint_dir/$run_name/checkpoint-final \
     eval.data_path=$WORK/data/final_skew40/test_zeroshot \
-    eval.num_systems=325 \
-    eval.num_test_instances=3 \
+    eval.num_systems=20 \
+    eval.num_test_instances=1 \
     eval.window_style=sampled \
     eval.batch_size=64 \
     eval.prediction_length=512 \
@@ -41,8 +41,8 @@ python scripts/patchtst/evaluate.py \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
     eval.device=cuda:0 \
-    eval.forecast_save_dir=$WORK/garbage/patchtst/$run_name/forecasts \
-    eval.labels_save_dir=$WORK/garbage/patchtst/$run_name/labels \
+    eval.forecast_save_dir=$WORK/data/eval/patchtst/$run_name/forecasts \
+    eval.labels_save_dir=$WORK/data/eval/patchtst/$run_name/labels \
     fixed_dim=3 \
     eval.seed=99 \
     "$@"

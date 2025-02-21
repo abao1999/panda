@@ -85,6 +85,7 @@ class OnAttractorInitCondSampler(BaseSampler):
         events: integration events to pass to solve_ivp
     """
 
+    # TODO: these arguments are not used
     reference_traj_length: int = 4096
     reference_traj_transient: float = 0.2
     reference_traj_n_periods: int = 10
