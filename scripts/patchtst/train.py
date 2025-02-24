@@ -219,7 +219,16 @@ def main(cfg):
             scale=1.0,
             random_seed=cfg.train.seed,
         ),
+        # RandomPhaseSurrogate(
+        #     cutoff=cfg.augmentations.phase_surrogate_cutoff,
+        #     random_seed=cfg.train.seed,
+        # ),
     ]
+    if cfg.augmentations.probabilities is None:
+        cfg.augmentations.probabilities = [1.0 / len(augmentations)] * len(
+            augmentations
+        )
+
     log_on_main(f"Using augmentations: {augmentations}", logger)
 
     transforms: list = [
@@ -235,6 +244,7 @@ def main(cfg):
         mode="train",
         model_type=cfg.patchtst.mode,
         augmentations=augmentations,
+        augmentation_probabilities=cfg.augmentations.probabilities,
         augmentation_rate=cfg.augmentations.augmentation_rate,
         transforms=transforms,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
@@ -297,6 +307,10 @@ def main(cfg):
 
     scheduler_args = dict(cfg.scheduler)
     if scheduler_args.pop("enabled", False):
+        log_on_main(
+            f"Using {scheduler_args['schedule_name']} scheduler for {scheduler_args['schedule_value_name']}",
+            logger,
+        )
         value_name = scheduler_args.pop("schedule_value_name", "schedule_param")
         scheduler = Scheduler(**scheduler_args)
 

@@ -14,8 +14,8 @@ if [ "$DEBUG" -eq 0 ]; then
         CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
         CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
 
-        CUDA_DEVICES=0,1,2,3
-        # CUDA_DEVICES=4,5,6,7
+        # CUDA_DEVICES=0,1,2,3
+        CUDA_DEVICES=4,5,6,7
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node 4 \
@@ -45,7 +45,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 train.warmup_ratio=0.1 \
                 train.torch_compile=true \
                 train.weight_decay=0.0 \
-                scheduler.enabled=true \
+                scheduler.enabled=false \
                 scheduler.schedule_name=step \
                 scheduler.init_value=4.0 \
                 scheduler.final_value=10000.0 \

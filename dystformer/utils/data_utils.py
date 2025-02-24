@@ -175,12 +175,7 @@ def accumulate_coords(
 
         dyst_coords_samples.append(dyst_coords)
 
-        print("data shape: ", dyst_coords.shape)
-        print("metadata: ", metadata)
-        print("IC: ", dyst_coords[:, 0])
-
     dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
-    print(dyst_coords_samples.shape)
     return dyst_coords_samples
 
 

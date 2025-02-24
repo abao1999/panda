@@ -24,8 +24,6 @@ from transformers.models.patchtst.modeling_patchtst import (
 from transformers.utils import ModelOutput
 
 from .modules import (
-    PatchTSTClamper,
-    PatchTSTFourierApproximator,
     PatchTSTNoiser,
     PatchTSTPatchify,
     PatchTSTRMSNorm,
@@ -901,9 +899,6 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         config.do_mask_input = False
 
         self.model = PatchTSTModel(config)
-        self.noiser = PatchTSTNoiser()
-        self.fourierer = PatchTSTFourierApproximator()
-        self.clamper = PatchTSTClamper()
 
         if config.loss == "mse" or config.loss == "huber":
             self.distribution_output = None
@@ -986,13 +981,12 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         # get output head
         y_hat = self.head(model_output.last_hidden_state)
 
-        loss_val = None
-
         if self.distribution_output:
             y_hat_out = y_hat
         else:
-            # y_hat_out = y_hat * model_output.scale + model_output.loc
-            y_hat_out = y_hat
+            y_hat_out = y_hat * model_output.scale + model_output.loc
+
+        loss_val = None
         if future_values is not None:
             if self.distribution_output:
                 distribution = self.distribution_output.distribution(
@@ -1001,10 +995,6 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 loss_val = nll(distribution, future_values)
                 loss_val = weighted_average(loss_val)
             else:
-                future_values = (future_values - model_output.loc) / model_output.scale
-                future_values = self.clamper(
-                    future_values, -schedule_param, schedule_param
-                )
                 loss_val = self.loss(y_hat_out, future_values)
 
         loc = model_output.loc
