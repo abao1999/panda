@@ -47,10 +47,10 @@ patchtst:
   pretrained_encoder_path: null
 
   # for the dynamical embedding
-  num_poly_feats: 512
+  num_poly_feats: 256
   poly_feat_degree: 2
   rff_trainable: true
-  num_rff: 512
+  num_rff: 256
 
 chronos:
   model_id: amazon/chronos-t5-mini

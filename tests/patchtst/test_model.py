@@ -4,8 +4,8 @@ from itertools import accumulate
 import hydra
 import torch
 
-from dystformer.patchtst.modules import PatchTSTConfig, PatchTSTKernelEmbedding
 from dystformer.patchtst.pipeline import FixedSubsetChannelSampler
+from dystformer.utils import load_patchtst_model
 
 
 def create_block_attention_mask(
@@ -187,8 +187,11 @@ def test_rff_embedding(cfg):
     """
     Test the RFF embedding
     """
-    config = PatchTSTConfig(**dict(cfg.patchtst))
-    embedding = PatchTSTKernelEmbedding(config)
+    model = load_patchtst_model(
+        mode="pretrain",
+        model_config=dict(cfg.patchtst),
+        pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
+    )
     breakpoint()
 
 

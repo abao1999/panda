@@ -24,7 +24,7 @@ from transformers.models.patchtst.modeling_patchtst import (
 from transformers.utils import ModelOutput
 
 from .modules import (
-    PatchTSTNoiser,
+    PatchTSTKernelEmbedding,
     PatchTSTPatchify,
     PatchTSTRMSNorm,
     apply_p_rope_to_qk,
@@ -463,7 +463,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         self.gradient_checkpointing = False
 
         # Input embedding: projection of feature vectors onto a d-dim vector space
-        self.embedder = PatchTSTEmbedding(config)
+        self.embedder = PatchTSTKernelEmbedding(config)
 
         # Encoder
         self.layers = nn.ModuleList(
@@ -690,8 +690,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             use_cls_token=config.use_cls_token,
         )
 
-        self.noiser = PatchTSTNoiser()
-
         if config.loss == "mse":
             self.loss = nn.MSELoss(reduction="none")
         elif config.loss == "huber":
@@ -755,10 +753,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         x_hat = self.head(x_hat)
 
         # reduce over the patch length dim first, then compute the masked loss over the tokens
-        noised_labels = self.noiser(
-            model_output.patch_input, schedule_param, dim=(2, 3)
-        )
-        loss_val = self.loss(x_hat, noised_labels)
+        loss_val = self.loss(x_hat, model_output.patch_input)
         masked_loss = (loss_val.mean(dim=-1) * model_output.mask).sum() / (
             model_output.mask.sum() + 1e-10
         )
