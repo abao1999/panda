@@ -222,19 +222,22 @@ class PatchTSTFourierApproximator(nn.Module):
         Returns:
             `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
         """
-        _, seq_length, n_channels = timeseries.shape
+
+        batch_size, seq_length, n_channels = timeseries.shape
         # Vectorized FFT applied on sequence length dimension
         ffts = torch.fft.rfft(timeseries, axis=1)  # Shape: (batch_size, n_freqs, 3)
-
         # Get indices of top k modes by magnitude
         magnitudes = torch.abs(ffts)
-        top_k_indices = torch.argsort(magnitudes, dim=1)[-k:, :]  # Shape: (k, 3)
-
+        # Shape: (batch_size, k, 3)
+        top_k_indices = torch.argsort(magnitudes, dim=1)[:, -k:, :]
         # Zero out all but top k modes
         filtered_ffts = torch.zeros_like(ffts)
 
-        for i in range(n_channels):
-            filtered_ffts[:, top_k_indices[:, i], i] = ffts[:, top_k_indices[:, i], i]
+        for b in range(batch_size):
+            for i in range(n_channels):
+                filtered_ffts[b, top_k_indices[b, :, i], i] = ffts[
+                    b, top_k_indices[b, :, i], i
+                ]
 
         # Vectorized inverse transform
         reconstructed = torch.fft.irfft(filtered_ffts, seq_length, dim=1)
