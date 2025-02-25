@@ -8,7 +8,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any
 
 import accelerate
 import gluonts
@@ -21,6 +21,12 @@ from transformers import (
     AutoModelForCausalLM,
     AutoModelForSeq2SeqLM,
     T5Config,
+)
+
+from dystformer.patchtst.patchtst import (
+    PatchTSTConfig,
+    PatchTSTForPrediction,
+    PatchTSTForPretraining,
 )
 
 
@@ -42,7 +48,7 @@ def log_on_main(msg: str, logger: logging.Logger, log_level: int = logging.INFO)
         logger.log(log_level, msg)
 
 
-def get_training_job_info() -> Dict:  # not currently used
+def get_training_job_info() -> dict:  # not currently used
     """
     Returns info about this training job.
     """
@@ -80,7 +86,7 @@ def get_training_job_info() -> Dict:  # not currently used
 
 
 def save_training_info(
-    ckpt_path: Path, model_config: Dict, train_config: Dict, all_config: Dict
+    ckpt_path: Path, model_config: dict, train_config: dict, all_config: dict
 ):
     """
     Save info about this training job in a json file for documentation.
@@ -134,7 +140,7 @@ def get_next_path(
     return base_dir / fname
 
 
-def load_model(
+def load_chronos_model(
     model_id="google/t5-efficient-tiny",
     model_type="seq2seq",
     vocab_size=4096,
@@ -142,7 +148,7 @@ def load_model(
     tie_embeddings=False,
     pad_token_id=0,
     eos_token_id=1,
-    logger: Optional[logging.Logger] = None,
+    logger: logging.Logger | None = None,
 ):
     """
     Load the specified HuggingFace model, adjusting the vocabulary
@@ -173,6 +179,47 @@ def load_model(
 
     model.config.pad_token_id = model.generation_config.pad_token_id = pad_token_id
     model.config.eos_token_id = model.generation_config.eos_token_id = eos_token_id
+
+    return model
+
+
+def load_patchtst_model(
+    mode: str,
+    model_config: dict[str, Any],
+    pretrained_encoder_path: str | None = None,
+    device: str | torch.device | None = None,
+) -> PatchTSTForPretraining | PatchTSTForPrediction:
+    """
+    Load a PatchTST model in either pretraining or prediction mode.
+
+    Args:
+        mode: Either "pretrain" or "predict" to specify model type
+        model_config: Dictionary containing model configuration parameters
+        pretrained_encoder_path: Optional path to pretrained encoder weights for prediction mode
+
+    Returns:
+        PatchTSTForPretraining or PatchTSTForPrediction model instance
+    """
+    config = PatchTSTConfig(**model_config)
+    if mode == "pretrain":
+        model = PatchTSTForPretraining(config)
+    elif mode == "predict":
+        model = PatchTSTForPrediction(config)
+    else:
+        raise ValueError(f"Invalid mode: {mode}")
+
+    if pretrained_encoder_path is not None and mode == "predict":
+        pretrained_model = PatchTSTForPretraining.from_pretrained(
+            pretrained_encoder_path
+        )
+
+        # Replace the current encoder with the pretrained encoder
+        if hasattr(pretrained_model, "model"):
+            pretained_trunk = getattr(pretrained_model, "model")
+            assert hasattr(pretained_trunk, "encoder"), "PatchTST must have an encoder"
+            model.model.encoder = pretained_trunk.encoder
+        else:
+            raise Exception("No model found in pretrained model")
 
     return model
 

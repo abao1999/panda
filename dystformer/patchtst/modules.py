@@ -8,11 +8,36 @@ from transformers import PatchTSTConfig
 
 
 class PatchTSTKernelEmbedding(nn.Module):
-    def __init__(self):
+    def __init__(self, config: PatchTSTConfig):
         super().__init__()
+        self.num_poly_feats = config.num_poly_feats
+        self.poly_feat_degree = config.poly_feat_degree
+        self.patch_indices = torch.randint(
+            high=config.patch_length,
+            size=(self.num_poly_feats, self.poly_feat_degree),
+            requires_grad=False,
+        )
+        self.freq_weights = nn.Parameter(
+            torch.randn(config.patch_length, config.num_rff // 2),
+            requires_grad=config.rff_trainable,
+        )
+        self.freq_biases = nn.Parameter(
+            torch.randn(1, 1, 1, config.num_rff // 2),
+            requires_grad=config.rff_trainable,
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x
+        """
+        Parameters:
+            x (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
+                Patch input for embedding
+        return:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
+        """
+        poly_feats = x[..., self.patch_indices].prod(dim=-1)
+        weighted_x = x @ self.freq_weights + self.freq_biases
+        rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
+        return torch.cat([poly_feats, rff_feats], dim=-1)
 
 
 class PatchTSTRMSNorm(nn.Module):

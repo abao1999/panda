@@ -27,7 +27,7 @@ from dystformer.utils import (
     get_next_path,
     has_enough_observations,
     is_main_process,
-    load_model,
+    load_chronos_model,
     log_on_main,
     save_training_info,
 )
@@ -133,7 +133,7 @@ def main(cfg):
         dataloader_num_workers = len(train_datasets)
 
     log_on_main("Initializing model", logger)
-    model = load_model(
+    model = load_chronos_model(
         model_id=cfg.chronos.model_id,
         model_type=cfg.chronos.model_type,
         vocab_size=cfg.chronos.n_tokens,
