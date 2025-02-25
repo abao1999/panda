@@ -129,11 +129,11 @@ def main(cfg):
         verbose=cfg.sampling.verbose,
     )
     ic_sampler = OnAttractorInitCondSampler(
-        reference_traj_length=cfg.sampling.reference_traj_length,
-        reference_traj_transient=cfg.sampling.reference_traj_transient,
-        reference_traj_n_periods=cfg.sampling.reference_traj_n_periods,
-        reference_traj_atol=cfg.sampling.atol,
-        reference_traj_rtol=cfg.sampling.rtol,
+        reference_traj_length=cfg.sampling.reference_traj.length,
+        reference_traj_transient=cfg.sampling.reference_traj.transient,
+        reference_traj_n_periods=cfg.sampling.reference_traj.n_periods,
+        reference_traj_atol=cfg.sampling.reference_traj.atol,
+        reference_traj_rtol=cfg.sampling.reference_traj.rtol,
         recompute_standardization=cfg.sampling.standardize,  # Important!
         events=event_fns,
         random_seed=cfg.sampling.rseed,

@@ -355,11 +355,11 @@ def main(cfg):
         verbose=cfg.sampling.verbose,
     )
     ic_sampler = OnAttractorInitCondSampler(
-        reference_traj_length=cfg.sampling.reference_traj_length,
-        reference_traj_n_periods=cfg.sampling.reference_traj_n_periods,
-        reference_traj_transient=cfg.sampling.reference_traj_transient,
-        reference_traj_atol=cfg.sampling.atol,
-        reference_traj_rtol=cfg.sampling.rtol,
+        reference_traj_length=cfg.sampling.reference_traj.length,
+        reference_traj_n_periods=cfg.sampling.reference_traj.n_periods,
+        reference_traj_transient=cfg.sampling.reference_traj.transient,
+        reference_traj_atol=cfg.sampling.reference_traj.atol,
+        reference_traj_rtol=cfg.sampling.reference_traj.rtol,
         recompute_standardization=cfg.sampling.standardize,  # Important (if standardize=True)
         random_seed=cfg.sampling.rseed,
         events=event_fns,
@@ -399,9 +399,9 @@ def main(cfg):
             [driver, response],
             cfg.sampling.num_points,
             cfg.sampling.num_periods,
-            cfg.sampling.reference_traj_transient,
-            atol=cfg.sampling.atol,
-            rtol=cfg.sampling.rtol,
+            cfg.sampling.reference_traj.transient,
+            atol=cfg.sampling.reference_traj.atol,
+            rtol=cfg.sampling.reference_traj.rtol,
         )  # type: ignore
 
         coupling_map = {
@@ -430,9 +430,9 @@ def main(cfg):
         list(base_systems),
         cfg.sampling.num_points,
         cfg.sampling.num_periods,
-        cfg.sampling.reference_traj_transient,
-        atol=cfg.sampling.atol,
-        rtol=cfg.sampling.rtol,
+        cfg.sampling.reference_traj.transient,
+        atol=cfg.sampling.reference_traj.atol,
+        rtol=cfg.sampling.reference_traj.rtol,
     )
 
     logger.info(

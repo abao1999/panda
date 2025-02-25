@@ -88,9 +88,9 @@ class OnAttractorInitCondSampler(BaseSampler):
     # TODO: these arguments are not used
     reference_traj_length: int = 4096
     reference_traj_transient: float = 0.2
-    reference_traj_n_periods: int = 10
-    reference_traj_atol: float = 1e-10
-    reference_traj_rtol: float = 1e-10
+    reference_traj_n_periods: int = 40
+    reference_traj_atol: float = 1e-7
+    reference_traj_rtol: float = 1e-6
     trajectory_cache: dict[str, NDArray | None] = field(default_factory=dict)
     silence_integration_errors: bool = False
     recompute_standardization: bool = False
@@ -124,8 +124,12 @@ class OnAttractorInitCondSampler(BaseSampler):
                     event.reset()
 
             try:
+                pts_per_period = (
+                    self.reference_traj_length // self.reference_traj_n_periods
+                )
                 reference_traj = system.make_trajectory(
                     self.reference_traj_length,
+                    pts_per_period=pts_per_period,
                     events=events,
                     standardize=False,
                     atol=self.reference_traj_atol,

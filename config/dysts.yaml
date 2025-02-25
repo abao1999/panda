@@ -4,9 +4,6 @@ sampling:
   test_split: 0.3
   split_prefix: null
   rseed: 999
-  reference_traj_length: 2048
-  reference_traj_transient: 0.2
-  reference_traj_n_periods: 10
   num_points: 4096
   num_periods: 40 # default/fallback number of periods, need to specify for traj cache in skew system generation
   num_periods_min: 20
@@ -26,6 +23,13 @@ sampling:
   sign_match_probability: 0.5
   atol: 1e-10
   rtol: 1e-9
+
+  reference_traj:
+    length: 4096
+    transient: 0.5
+    n_periods: 40
+    atol: 1e-7
+    rtol: 1e-6
 
 validator:
   enable: true
