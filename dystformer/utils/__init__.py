@@ -32,7 +32,8 @@ from .train_utils import (
     get_training_job_info,
     has_enough_observations,
     is_main_process,
-    load_model,
+    load_chronos_model,
+    load_patchtst_model,
     log_on_main,
     save_training_info,
 )

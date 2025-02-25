@@ -2,7 +2,6 @@ import logging
 import os
 from functools import partial
 from pathlib import Path
-from typing import Any
 
 import hydra
 import torch
@@ -25,7 +24,6 @@ from dystformer.augmentations import (
 )
 from dystformer.patchtst.dataset import PatchTSTDataset
 from dystformer.patchtst.patchtst import (
-    PatchTSTConfig,
     PatchTSTForPrediction,
     PatchTSTForPretraining,
 )
@@ -35,6 +33,7 @@ from dystformer.utils import (
     get_next_path,
     has_enough_observations,
     is_main_process,
+    load_patchtst_model,
     log_on_main,
     save_training_info,
 )
@@ -76,47 +75,6 @@ class CustomTrainer(Trainer):
         loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         return (loss, outputs) if return_outputs else loss
-
-
-def load_model(
-    mode: str,
-    model_config: dict[str, Any],
-    pretrained_encoder_path: str | None = None,
-    device: str | torch.device | None = None,
-) -> PatchTSTForPretraining | PatchTSTForPrediction:
-    """
-    Load a PatchTST model in either pretraining or prediction mode.
-
-    Args:
-        mode: Either "pretrain" or "predict" to specify model type
-        model_config: Dictionary containing model configuration parameters
-        pretrained_encoder_path: Optional path to pretrained encoder weights for prediction mode
-
-    Returns:
-        PatchTSTForPretraining or PatchTSTForPrediction model instance
-    """
-    config = PatchTSTConfig(**model_config)
-    if mode == "pretrain":
-        model = PatchTSTForPretraining(config)
-    elif mode == "predict":
-        model = PatchTSTForPrediction(config)
-    else:
-        raise ValueError(f"Invalid mode: {mode}")
-
-    if pretrained_encoder_path is not None and mode == "predict":
-        pretrained_model = PatchTSTForPretraining.from_pretrained(
-            pretrained_encoder_path
-        )
-
-        # Replace the current encoder with the pretrained encoder
-        if hasattr(pretrained_model, "model"):
-            pretained_trunk = getattr(pretrained_model, "model")
-            assert hasattr(pretained_trunk, "encoder"), "PatchTST must have an encoder"
-            model.model.encoder = pretained_trunk.encoder
-        else:
-            raise Exception("No model found in pretrained model")
-
-    return model
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -260,7 +218,7 @@ def main(cfg):
 
     log_on_main("Initializing model", logger)
 
-    model = load_model(
+    model = load_patchtst_model(
         mode=cfg.patchtst.mode,
         model_config=dict(cfg.patchtst),
         pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,

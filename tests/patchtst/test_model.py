@@ -4,7 +4,8 @@ from itertools import accumulate
 import hydra
 import torch
 
-from dystformer.patchtst.pipeline import FixedSubsetChannelSampler, PatchTSTPipeline
+from dystformer.patchtst.modules import PatchTSTConfig, PatchTSTKernelEmbedding
+from dystformer.patchtst.pipeline import FixedSubsetChannelSampler
 
 
 def create_block_attention_mask(
@@ -182,13 +183,23 @@ def test_interleaved_prediction(
     )
 
 
+def test_rff_embedding(cfg):
+    """
+    Test the RFF embedding
+    """
+    config = PatchTSTConfig(**dict(cfg.patchtst))
+    embedding = PatchTSTKernelEmbedding(config)
+    breakpoint()
+
+
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
-    model = PatchTSTPipeline.from_pretrained(
-        mode="predict", pretrain_path=cfg.patchtst.pretrain_path
-    )
+    # model = PatchTSTPipeline.from_pretrained(
+    #     mode="predict", pretrain_path=cfg.patchtst.pretrain_path
+    # )
+    test_rff_embedding(cfg)
 
-    test_prediction_basic(model, cfg)
+    # test_prediction_basic(model, cfg)
     # test_attn_mask(batch_size=3, model=model, cfg=cfg)
     # test_interleaved_prediction(
     #     batch_size=5,
