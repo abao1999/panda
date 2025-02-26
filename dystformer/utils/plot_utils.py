@@ -26,6 +26,7 @@ def plot_trajs_multivariate(
     dims_3d: list[int] = [0, 1, 2],
     figsize: tuple[int, int] = (6, 6),
     max_samples: int = 6,
+    show_plot: bool = False,
 ) -> None:
     """
     Plot multivariate timeseries from dyst_data
@@ -162,6 +163,9 @@ def plot_trajs_multivariate(
     ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
     plt.title(plot_name.replace("_", " "))
     plt.savefig(save_path, dpi=300)
+    if show_plot:
+        print("Showing plot")
+        plt.show()
     plt.close()
 
 

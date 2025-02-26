@@ -29,11 +29,16 @@ train:
 
 scheduler:
   enabled: false
-  schedule_value_name: clamp_value
+  schedule_value_name: noise_scale
   schedule_name: cosine
+
+  # for all schedules
+  epoch_stop: 0.5
+
+  # for cosine schedule
   init_value: 1.0
   final_value: 0.0
-  num_steps: 4
-  decay_rate: 8.0
   eps: 0.008
-  epoch_stop: 0.5
+
+  num_steps: 4      # For step schedule
+  decay_rate: 8.0   # For exponential schedule

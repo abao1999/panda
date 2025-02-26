@@ -22,6 +22,9 @@ class CosineSchedule:
     v_init: float
     v_final: float
     eps: float = 0.008
+    """
+    From Improved DDPM (IDDPM) paper: https://arxiv.org/pdf/2102.09672
+    """
 
     def __call__(self, t: float) -> float:
         return (
@@ -66,11 +69,12 @@ class Scheduler:
     NOTE: this is not a learning rate scheduler
 
     Args:
-        schedule_name: schedule for the noise scale. Options are "linear", "exponential", "cosine"
-        init_value: initial noise scale
-        final_value: final noise scale
+        schedule_name: schedule type. Options are "linear", "exponential", "cosine", "step"
+        init_value: initial value for the schedule
+        final_value: final value for the schedule
         decay_rate: decay rate for the exponential decay schedule
         eps: epsilon for the cosine schedule (for numerical stability)
+        num_steps: number of steps for the step schedule
         epoch_stop: epoch (as a fraction of total epochs) at which to stop the schedule
     """
 
