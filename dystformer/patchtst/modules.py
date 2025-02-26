@@ -187,16 +187,18 @@ class PatchTSTNoiser(nn.Module):
 
 class PatchTSTClamper(nn.Module):
     """
-    This is so stupid
+    This is ill-advised
     """
 
     def __init__(self):
         super().__init__()
 
-    def forward(
-        self, x: torch.Tensor, low_limit: float, high_limit: float
-    ) -> torch.Tensor:
-        return torch.clamp(x, min=low_limit, max=high_limit)
+    def forward(self, x: torch.Tensor, abs_limit: float) -> torch.Tensor:
+        """
+        Clamp the values of the timeseries to be between -abs_limit and abs_limit
+        We enforce that the clamping is always symmetric about 0
+        """
+        return torch.clamp(x, min=-abs_limit, max=abs_limit)
         # # ReLU-like clamping that avoids direct comparisons
         # x = x - low_limit
         # x = torch.nn.functional.relu(x)
