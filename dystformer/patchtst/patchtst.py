@@ -690,10 +690,6 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             use_cls_token=config.use_cls_token,
         )
 
-        # self.noiser = PatchTSTNoiser()
-        # self.clamper = PatchTSTClamper()
-        # self.fourier_approximator = PatchTSTFourierApproximator()
-
         if config.loss == "mse":
             self.loss = nn.MSELoss(reduction="none")
         elif config.loss == "huber":
@@ -757,17 +753,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         x_hat = self.head(x_hat)
 
         # reduce over the patch length dim first, then compute the masked loss over the tokens
-        processed_labels = model_output.patch_input
-
-        # TODO: make schedule_param a dict with keys "noise_scale" or "fourier_modes" and add logic to handle either case
-        # processed_labels = self.noiser(
-        #     model_output.patch_input, schedule_param, dim=(2, 3)
-        # )
-        # processed_labels = self.fourier_approximator(
-        #     model_output.patch_input, k=schedule_param
-        # )
-
-        loss_val = self.loss(x_hat, processed_labels)
+        loss_val = self.loss(x_hat, model_output.patch_input)
         masked_loss = (loss_val.mean(dim=-1) * model_output.mask).sum() / (
             model_output.mask.sum() + 1e-10
         )

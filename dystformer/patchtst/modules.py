@@ -157,56 +157,6 @@ def apply_p_rope_to_qk(
     return query_states, key_states
 
 
-class PatchTSTNoiser(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(
-        self,
-        timeseries: torch.Tensor,
-        noise_scale: float,
-        dim: int | tuple[int, ...] = 1,
-    ) -> torch.Tensor:
-        """
-        Noise the timeseries with standard normal noise
-
-        Parameters:
-            timeseries (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
-                Patch input for embedding
-            noise_scale (float, *required*):
-                Scale of the noise
-
-        Returns:
-            `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
-        """
-        noised = timeseries + torch.randn_like(timeseries) * noise_scale
-        std = noised.std(dim=dim, keepdim=True)
-        std = torch.clamp(std, min=1e-6)
-        return noised / std
-
-
-class PatchTSTClamper(nn.Module):
-    """
-    This is ill-advised
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x: torch.Tensor, abs_limit: float) -> torch.Tensor:
-        """
-        Clamp the values of the timeseries to be between -abs_limit and abs_limit
-        We enforce that the clamping is always symmetric about 0
-        """
-        return torch.clamp(x, min=-abs_limit, max=abs_limit)
-        # # ReLU-like clamping that avoids direct comparisons
-        # x = x - low_limit
-        # x = torch.nn.functional.relu(x)
-        # x = torch.nn.functional.relu(high_limit - low_limit - x)
-        # x = high_limit - x
-        # return x
-
-
 class PatchTSTFourierApproximator(nn.Module):
     def __init__(self):
         super().__init__()
