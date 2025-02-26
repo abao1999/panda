@@ -24,6 +24,7 @@ from transformers.models.patchtst.modeling_patchtst import (
 from transformers.utils import ModelOutput
 
 from .modules import (
+    PatchTSTKernelEmbedding,
     PatchTSTPatchify,
     PatchTSTRMSNorm,
     apply_p_rope_to_qk,
@@ -462,7 +463,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         self.gradient_checkpointing = False
 
         # Input embedding: projection of feature vectors onto a d-dim vector space
-        self.embedder = PatchTSTEmbedding(config)
+        self.embedder = PatchTSTKernelEmbedding(config)
 
         # Encoder
         self.layers = nn.ModuleList(
