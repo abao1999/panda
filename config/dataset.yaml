@@ -19,10 +19,15 @@ fixed_dim: 3
 
 augmentations:
   augmentation_rate: 0.2
-  probabilities: null
+  probabilities: [1.0, 1.0, 1.0, 0.0, 0.0]
 
   dim_range: [3, 8]
   lag_range: [1, 10]
 
   # 1.0 keeps all frequencies, 0.0 keeps only the DC component
   phase_surrogate_cutoff: 1.0
+
+  # for the random fourier series augmentation
+  mode_range: [5, 15]
+  max_wavenumber: 10.0
+  max_amp: 10.0

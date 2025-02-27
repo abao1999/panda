@@ -142,10 +142,10 @@ class RandomFourierSeries:
         random_seed: RNG seed
     """
 
-    max_freq: float = 10.0
-    max_amp: float = 1.0
-    num_components: int = 5
+    max_wavenumber: float = 10.0
+    max_amp: float = 10.0
     random_seed: int = 0
+    mode_range: tuple[int, int] = (5, 15)
 
     def __post_init__(self) -> None:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
@@ -153,10 +153,13 @@ class RandomFourierSeries:
     def __call__(self, timeseries: NDArray) -> NDArray:
         """Generate random Fourier series matching input shape using FFT"""
         num_channels, num_timepoints = timeseries.shape
+        num_components = self.rng.integers(*self.mode_range, endpoint=True)
 
-        freqs = self.rng.uniform(0, self.max_freq, (num_channels, self.num_components))
-        amps = self.rng.uniform(0, self.max_amp, (num_channels, self.num_components))
-        phases = self.rng.uniform(0, 2 * np.pi, (num_channels, self.num_components))
+        freqs = self.rng.uniform(
+            0, np.pi * self.max_wavenumber, (num_channels, num_components)
+        )
+        amps = self.rng.uniform(0, self.max_amp, (num_channels, num_components))
+        phases = self.rng.uniform(0, 2 * np.pi, (num_channels, num_components))
 
         t = np.linspace(0, 1, num_timepoints)
         fourier_series = np.sum(

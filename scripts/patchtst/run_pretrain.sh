@@ -19,7 +19,7 @@ if [ "$DEBUG" -eq 0 ]; then
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node 4 \
-                --master-port 29501 \
+                --master-port 29502 \
                 scripts/patchtst/train.py \
                 patchtst.mode=pretrain \
                 patchtst.context_length=512 \

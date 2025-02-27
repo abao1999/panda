@@ -37,7 +37,7 @@ class PatchTSTKernelEmbedding(nn.Module):
         poly_feats = x[..., self.patch_indices].prod(dim=-1)
         weighted_x = x @ self.freq_weights + self.freq_biases
         rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
-        return torch.cat([poly_feats, rff_feats], dim=-1)
+        return torch.cat([x, poly_feats, rff_feats], dim=-1)
 
 
 class PatchTSTRMSNorm(nn.Module):
@@ -155,56 +155,6 @@ def apply_p_rope_to_qk(
     key_states = torch.cat([key_first_part, key_second_part], dim=-1)
 
     return query_states, key_states
-
-
-class PatchTSTNoiser(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(
-        self,
-        timeseries: torch.Tensor,
-        noise_scale: float,
-        dim: int | tuple[int, ...] = 1,
-    ) -> torch.Tensor:
-        """
-        Noise the timeseries with standard normal noise
-
-        Parameters:
-            timeseries (`torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`, *required*):
-                Patch input for embedding
-            noise_scale (float, *required*):
-                Scale of the noise
-
-        Returns:
-            `torch.Tensor` of shape `(batch_size, sequence_length, num_channels)`
-        """
-        noised = timeseries + torch.randn_like(timeseries) * noise_scale
-        std = noised.std(dim=dim, keepdim=True)
-        std = torch.clamp(std, min=1e-6)
-        return noised / std
-
-
-class PatchTSTClamper(nn.Module):
-    """
-    This is ill-advised
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x: torch.Tensor, abs_limit: float) -> torch.Tensor:
-        """
-        Clamp the values of the timeseries to be between -abs_limit and abs_limit
-        We enforce that the clamping is always symmetric about 0
-        """
-        return torch.clamp(x, min=-abs_limit, max=abs_limit)
-        # # ReLU-like clamping that avoids direct comparisons
-        # x = x - low_limit
-        # x = torch.nn.functional.relu(x)
-        # x = torch.nn.functional.relu(high_limit - low_limit - x)
-        # x = high_limit - x
-        # return x
 
 
 class PatchTSTFourierApproximator(nn.Module):
