@@ -210,9 +210,8 @@ def load_patchtst_model(
 
     if pretrained_encoder_path is not None and mode == "predict":
         pretrained_model = PatchTSTForPretraining.from_pretrained(
-            pretrained_encoder_path
+            pretrained_encoder_path,
         )
-
         # Replace the current encoder with the pretrained encoder
         if hasattr(pretrained_model, "model"):
             pretained_trunk = getattr(pretrained_model, "model")

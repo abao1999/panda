@@ -23,7 +23,8 @@ if [ "$DEBUG" -eq 0 ]; then
                 scripts/patchtst/train.py \
                 shuffle_buffer_length=100_000 \
                 patchtst.mode=predict \
-                patchtst.pretrained_encoder_path=null \
+                patchtst.use_dynamics_embedding=true \
+                patchtst.pretrained_encoder_path=$WORK/checkpoints/mlm40_stand_nonoiser-1/checkpoint-final \
                 patchtst.context_length=512 \
                 patchtst.prediction_length=128 \
                 patchtst.patch_length=16 \
@@ -46,14 +47,11 @@ if [ "$DEBUG" -eq 0 ]; then
                 train.torch_compile=true \
                 train.weight_decay=0.0 \
                 scheduler.enabled=false \
-                scheduler.schedule_name=step \
-                scheduler.init_value=4.0 \
-                scheduler.final_value=10000.0 \
-                scheduler.num_steps=300 \
                 "$@"
 else  # this mode allows for breakpoints inside model code
         CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py \
                 run_name=DEBUG \
+                patchtst.pretrained_encoder_path=$WORK/checkpoints/mlm40_stand-0/checkpoint-final \
                 shuffle_buffer_length=100 \
                 patchtst.mode=predict \
                 train.ddp_backend=null \

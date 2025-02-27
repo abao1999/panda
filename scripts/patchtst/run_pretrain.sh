@@ -19,7 +19,7 @@ if [ "$DEBUG" -eq 0 ]; then
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node 4 \
-                --master-port 29500 \
+                --master-port 29501 \
                 scripts/patchtst/train.py \
                 patchtst.mode=pretrain \
                 patchtst.context_length=512 \
@@ -38,12 +38,12 @@ if [ "$DEBUG" -eq 0 ]; then
                 patchtst.loss=mse \
                 patchtst.huber_delta=1.0 \
                 train.per_device_train_batch_size=1024 \
-                train.max_steps=100_000 \
+                train.max_steps=200_000 \
                 train.save_steps=50_000 \
                 train.log_steps=1_000 \
                 train.warmup_ratio=0.1 \
                 train.torch_compile=true \
-                scheduler.enabled=true \
+                scheduler.enabled=false \
                 "$@"
 else  # this mode allows for breakpoints inside model code
         CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py \

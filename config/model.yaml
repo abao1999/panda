@@ -47,6 +47,7 @@ patchtst:
   pretrained_encoder_path: null
 
   # for the dynamical embedding
+  use_dynamics_embedding: true
   num_poly_feats: 256
   poly_feat_degree: 2
   rff_trainable: true
