@@ -19,6 +19,8 @@ from dystformer.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
     RandomDimSelectionTransform,
+    RandomFourierSeries,
+    RandomPhaseSurrogate,
     RandomTakensEmbedding,
     StandardizeTransform,
 )
@@ -177,17 +179,26 @@ def main(cfg):
             scale=1.0,
             random_seed=cfg.train.seed,
         ),
-        # RandomPhaseSurrogate(
-        #     cutoff=cfg.augmentations.phase_surrogate_cutoff,
-        #     random_seed=cfg.train.seed,
-        # ),
+        RandomPhaseSurrogate(
+            cutoff=cfg.augmentations.phase_surrogate_cutoff,
+            random_seed=cfg.train.seed,
+        ),
+        RandomFourierSeries(
+            max_wavenumber=cfg.augmentations.max_wavenumber,
+            max_amp=cfg.augmentations.max_amp,
+            mode_range=cfg.augmentations.mode_range,
+            random_seed=cfg.train.seed,
+        ),
     ]
     if cfg.augmentations.probabilities is None:
         cfg.augmentations.probabilities = [1.0 / len(augmentations)] * len(
             augmentations
         )
 
-    log_on_main(f"Using augmentations: {augmentations}", logger)
+    log_on_main(
+        f"Using augmentations: {[aug for aug, prob in zip(augmentations, cfg.augmentations.probabilities) if prob > 0.0]}",
+        logger,
+    )
 
     transforms: list = [
         StandardizeTransform(),

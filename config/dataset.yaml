@@ -26,3 +26,8 @@ augmentations:
 
   # 1.0 keeps all frequencies, 0.0 keeps only the DC component
   phase_surrogate_cutoff: 1.0
+
+  # for the random fourier series augmentation
+  mode_range: [5, 15]
+  max_wavenumber: 10.0
+  max_amp: 10.0

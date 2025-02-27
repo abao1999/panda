@@ -37,7 +37,7 @@ class PatchTSTKernelEmbedding(nn.Module):
         poly_feats = x[..., self.patch_indices].prod(dim=-1)
         weighted_x = x @ self.freq_weights + self.freq_biases
         rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
-        return torch.cat([poly_feats, rff_feats], dim=-1)
+        return torch.cat([x, poly_feats, rff_feats], dim=-1)
 
 
 class PatchTSTRMSNorm(nn.Module):
