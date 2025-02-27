@@ -194,6 +194,11 @@ def main(cfg):
         cfg.augmentations.probabilities = [1.0 / len(augmentations)] * len(
             augmentations
         )
+    else:  # ensure probabilities sum to 1
+        cfg.augmentations.probabilities = [
+            prob / sum(cfg.augmentations.probabilities)
+            for prob in cfg.augmentations.probabilities
+        ]
 
     log_on_main(
         f"Using augmentations: {[aug for aug, prob in zip(augmentations, cfg.augmentations.probabilities) if prob > 0.0]}",

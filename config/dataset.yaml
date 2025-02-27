@@ -19,7 +19,7 @@ fixed_dim: 3
 
 augmentations:
   augmentation_rate: 0.2
-  probabilities: null
+  probabilities: [1.0, 1.0, 1.0, 0.0, 0.0]
 
   dim_range: [3, 8]
   lag_range: [1, 10]
