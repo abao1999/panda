@@ -16,6 +16,8 @@ from scipy.signal import find_peaks
 from scipy.spatial.distance import cdist
 from statsmodels.tsa.stattools import adfuller, kpss
 
+from dystformer.utils import run_zero_one_sweep, safe_standardize
+
 
 @dataclass
 class AttractorValidator:
@@ -480,9 +482,37 @@ def check_stationarity(traj: np.ndarray, p_value: float = 0.05) -> bool:
     return True
 
 
+def check_zero_one_test(
+    traj: np.ndarray,
+    threshold: float = 0.5,
+) -> bool:
+    """
+    Compute the zero-one test for a specified system.
+    If any dimension is chaotic according to the zero-one test, we soft-pass the system as chaotic.
+
+    Parameters:
+        trajectories: np.ndarray of shape (n_samples, n_dims, timesteps)
+        threshold: float, threshold on the median of the zero-one test to decide if the system is chaotic
+    Returns:
+        bool, True if the system is chaotic, False otherwise
+    """
+    assert traj.ndim == 3, (
+        "expected trajectories to be shape (n_samples, n_dims, timesteps)"
+    )
+    standard_traj = safe_standardize(traj)
+    # go dimension by dimension
+    for dim in range(standard_traj.shape[1]):
+        timeseries = standard_traj[:, dim, :]
+        K_vals = run_zero_one_sweep(timeseries)
+        median_K = np.median(K_vals)
+        if median_K > threshold:
+            return True
+    return False
+
+
 def check_smooth(
     traj: np.ndarray, freq_threshold: float = 0.3, jump_std_factor: float = 3.0
-) -> bool:
+) -> bool:  # type: ignore
     """
     Check if a multi-dimensional trajectory is smooth.
     """
