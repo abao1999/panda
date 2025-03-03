@@ -7,7 +7,7 @@ import warnings
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from multiprocessing import Pool
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 from dysts.analysis import max_lyapunov_exponent_rosenstein
@@ -485,6 +485,7 @@ def check_stationarity(traj: np.ndarray, p_value: float = 0.05) -> bool:
 def check_zero_one_test(
     traj: np.ndarray,
     threshold: float = 0.5,
+    strategy: Literal["median", "mean", "score"] = "median",
 ) -> bool:
     """
     Compute the zero-one test for a specified system.
@@ -498,11 +499,16 @@ def check_zero_one_test(
     """
     # standard_traj = safe_standardize(traj)
     # go dimension by dimension
+    agg_fn = np.median if strategy == "median" else np.mean
+    if strategy == "score":
+        agg_fn = lambda x: np.sum(x >= threshold) / len(x)
+
     for dim in range(traj.shape[0]):
         timeseries = traj[dim, :].squeeze()
-        K_vals = run_zero_one_sweep(timeseries)
-        median_K = np.median(K_vals)
-        if median_K >= threshold:
+        K_vals = run_zero_one_sweep(
+            timeseries, c_min=np.pi / 5, c_max=4 * np.pi / 5, k=1, n_runs=100
+        )
+        if agg_fn(K_vals) >= threshold:
             return True
     return False
 

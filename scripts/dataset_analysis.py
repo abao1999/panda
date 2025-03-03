@@ -203,12 +203,14 @@ def main(cfg):
         if len(failed_ensemble) > 0:
             # plot the first 9 systems' failed samples
             save_path = os.path.join(plot_save_dir, f"{filter_json_fname}.png")
+            n_samples_plot = 16
+            n_rows_plot = np.ceil(np.sqrt(n_samples_plot))
             plot_grid_trajs_multivariate(
-                {k: v for k, v in list(failed_ensemble.items())[:9]},
+                {k: v for k, v in list(failed_ensemble.items())[:n_samples_plot]},
                 save_path=save_path,
-                max_samples=6,
+                max_samples=n_samples_plot,
                 standardize=True,
-                subplot_size=(3, 3),
+                subplot_size=(n_rows_plot, n_rows_plot),
             )
             logger.info(f"Plotted failed samples to {save_path}")
 

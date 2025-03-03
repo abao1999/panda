@@ -3,6 +3,7 @@ sampling:
   sys_class: continuous_no_delay
   test_split: 0.3
   split_prefix: null
+  pairs_rseed: 123
   rseed: 999
   num_points: 4096
   num_periods: 40 # default/fallback number of periods, need to specify for traj cache in skew system generation

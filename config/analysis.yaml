@@ -29,4 +29,5 @@ analysis:
     eps: 1e-10
 
   check_zero_one_test:
-    threshold: 0.3
+    threshold: 0.2
+    strategy: score

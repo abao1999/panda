@@ -417,7 +417,7 @@ def main(cfg):
 
     # sample skew system train/test splits
     skew_pairs = sample_skew_systems(
-        systems, cfg.skew.num_pairs, random_seed=cfg.sampling.rseed
+        systems, cfg.skew.num_pairs, random_seed=cfg.sampling.pairs_rseed
     )
 
     logger.info(

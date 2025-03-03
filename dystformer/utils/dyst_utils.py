@@ -28,10 +28,10 @@ def mutual_information(x: np.ndarray, y: np.ndarray, bins: int = 64) -> float:
 
 def optimal_delay(
     x: np.ndarray,
-    max_delay: int = 100,
+    max_delay: int = 50,
     bins: int = 64,
     conv_window_size: int = 3,
-    first_k_minima_to_consider: int = 3,
+    first_k_minima_to_consider: int = 1,
 ) -> int:
     """
     Computes the mutual information I(tau) = I( x(t), x(t+tau) ) for tau in {1, 2, ..., max_delay}
@@ -74,6 +74,8 @@ def optimal_delay(
             lower_max = min(left_max, right_max)
             prominence = lower_max - smoothed_mi[i]
             prominences.append(prominence)
+            if len(prominences) >= first_k_minima_to_consider:
+                break
 
     # If no minima found, return the global minimum
     if len(minima_indices) == 0:
@@ -182,8 +184,8 @@ def run_zero_one_sweep(
     timeseries: np.ndarray,
     c_min: float = np.pi / 5,
     c_max: float = 4 * np.pi / 5,
-    subsample_interval: int | None = None,
     n_runs: int = 100,
+    k: int = 1,
 ) -> np.ndarray:
     """
     Runs a sweep of zero_one_test for the given univariate timeseries and c_vals
@@ -192,25 +194,25 @@ def run_zero_one_sweep(
         timeseries: univariate observed timeseries (e.g. x, y, z or norm of traj) of length T
         c_min: min value for c parameter, defaults to pi/5
         c_max: max value for c parameter, defaults to 4pi/5
-        subsample_interval: interval to subsample timeseries as timeseries[::subsample_interval]
+        k: number of minima to consider for determining first prominent minimum
+            the subsampling interval is the optimal delay computed using the mutual information
                 NOTE: the performance of the 0-1 test for chaos is sensitive to this choice
                 Subsampling helps to de-correlate timeseries that are oversampled (very similar consecutive points, excessive correlation),
                     ensuring that the time series better reflects the intrinsic dynamics of the system rather than oversampling artifacts
-                If None, the optimal delay is computed using the optimal_delay function which uses the mutual information to determine the most "informative" time lag
         n_runs: number of random c values to try
         threshold: threshold on |K| to decide if the system is chaotic
 
     Returns:
-        chaos_score: fraction of runs that are chaotic
         K_vals: array of |K| values from the runs
     """
     assert timeseries.ndim == 1, "timeseries must be 1D"
     c_vals = np.random.uniform(c_min, c_max, n_runs)
     K_vals = []
-    if subsample_interval is None:
-        subsample_interval = optimal_delay(timeseries)
+    tau_opt = optimal_delay(
+        timeseries, max_delay=50, bins=64, first_k_minima_to_consider=k
+    )
 
-    timeseries = timeseries[::subsample_interval]
+    timeseries = timeseries[::tau_opt]
     for c_val in c_vals:
         K = zero_one_test(
             timeseries,
