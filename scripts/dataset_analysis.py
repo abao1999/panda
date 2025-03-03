@@ -168,7 +168,10 @@ def main(cfg):
 
     # make ensemble from saved trajectories in Arrow files
     ensemble = make_ensemble_from_arrow_dir(
-        cfg.analysis.data_dir, cfg.analysis.split, one_dim_target=False
+        cfg.analysis.data_dir,
+        cfg.analysis.split,
+        one_dim_target=cfg.analysis.one_dim_target,
+        num_samples=cfg.analysis.num_samples,
     )
     logger.info(
         f"Loaded {len(ensemble)} systems from {cfg.analysis.data_dir} split {cfg.analysis.split}"

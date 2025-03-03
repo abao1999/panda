@@ -2,9 +2,12 @@
 
 filter_name_suffix="z5_z10"
 
-data_dirs=("final_base20" "final_skew20" "final_base40" "final_skew40")
+# data_dirs=("final_base20" "final_skew20" "final_base40" "final_skew40")
 # data_dirs=("final_base20" "final_base40")
-data_splits=("test_zeroshot" "test" "train")
+# data_splits=("test_zeroshot" "test" "train")
+
+data_dirs=("final_skew80" "final_base80")
+data_splits=("test_zeroshot" "train")
 
 
 for data_dir in "${data_dirs[@]}"; do
@@ -14,8 +17,11 @@ for data_dir in "${data_dirs[@]}"; do
 
         python scripts/dataset_analysis.py \
             analysis.split=${data_dir}/${data_split} \
+            analysis.num_samples=null \
+            analysis.filter_ensemble=true \
+            analysis.attractor_tests='["check_boundedness"]' \
             analysis.filter_json_fname=failed_samples_${filter_name_suffix} \
-            analysis.check_boundedness.max_zscore=5
+            analysis.check_zero_one_test.threshold=0.5
 
         echo "Writing output json to outputs/${data_dir}/${data_split}/failed_samples_${filter_name_suffix}.json"
 

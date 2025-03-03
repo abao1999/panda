@@ -182,7 +182,7 @@ def run_zero_one_sweep(
     timeseries: np.ndarray,
     c_min: float = np.pi / 5,
     c_max: float = 4 * np.pi / 5,
-    subsample_interval: int = 1,
+    subsample_interval: int | None = None,
     n_runs: int = 100,
 ) -> np.ndarray:
     """
@@ -196,6 +196,7 @@ def run_zero_one_sweep(
                 NOTE: the performance of the 0-1 test for chaos is sensitive to this choice
                 Subsampling helps to de-correlate timeseries that are oversampled (very similar consecutive points, excessive correlation),
                     ensuring that the time series better reflects the intrinsic dynamics of the system rather than oversampling artifacts
+                If None, the optimal delay is computed using the optimal_delay function which uses the mutual information to determine the most "informative" time lag
         n_runs: number of random c values to try
         threshold: threshold on |K| to decide if the system is chaotic
 
@@ -203,13 +204,16 @@ def run_zero_one_sweep(
         chaos_score: fraction of runs that are chaotic
         K_vals: array of |K| values from the runs
     """
+    assert timeseries.ndim == 1, "timeseries must be 1D"
     c_vals = np.random.uniform(c_min, c_max, n_runs)
     K_vals = []
-    if subsample_interval > 1:
-        subsampled_ts = timeseries[:, ::subsample_interval]
+    if subsample_interval is None:
+        subsample_interval = optimal_delay(timeseries)
+
+    timeseries = timeseries[::subsample_interval]
     for c_val in c_vals:
         K = zero_one_test(
-            subsampled_ts,
+            timeseries,
             c=c_val,
         )
         K_vals.append(K)

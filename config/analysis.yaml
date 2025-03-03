@@ -1,6 +1,8 @@
 analysis:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data
-  split: final_base40/test_zeroshot
+  split: copy/final_skew40/train
+  num_samples: 1
+  one_dim_target: false
   save_dir: outputs
   plots_dir: figures
   compute_quantile_limits: false
@@ -9,7 +11,8 @@ analysis:
   filter_json_fname: failed_samples
   verbose: true
   attractor_tests:
-    - check_boundedness
+    - check_zero_one_test
+    # - check_boundedness
     # - check_not_transient
     # - check_stationarity
   
@@ -24,3 +27,6 @@ analysis:
     threshold: 1e4
     max_zscore: 5
     eps: 1e-10
+
+  check_zero_one_test:
+    threshold: 0.3

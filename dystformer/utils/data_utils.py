@@ -269,11 +269,11 @@ def process_dyst_name(
     base_dir: str,
     split: str,
     one_dim_target: bool,
-    samples_subset: Optional[List[int]] = None,
+    num_samples: int | None = None,
 ) -> Tuple[str, np.ndarray]:
     filepaths = get_system_filepaths(dyst_name, base_dir, split)
     dyst_coords_samples = []
-    for filepath in filepaths:
+    for filepath in filepaths[:num_samples]:
         # create dataset by reading directly from filepath into FileDataset
         gts_dataset = FileDataset(
             path=Path(filepath),
@@ -286,8 +286,6 @@ def process_dyst_name(
 
     dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
     print(dyst_coords_samples.shape)
-    if samples_subset is not None:
-        dyst_coords_samples = dyst_coords_samples[samples_subset, :]
     return dyst_name, dyst_coords_samples
 
 
@@ -295,7 +293,7 @@ def make_ensemble_from_arrow_dir(
     base_dir: str,
     split: str,
     dyst_names_lst: Optional[List[str]] = None,
-    samples_subset: Optional[List[int]] = None,
+    num_samples: int | None = None,
     one_dim_target: bool = False,
 ) -> Dict[str, np.ndarray]:
     ensemble = {}
@@ -308,7 +306,7 @@ def make_ensemble_from_arrow_dir(
 
     # Prepare arguments for multiprocessing
     args = [
-        (dyst_name, base_dir, split, one_dim_target, samples_subset)
+        (dyst_name, base_dir, split, one_dim_target, num_samples)
         for dyst_name in dyst_names_lst
     ]
 

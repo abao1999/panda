@@ -16,7 +16,7 @@ from scipy.signal import find_peaks
 from scipy.spatial.distance import cdist
 from statsmodels.tsa.stattools import adfuller, kpss
 
-from dystformer.utils import run_zero_one_sweep, safe_standardize
+from dystformer.utils import run_zero_one_sweep
 
 
 @dataclass
@@ -496,16 +496,13 @@ def check_zero_one_test(
     Returns:
         bool, True if the system is chaotic, False otherwise
     """
-    assert traj.ndim == 3, (
-        "expected trajectories to be shape (n_samples, n_dims, timesteps)"
-    )
-    standard_traj = safe_standardize(traj)
+    # standard_traj = safe_standardize(traj)
     # go dimension by dimension
-    for dim in range(standard_traj.shape[1]):
-        timeseries = standard_traj[:, dim, :]
+    for dim in range(traj.shape[0]):
+        timeseries = traj[dim, :].squeeze()
         K_vals = run_zero_one_sweep(timeseries)
         median_K = np.median(K_vals)
-        if median_K > threshold:
+        if median_K >= threshold:
             return True
     return False
 
