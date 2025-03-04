@@ -21,6 +21,7 @@ from dystformer.attractor import (
     check_not_linear,
     check_power_spectrum,
     check_stationarity,
+    check_zero_one_test,
 )
 from dystformer.dyst_data import DynSysSampler
 from dystformer.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
@@ -38,6 +39,7 @@ def default_attractor_tests() -> list[Callable]:
         partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1),
         # for STRICT MODE (strict criteria for detecting limit cycles), try:
         # min_prop_recurrences = 0.1, min_counts_per_rtime = 100, min_block_length=50, min_recurrence_time = 10, enforce_endpoint_recurrence = True,
+        partial(check_zero_one_test, threshold=0.2, strategy="score"),
         partial(
             check_not_limit_cycle,
             tolerance=1e-3,
