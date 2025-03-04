@@ -19,6 +19,10 @@ import wandb
 from dystformer.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
+    RandomFourierSeries,
+    RandomPhaseSurrogate,
+    RandomTakensEmbedding,
+    StandardizeTransform,
 )
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.tokenizer import ChronosConfig
@@ -169,9 +173,47 @@ def main(cfg):
 
     # Note: these augmentations are applied to the multivariate target traj
     augmentations = [
-        RandomConvexCombinationTransform(num_combinations=10, alpha=1.0),
-        RandomAffineTransform(out_dim=6, scale=1.0),
+        RandomTakensEmbedding(
+            lag_range=cfg.augmentations.lag_range,
+            random_seed=cfg.train.seed,
+        ),
+        RandomConvexCombinationTransform(
+            alpha=1.0,
+            random_seed=cfg.train.seed,
+            dim_range=cfg.augmentations.dim_range,
+        ),
+        RandomAffineTransform(
+            dim_range=cfg.augmentations.dim_range,
+            scale=1.0,
+            random_seed=cfg.train.seed,
+        ),
+        RandomPhaseSurrogate(
+            cutoff=cfg.augmentations.phase_surrogate_cutoff,
+            random_seed=cfg.train.seed,
+        ),
+        RandomFourierSeries(
+            max_wavenumber=cfg.augmentations.max_wavenumber,
+            max_amp=cfg.augmentations.max_amp,
+            mode_range=cfg.augmentations.mode_range,
+            random_seed=cfg.train.seed,
+        ),
     ]
+    if cfg.augmentations.probabilities is None:
+        cfg.augmentations.probabilities = [1.0 / len(augmentations)] * len(
+            augmentations
+        )
+    else:  # ensure probabilities sum to 1
+        cfg.augmentations.probabilities = [
+            prob / sum(cfg.augmentations.probabilities)
+            for prob in cfg.augmentations.probabilities
+        ]
+
+    log_on_main(
+        f"Using augmentations: {[aug for aug, prob in zip(augmentations, cfg.augmentations.probabilities) if prob > 0.0]}",
+        logger,
+    )
+
+    transforms: list = [StandardizeTransform()]
 
     shuffled_train_dataset = ChronosDataset(
         datasets=train_datasets,
@@ -187,6 +229,8 @@ def main(cfg):
         mode="train",
         augmentations=augmentations,
         augmentation_rate=cfg.augmentations.augmentation_rate,
+        augmentation_probabilities=cfg.augmentations.probabilities,
+        transforms=transforms,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
     # Define training args
@@ -200,9 +244,10 @@ def main(cfg):
         max_grad_norm=cfg.train.max_grad_norm,
         weight_decay=cfg.train.weight_decay,
         optim=cfg.train.optim,
-        logging_dir=f"wandb/tbruns/{run.name}_{run.id}/logs"
-        if cfg.wandb.log
-        else str(output_dir / "logs"),
+        log_on_each_node=False,
+        logging_dir=str(output_dir / "logs")
+        if not (cfg.wandb.log and is_main_process())
+        else f"wandb/{run.name}_{run.id}/logs",
         logging_strategy="steps",
         logging_steps=cfg.train.log_steps,
         save_strategy="steps",
@@ -216,8 +261,8 @@ def main(cfg):
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
         remove_unused_columns=cfg.train.remove_unused_columns,
+        ddp_backend=cfg.train.ddp_backend,
         seed=cfg.train.seed,
-        ddp_backend="nccl",
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.
@@ -247,7 +292,7 @@ def main(cfg):
 
     # terminate wandb run after training
     if cfg.wandb.log:
-        run.finish()
+        wandb.finish(exit_code=0)
 
 
 if __name__ == "__main__":

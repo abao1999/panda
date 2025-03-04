@@ -12,52 +12,20 @@ import torch
 from gluonts.itertools import Cyclic, Map
 from gluonts.transform import (
     ExpectedNumInstanceSampler,
-    InstanceSampler,
     InstanceSplitter,
-    NumInstanceSampler,
     ValidationSplitSampler,
 )
 from torch.utils.data import IterableDataset, get_worker_info
 
+from dystformer.chronos.dataset import (
+    NumInstanceSampler,
+    RegularWindowedSampler,
+    SingleContextSampler,
+)
+
 # used for prediction length in test mode when window style is single
 # if you're predicting for more timepoints than this at a time...what are you doing??
 MAX_PREDICTION_LENGTH = 1_000_000
-
-
-class RegularWindowedSampler(InstanceSampler):
-    """
-    Sample regular context windows from each series.
-
-    Parameters
-    ----------
-    stride: int
-        stride of the sampled context windows
-    """
-
-    stride: int
-
-    def __call__(self, ts: np.ndarray) -> np.ndarray:
-        a, b = self._get_bounds(ts)
-        if a > b:
-            return np.array([], dtype=int)
-
-        return np.arange(a, b + 1, self.stride)
-
-
-class SingleContextSampler(InstanceSampler):
-    """
-    Sample a single context window from the beginning of each series.
-
-    Used for autoregressive prediction where the model should predict the
-    rest of the entire timeseries.
-    """
-
-    def __call__(self, ts: np.ndarray) -> np.ndarray:
-        a, b = self._get_bounds(ts)
-        if a > b:
-            return np.array([], dtype=int)
-
-        return np.array([a])
 
 
 class PseudoShuffledIterableDataset(IterableDataset):
@@ -99,10 +67,12 @@ class PatchTSTDataset(IterableDataset):
     augmentations: list[Callable] | None = None
     augmentation_rate: float = 0.0
     augmentation_probabilities: list[float] | None = None
+    random_seed: int = 8097
 
     def __post_init__(self):
         assert len(self.probabilities) == len(self.datasets)
         assert self.mode in ("train", "validation", "test")
+        self.eval_rng = np.random.default_rng(self.random_seed)
 
         if self.augmentations is None:
             return
@@ -146,7 +116,9 @@ class PatchTSTDataset(IterableDataset):
         ), "evaluation windows can only either be rolling or randomly sampled"
 
         test_sampler = {
-            "sampled": partial(NumInstanceSampler, N=self.num_test_instances),
+            "sampled": partial(
+                NumInstanceSampler, N=self.num_test_instances, rng=self.eval_rng
+            ),
             "rolling": partial(RegularWindowedSampler, stride=self.window_stride),
             "single": SingleContextSampler,
         }[self.window_style]

@@ -462,12 +462,10 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         super().__init__(config)
         self.gradient_checkpointing = False
         if config.use_dynamics_embedding:
-            # Input embedding: projection of feature vectors onto a d-dim vector space
             self.embedder = PatchTSTKernelEmbedding(config)
         else:
             self.embedder = PatchTSTEmbedding(config)
 
-        # Encoder
         self.layers = nn.ModuleList(
             [
                 PatchTSTEncoderLayerWithRope(config)

@@ -79,12 +79,7 @@ class NumInstanceSampler(InstanceSampler):
     """
 
     N: int
-    seed: int = 42
-
-    def __post_init__(self):
-        super().__init__()
-        assert self.N > 0
-        self.rng = np.random.RandomState(self.seed)
+    rng: np.random.RandomState
 
     def __call__(self, ts: np.ndarray) -> np.ndarray:
         a, b = self._get_bounds(ts)
@@ -203,6 +198,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
     augmentations: list[Callable] | None = None
     augmentation_probabilities: list[float] | None = None
     augmentation_rate: float = 0.0
+    random_seed: int = 8097
 
     def __post_init__(self):
         super().__init__()
@@ -212,6 +208,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         self.drop_prob = self.drop_prob if self.model_type == "seq2seq" else 0.0
         self.min_past = self.min_past or self.prediction_length
         self.imputation_method = self.imputation_method or LeavesMissingValues()
+        self.eval_rng = np.random.default_rng(self.random_seed)
 
         if self.augmentations is None:
             return
@@ -267,7 +264,9 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         ), "evaluation windows can only either be rolling or randomly sampled"
 
         test_sampler = {
-            "sampled": partial(NumInstanceSampler, N=self.num_test_instances),
+            "sampled": partial(
+                NumInstanceSampler, N=self.num_test_instances, rng=self.eval_rng
+            ),
             "rolling": partial(RegularWindowedSampler, stride=self.window_stride),
             "single": SingleContextSampler,
         }[self.window_style]
