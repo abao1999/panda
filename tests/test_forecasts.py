@@ -111,6 +111,12 @@ if __name__ == "__main__":
         type=str,
         default="figs/forecasts",
     )
+    parser.add_argument(
+        "--num_systems",
+        help="Number of systems to plot",
+        type=int,
+        default=None,
+    )
     args = parser.parse_args()
 
     if args.dysts_names == ["all"]:
@@ -118,7 +124,8 @@ if __name__ == "__main__":
             d.name
             for d in Path(os.path.join(DATA_DIR, args.split_forecasts)).iterdir()
             if d.is_dir()
-        ]
+        ][: args.num_systems]
+        breakpoint()
     else:
         dyst_names_lst = args.dysts_names
     print(f"dyst names: {dyst_names_lst}")

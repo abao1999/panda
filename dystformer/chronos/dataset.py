@@ -79,14 +79,14 @@ class NumInstanceSampler(InstanceSampler):
     """
 
     N: int
-    rng: np.random.RandomState
+    rng: np.random.Generator
 
     def __call__(self, ts: np.ndarray) -> np.ndarray:
         a, b = self._get_bounds(ts)
         if a > b:
             return np.array([], dtype=int)
 
-        return self.rng.randint(a, b + 1, size=self.N)
+        return self.rng.integers(a, b + 1, size=self.N)
 
 
 class PseudoShuffledIterableDataset(IterableDataset):
