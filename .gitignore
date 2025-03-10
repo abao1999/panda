@@ -14,6 +14,7 @@ data/
 *.png
 *.jpg
 *.jpeg
+*.pdf
 *.out
 *_old.py
 *_debug.py

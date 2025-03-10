@@ -37,6 +37,7 @@ dependencies = [
 numba = ["numba"]
 chronos = ["datasets"] # huggingface datasets
 rocm = ["torch==2.2.2"]
+profile = ["memory_profiler", "psutil"]
 
 # Package data
 [tool.setuptools]

@@ -421,6 +421,8 @@ def main(cfg):
     skew_pairs = sample_skew_systems(
         systems, cfg.skew.num_pairs, random_seed=cfg.sampling.pairs_rseed
     )
+    skew_pairs = skew_pairs[cfg.sampling.sys_idx_low : cfg.sampling.sys_idx_high]
+    logger.info(f"Making {len(skew_pairs)} skew pairs: {skew_pairs}")
 
     logger.info(
         f"Sampled {cfg.skew.num_pairs}/{len(systems) * (len(systems) - 1)} system pair candidates"

@@ -5,6 +5,8 @@ sampling:
   split_prefix: null
   pairs_rseed: 123
   rseed: 999
+  sys_idx_low: 0
+  sys_idx_high: null
   num_points: 4096
   num_periods: 40 # default/fallback number of periods, need to specify for traj cache in skew system generation
   num_periods_min: 20

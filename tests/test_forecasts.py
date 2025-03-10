@@ -9,6 +9,8 @@ import warnings
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import numpy as np
+
 from dystformer.utils import (
     accumulate_coords,
     get_system_filepaths,
@@ -117,15 +119,29 @@ if __name__ == "__main__":
         type=int,
         default=None,
     )
+    parser.add_argument(
+        "--rseed",
+        help="Random seed",
+        type=int,
+        default=None,
+    )
     args = parser.parse_args()
 
+    rng = np.random.default_rng(args.rseed)
     if args.dysts_names == ["all"]:
-        dyst_names_lst = [
-            d.name
-            for d in Path(os.path.join(DATA_DIR, args.split_forecasts)).iterdir()
-            if d.is_dir()
-        ][: args.num_systems]
-        breakpoint()
+        dyst_names_lst = rng.choice(
+            sorted(
+                [
+                    d.name
+                    for d in Path(
+                        os.path.join(DATA_DIR, args.split_forecasts)
+                    ).iterdir()
+                    if d.is_dir()
+                ]
+            ),
+            size=args.num_systems,
+            replace=False,
+        )
     else:
         dyst_names_lst = args.dysts_names
     print(f"dyst names: {dyst_names_lst}")
