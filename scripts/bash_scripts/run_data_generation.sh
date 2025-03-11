@@ -20,6 +20,9 @@ python -W ignore scripts/make_skew_systems.py \
     skew.transform_scales=true \
     skew.randomize_driver_indices=true \
     skew.num_pairs=2048 \
+    skew.pairs_rseed=123 \
+    skew.sys_idx_low=0 \
+    skew.sys_idx_high=null \
     run_name=big_skew_mixedp \
 
 # # base dysts

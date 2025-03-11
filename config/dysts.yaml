@@ -3,10 +3,7 @@ sampling:
   sys_class: continuous_no_delay
   test_split: 0.3
   split_prefix: null
-  pairs_rseed: 123
   rseed: 999
-  sys_idx_low: 0
-  sys_idx_high: null
   num_points: 4096
   num_periods: 40 # default/fallback number of periods, need to specify for traj cache in skew system generation
   num_periods_min: 20
@@ -49,6 +46,9 @@ events:
 
 skew:
   num_pairs: 5000
+  pairs_rseed: 123
+  sys_idx_low: 0
+  sys_idx_high: null
   normalization_strategy: flow_rms
   randomize_driver_indices: true
   transform_scales: true

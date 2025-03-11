@@ -16,7 +16,7 @@ from dystformer.patchtst.evaluation import (
     evaluate_mlm_model,
 )
 from dystformer.patchtst.pipeline import PatchTSTPipeline
-from dystformer.utils import log_on_main, save_evaluation_results
+from dystformer.utils import get_dim_from_dataset, log_on_main, save_evaluation_results
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
@@ -89,6 +89,12 @@ def main(cfg):
             if file_path.is_file()
         ]
 
+    # for convenience, get system dimensions, for saving as a column in the metrics csv
+    system_dims = {
+        system_name: get_dim_from_dataset(test_data_dict[system_name][0])
+        for system_name in test_data_dict
+    }
+
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     test_datasets = {
@@ -109,6 +115,9 @@ def main(cfg):
 
     save_eval_results = partial(
         save_evaluation_results,
+        metrics_metadata={
+            "system_dims": system_dims
+        },  # pass system_dims to be saved as column in metrics csv
         metrics_save_dir=cfg.eval.metrics_save_dir,
         metrics_fname=cfg.eval.metrics_fname,
         overwrite=cfg.eval.overwrite,

@@ -419,9 +419,10 @@ def main(cfg):
 
     # sample skew system train/test splits
     skew_pairs = sample_skew_systems(
-        systems, cfg.skew.num_pairs, random_seed=cfg.sampling.pairs_rseed
+        systems, cfg.skew.num_pairs, random_seed=cfg.skew.pairs_rseed
     )
-    skew_pairs = skew_pairs[cfg.sampling.sys_idx_low : cfg.sampling.sys_idx_high]
+    # optionally make only a subset of the skew pairs, for memory-constrained runs and for power-law dataset generation
+    skew_pairs = skew_pairs[cfg.skew.sys_idx_low : cfg.skew.sys_idx_high]
     logger.info(f"Making {len(skew_pairs)} skew pairs: {skew_pairs}")
 
     logger.info(

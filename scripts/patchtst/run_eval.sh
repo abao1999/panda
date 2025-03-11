@@ -27,7 +27,9 @@ ulimit -n 99999
 #     eval.seed=42 \
 #     "$@"
 
-run_names=(pft_vanilla_pretrained_correct-0 pft_chattn_noembed_pretrained_correct-0 pft_rff_univariate_pretrained-0)
+# run_names=(pft_vanilla_pretrained_correct-0 pft_chattn_noembed_pretrained_correct-0 pft_rff_univariate_pretrained-0)
+# run_names=(pft_equal_param_deeper_univariate_from_scratch_noemb-0 pft_emb_equal_param_univariate_from_scratch-0)
+run_names=(pft_noemb_equal_param_univariate_from_scratch-0)
 split_dir=final_skew40/test_zeroshot
 
 for run_name in ${run_names[@]}; do
