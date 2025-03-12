@@ -270,6 +270,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             embed_dim=config.d_model,
             num_heads=config.num_attention_heads,
             dropout=config.attention_dropout,
+            use_rope=True,
             max_wavelength=config.max_wavelength,
             rope_percent=config.rope_percent,
         )
@@ -278,7 +279,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
                 embed_dim=config.d_model,
                 num_heads=config.num_attention_heads,
                 dropout=config.attention_dropout,
-                use_rope=False,  # channels are not positional
+                use_rope=config.channel_rope,  # channels are not positional
                 max_wavelength=config.max_wavelength,
                 rope_percent=config.rope_percent,
             )

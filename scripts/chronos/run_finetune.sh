@@ -14,19 +14,19 @@ if [ "$DEBUG" -eq 0 ]; then
         CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
         CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
 
-        CUDA_DEVICES=0,1,2,3
-        # CUDA_DEVICES=4,5,6,7
+        # CUDA_DEVICES=0,1,2,3
+        CUDA_DEVICES=4,5,6,7
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node 4 \
-                --master-port 29501 \
+                --master-port 29502 \
                 scripts/chronos/train.py \
                 chronos.model_id="amazon/chronos-t5-mini" \
                 chronos.model_type=seq2seq \
                 chronos.random_init=false \
                 chronos.tie_embeddings=true \
                 chronos.context_length=512 \
-                chronos.prediction_length=64 \
+                chronos.prediction_length=128 \
                 chronos.num_samples=20 \
                 chronos.n_tokens=4096 \
                 chronos.n_special_tokens=2 \
@@ -43,7 +43,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 train.save_steps=100_000 \
                 train.log_steps=1000 \
                 shuffle_buffer_length=100_000 \
-                train.per_device_train_batch_size=168 \
+                train.per_device_train_batch_size=128 \
                 train.warmup_ratio=0.1 \
                 train.torch_compile=true \
                 train.weight_decay=0.0 \

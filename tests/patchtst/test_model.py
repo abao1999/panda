@@ -183,15 +183,17 @@ def test_interleaved_prediction(
     )
 
 
-def test_rff_embedding(cfg):
+def test_model_fwd(cfg):
     """
-    Test the RFF embedding
+    Test the forward pass of the model
     """
     model = load_patchtst_model(
         mode="pretrain",
         model_config=dict(cfg.patchtst),
         pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
     )
+    past_values = torch.randn(10, 512, 3)
+    model(past_values=past_values)
     breakpoint()
 
 
@@ -200,7 +202,7 @@ def main(cfg):
     # model = PatchTSTPipeline.from_pretrained(
     #     mode="predict", pretrain_path=cfg.patchtst.pretrain_path
     # )
-    test_rff_embedding(cfg)
+    test_model_fwd(cfg)
 
     # test_prediction_basic(model, cfg)
     # test_attn_mask(batch_size=3, model=model, cfg=cfg)

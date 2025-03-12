@@ -43,7 +43,6 @@ def main(cfg):
     pipeline = PatchTSTPipeline.from_pretrained(
         mode=cfg.eval.mode,
         pretrain_path=checkpoint_path,
-        sliding_context=cfg.eval.sliding_context,
         device_map=cfg.eval.device,
         torch_dtype=torch_dtype,
     )
@@ -135,6 +134,7 @@ def main(cfg):
             return_labels=True,
             parallel_sample_reduction_fn=parallel_sample_reduction_fn,
             redo_normalization=True,
+            sliding_context=cfg.eval.sliding_context,
             eval_subintervals=[
                 (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
             ],

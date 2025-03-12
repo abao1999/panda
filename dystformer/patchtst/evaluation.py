@@ -150,6 +150,7 @@ def evaluate_forecasting_model(
     return_contexts: bool = False,
     return_labels: bool = False,
     redo_normalization: bool = False,
+    sliding_context: bool = False,
     eval_subintervals: list[tuple[int, int]] | None = None,
 ) -> tuple[
     dict[str, np.ndarray] | None,
@@ -223,6 +224,7 @@ def evaluate_forecasting_model(
                     prediction_length=prediction_length,
                     limit_prediction_length=limit_prediction_length,
                     channel_sampler=channel_sampler,
+                    sliding_context=sliding_context,
                 )
                 .transpose(0, 1)
                 .cpu()

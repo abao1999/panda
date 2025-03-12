@@ -42,6 +42,10 @@ class ChronosPipeline:
     tokenizer: ChronosTokenizer
     model: ChronosModel
 
+    @property
+    def device(self):
+        return self.model.device
+
     def _prepare_and_validate_context(
         self, context: Union[torch.Tensor, List[torch.Tensor]]
     ):

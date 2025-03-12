@@ -26,6 +26,7 @@ def safe_standardize(
     epsilon: float = 1e-10,
     axis: int = -1,
     context: np.ndarray | None = None,
+    denormalize: bool = False,
 ) -> np.ndarray:
     """
     Standardize the trajectories by subtracting the mean and dividing by the standard deviation
@@ -35,6 +36,7 @@ def safe_standardize(
         epsilon: A small value to prevent division by zero
         axis: The axis to standardize along
         context: The context to use for standardization. If provided, use the context to standardize the array.
+        denormalize: If True, denormalize the array using the mean and standard deviation of the context.
 
     Returns:
         The standardized array
@@ -51,6 +53,8 @@ def safe_standardize(
     mean = np.nanmean(context, axis=axis, keepdims=True)
     std = np.nanstd(context, axis=axis, keepdims=True)
     std = np.where(std < epsilon, epsilon, std)
+    if denormalize:
+        return arr * std + mean
     return (arr - mean) / std
 
 

@@ -116,16 +116,13 @@ class PatchTSTPipeline:
 
     mode: str
     model: PatchTSTForPretraining | PatchTSTForPrediction
-    sliding_context: bool = False
 
     @property
     def device(self):
         return self.model.device
 
     @classmethod
-    def from_pretrained(
-        cls, mode: str, pretrain_path: str, sliding_context: bool = False, **kwargs
-    ):
+    def from_pretrained(cls, mode: str, pretrain_path: str, **kwargs):
         """
         Load a pretrained model from a path and move it to the specified device.
         """
@@ -134,7 +131,7 @@ class PatchTSTPipeline:
             "predict": PatchTSTForPrediction,
         }[mode]
         model = model_class.from_pretrained(pretrain_path, **kwargs)
-        return cls(mode=mode, model=model, sliding_context=sliding_context)
+        return cls(mode=mode, model=model)
 
     def _prepare_and_validate_context(
         self, context: torch.Tensor | list[torch.Tensor]
@@ -152,7 +149,7 @@ class PatchTSTPipeline:
             context = context.unsqueeze(0)
         assert context.ndim == 3
 
-        return context
+        return context.to(self.device)
 
     @torch.no_grad()
     def predict(
@@ -162,6 +159,7 @@ class PatchTSTPipeline:
         limit_prediction_length: bool = True,
         channel_sampler: Callable[[torch.Tensor | list[torch.Tensor]], torch.Tensor]
         | None = None,
+        sliding_context: bool = False,
     ) -> torch.Tensor:
         """
         Generate an autoregressive forecast for a given context timeseries
@@ -188,6 +186,9 @@ class PatchTSTPipeline:
             where num_samples is specific to the channel_sampler implementation.
             This is intended to be used for subsampling channels e.g. when the
             model was trained with a fixed dim embedding.
+        sliding_context
+            If True, the context window will be slid over the time series, otherwise
+            the context window will be accumulated and grows in memory.
 
         Returns
         -------
@@ -236,7 +237,7 @@ class PatchTSTPipeline:
             )
 
             # dont grow the context window, only keep the most recent context_length
-            if self.sliding_context:
+            if sliding_context:
                 context_tensor = context_tensor[
                     :, -self.model.config.context_length :, :
                 ]

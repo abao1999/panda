@@ -29,15 +29,19 @@ class RandomDimSelectionTransform:
 
 @dataclass
 class StandardizeTransform:
-    """Standardize a timeseries"""
+    """Unecessary wrapper around safe_standardize"""
 
-    axis: int = -1
-
-    def __call__(self, timeseries: NDArray) -> NDArray:
+    def __call__(
+        self,
+        timeseries: NDArray,
+        axis: int = -1,
+        context: NDArray | None = None,
+        **kwargs,
+    ) -> NDArray:
         """
         :param timeseries: (num_channels, num_timepoints) timeseries to standardize
         """
-        return safe_standardize(timeseries, axis=self.axis)
+        return safe_standardize(timeseries, axis=axis, context=context, **kwargs)
 
 
 @dataclass
