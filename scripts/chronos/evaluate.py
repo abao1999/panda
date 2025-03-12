@@ -120,6 +120,9 @@ def main(cfg):
 
     save_eval_results = partial(
         save_evaluation_results,
+        metrics_metadata={
+            "system_dims": system_dims
+        },  # pass system_dims to be saved as column in metrics csv
         metrics_save_dir=cfg.eval.metrics_save_dir,
         metrics_fname=cfg.eval.metrics_fname,
         overwrite=cfg.eval.overwrite,

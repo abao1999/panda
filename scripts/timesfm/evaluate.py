@@ -1,6 +1,5 @@
 import logging
 import os
-import random
 from functools import partial
 from pathlib import Path
 
@@ -96,7 +95,7 @@ def main(cfg):
     test_data_dir = os.path.expandvars(cfg.eval.data_path)
     test_data_dict = {}
     system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-    for system_dir in random.sample(system_dirs, cfg.eval.num_systems):
+    for system_dir in system_dirs[: cfg.eval.num_systems]:
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
         test_data_dict[system_name] = [
@@ -136,6 +135,9 @@ def main(cfg):
 
     save_eval_results = partial(
         save_evaluation_results,
+        metrics_metadata={
+            "system_dims": system_dims
+        },  # pass system_dims to be saved as column in metrics csv
         metrics_save_dir=cfg.eval.metrics_save_dir,
         metrics_fname=cfg.eval.metrics_fname,
         overwrite=cfg.eval.overwrite,

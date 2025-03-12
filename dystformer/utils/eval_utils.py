@@ -37,6 +37,7 @@ def left_pad_and_stack_multivariate(tensors: list[torch.Tensor]) -> torch.Tensor
 
 def save_evaluation_results(
     metrics: dict[int, dict[str, dict[str, float]]] | None = None,
+    metrics_metadata: dict[str, dict[str, Any]] | None = None,
     coords: dict[str, np.ndarray] | None = None,
     metrics_save_dir: str = "results",
     metrics_fname: str | None = None,
@@ -51,6 +52,9 @@ def save_evaluation_results(
     Args:
         coords: Dictionary mapping system names to coordinate numpy arrays.
         metrics: Nested dictionary containing computed metrics for each system.
+        metrics_metadata: Dictionary containing metadata for the metrics.
+            Keys are the quantity names, values are dictionaries containing metadata for each system.
+                e.g. {"system_dims": {"system_name": 3}}
         metrics_save_dir: Directory to save metrics to.
         metrics_fname: Name of the metrics file to save.
         overwrite: Whether to overwrite an existing metrics file
@@ -69,7 +73,11 @@ def save_evaluation_results(
                 {"system": system, **metric_dict[system]} for system in metric_dict
             ]
             results_df = pd.DataFrame(result_rows)
-
+            if metrics_metadata is not None:
+                for quantity_name in metrics_metadata:
+                    results_df[quantity_name] = results_df["system"].map(
+                        metrics_metadata[quantity_name]
+                    )
             curr_metrics_fname = (
                 f"{metrics_fname or 'metrics'}_pred{forecast_length}.csv"
             )

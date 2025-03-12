@@ -373,7 +373,10 @@ def check_lyapunov_exponent(traj: np.ndarray, traj_len: int = 100) -> bool:
     Returns:
         bool: False if the Lyapunov exponent is less than 1, True otherwise.
     """
-    lyapunov_exponent = max_lyapunov_exponent_rosenstein(traj, trajectory_len=traj_len)
+    # TODO: debug this, the rosenstein implementation expects univariate time series, not broadcastable
+    lyapunov_exponent = max_lyapunov_exponent_rosenstein(
+        traj.T, trajectory_len=traj_len
+    )
     if lyapunov_exponent < 0:
         return False
     return True
