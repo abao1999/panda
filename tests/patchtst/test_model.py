@@ -188,12 +188,13 @@ def test_model_fwd(cfg):
     Test the forward pass of the model
     """
     model = load_patchtst_model(
-        mode="pretrain",
+        mode="predict",
         model_config=dict(cfg.patchtst),
         pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
     )
     past_values = torch.randn(10, 512, 3)
-    model(past_values=past_values)
+    future_values = torch.randn(10, 512, 3)
+    model(past_values=past_values, future_values=future_values)
     breakpoint()
 
 

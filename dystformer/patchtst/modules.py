@@ -12,13 +12,26 @@ from transformers import PatchTSTConfig
 class PatchTSTKernelEmbedding(nn.Module):
     def __init__(self, config: PatchTSTConfig):
         super().__init__()
-        self.num_poly_feats = config.num_poly_feats
-        self.poly_feat_degree = config.poly_feat_degree
-        self.patch_indices = torch.randint(
-            high=config.patch_length,
-            size=(self.num_poly_feats, self.poly_feat_degree),
-            requires_grad=False,
+        assert (
+            config.patch_length
+            + len(config.poly_degrees) * config.num_poly_feats
+            + config.num_rff
+            == config.d_model
+        ), (
+            f"Sum of features must equal d_model: d_poly + d_rff + patch_length = "
+            f"{len(config.poly_degrees) * config.num_poly_feats} + {config.num_rff}"
+            f" + {config.patch_length} != {config.d_model}"
         )
+        self.num_poly_feats = config.num_poly_feats
+        self.poly_degrees = config.poly_degrees
+        self.patch_indices = [
+            torch.randint(
+                high=config.patch_length,
+                size=(self.num_poly_feats, d),
+                requires_grad=False,
+            )
+            for d in self.poly_degrees
+        ]
         self.freq_weights = nn.Parameter(
             torch.randn(config.patch_length, config.num_rff // 2),
             requires_grad=config.rff_trainable,
@@ -36,10 +49,10 @@ class PatchTSTKernelEmbedding(nn.Module):
         return:
             `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
         """
-        poly_feats = x[..., self.patch_indices].prod(dim=-1)
+        poly_feats = [x[..., pis].prod(dim=-1) for pis in self.patch_indices]
         weighted_x = x @ self.freq_weights + self.freq_biases
         rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
-        return torch.cat([x, poly_feats, rff_feats], dim=-1)
+        return torch.cat([x, *poly_feats, rff_feats], dim=-1)
 
 
 class PatchTSTRMSNorm(nn.Module):
