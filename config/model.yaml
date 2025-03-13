@@ -51,7 +51,7 @@ patchtst:
   use_dynamics_embedding: false
   num_poly_feats: 256
   poly_degrees: [2, 3, 4]
-  rff_trainable: true
+  rff_trainable: false
   num_rff: 256
 
 chronos:
