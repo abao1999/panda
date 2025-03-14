@@ -33,7 +33,7 @@ class PatchTSTKernelEmbedding(nn.Module):
             for d in self.poly_degrees
         ]
         self.freq_weights = nn.Parameter(
-            torch.randn(config.patch_length, config.num_rff // 2),
+            config.rff_scale * torch.randn(config.patch_length, config.num_rff // 2),
             requires_grad=config.rff_trainable,
         )
         self.freq_biases = nn.Parameter(
