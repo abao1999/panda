@@ -26,7 +26,8 @@ split_dir=final_skew40/test_zeroshot
 #         eval.seed=99 \
 #         "$@"
 
-run_name=chronos_finetune_stand_updated-0
+# run_name=chronos_finetune_stand_updated-0
+run_name=chronos_mini_ft-0
 python scripts/chronos/evaluate.py \
         eval.checkpoint_path=$checkpoint_dir/${run_name}/checkpoint-final \
         eval.data_path=$WORK/data/copy/${split_dir} \
@@ -39,7 +40,7 @@ python scripts/chronos/evaluate.py \
         eval.metrics_save_dir=$main_dir/eval_results/chronos/${run_name}/${split_dir} \
         eval.metrics_fname=metrics \
         eval.overwrite=true \
-        eval.device=cuda:1 \
+        eval.device=cuda:2 \
         eval.forecast_save_dir=$WORK/data/eval/chronos/${run_name}/${split_dir}/forecasts \
         eval.labels_save_dir=$WORK/data/eval/chronos/${run_name}/${split_dir}/labels \
         eval.seed=99 \

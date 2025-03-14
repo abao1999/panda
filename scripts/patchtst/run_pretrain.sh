@@ -19,7 +19,7 @@ if [ "$DEBUG" -eq 0 ]; then
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node 4 \
-                --master-port 29500 \
+                --master-port 29501 \
                 scripts/patchtst/train.py \
                 patchtst.mode=pretrain \
                 patchtst.context_length=512 \
@@ -32,7 +32,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 patchtst.channel_attention=true \
                 patchtst.mask_type=random \
                 patchtst.random_mask_ratio=0.5 \
-                patchtst.channel_consistent_masking=false \
+                patchtst.channel_consistent_masking=true \
                 patchtst.max_wavelength=500 \
                 patchtst.rope_percent=0.75 \
                 patchtst.loss=mse \

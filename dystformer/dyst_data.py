@@ -15,6 +15,7 @@ from dysts.sampling import BaseSampler
 from dysts.systems import make_trajectory_ensemble
 from tqdm import tqdm
 
+import wandb
 from dystformer.attractor import AttractorValidator
 from dystformer.sampling import OnAttractorInitCondSampler
 from dystformer.skew_system import SkewProduct
@@ -75,6 +76,7 @@ class DynSysSampler:
 
     verbose: bool = True
     save_failed_trajs: bool = False
+    wandb_run: wandb.sdk.wandb_run.Run | None = None  # type: ignore
 
     def __post_init__(self) -> None:
         if isinstance(self.num_periods, int):
@@ -310,6 +312,8 @@ class DynSysSampler:
         with managed_cache(self.ic_sampler, use_multiprocessing):
             pp_rng_stream = self.rng.spawn(self.num_param_perturbations)
             for i, param_rng in enumerate(pp_rng_stream):
+                if self.wandb_run is not None:
+                    self.wandb_run.log({"param_idx": i})
                 param_perturbed_systems = self._init_perturbations(
                     systems,
                     param_rng=param_rng,
@@ -336,6 +340,8 @@ class DynSysSampler:
                 ic_rng_stream = param_rng.spawn(self.num_ics)
                 for j, ic_rng in enumerate(ic_rng_stream):
                     sample_idx = i * len(ic_rng_stream) + j + 1
+                    if self.wandb_run is not None:
+                        self.wandb_run.log({"sample_idx": sample_idx})
 
                     # after the parameter perturbation, perturb the initial conditions
                     ic_perturbed_systems = self._init_perturbations(
@@ -469,12 +475,15 @@ class DynSysSampler:
             for sys in ensemble_sys_names
         }
 
+        current_param_pert_summary = {}
         # TEMPORARY: remove driver dims from trajectories
         if perturbed_systems is not None:
             dims = {
                 sys.name: getattr(sys, "driver_dim", 0) for sys in perturbed_systems
             }
             ensemble = {sys: traj[:, dims[sys] :, :] for sys, traj in ensemble.items()}
+
+        current_param_pert_summary["num_systems_integrated"] = len(ensemble)
 
         if self.attractor_validator is not None:
             logger.info(f"Applying attractor validator to {len(ensemble)} systems")
@@ -483,8 +492,15 @@ class DynSysSampler:
                     ensemble, first_sample_idx=sample_idx
                 )
             )
+            current_param_pert_summary["num_systems_valid"] = len(ensemble)
         else:
             failed_ensemble = {}
+
+        if self.wandb_run is not None:
+            self.wandb_run.log(current_param_pert_summary)
+            counts_per_failed_check = self._get_counts_per_failed_check()
+            logger.info(f"Logging counts per failed check: {counts_per_failed_check}")
+            self.wandb_run.log(counts_per_failed_check)
 
         if save_dyst_dir is not None:
             process_trajs(
@@ -609,7 +625,9 @@ class DynSysSampler:
         with open(save_path, "w") as f:
             json.dump(traj_stats, f, indent=4)
 
-    def save_summary(self, save_json_path: str):
+    def save_summary(
+        self, save_json_path: str, return_dict: bool = False
+    ) -> dict | None:
         """
         Save a summary of valid attractor counts and failed checks to a json file.
         """
@@ -644,3 +662,22 @@ class DynSysSampler:
 
         with open(save_json_path, "w") as f:
             json.dump(summary_dict, f, indent=4)
+
+        if return_dict:
+            return summary_dict
+
+    def _get_counts_per_failed_check(self) -> dict[str, int]:
+        """
+        Get the number of systems that failed each check.
+        """
+        if self.attractor_validator is None:
+            return {}
+
+        # TODO: this is a bit hacky, need to have a streamlined solution
+        counts_per_failed_check = defaultdict(int)
+        for failed_checks_lst in self.attractor_validator.failed_checks.values():
+            for entry_all_ics in failed_checks_lst:
+                for entry in entry_all_ics:
+                    _, check_name = entry
+                    counts_per_failed_check[f"failed_{check_name}"] += 1
+        return counts_per_failed_check
