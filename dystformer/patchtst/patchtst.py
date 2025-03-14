@@ -847,7 +847,7 @@ class PatchTSTPredictionHead(nn.Module):
             else nn.Identity()
         )
 
-    def forward(self, embedding: torch.Tensor):
+    def forward(self, embedding: torch.Tensor, center: float = 0.0):
         """
         Parameters:
             embedding (`torch.Tensor` of shape `(bs, num_channels, num_patches, d_model)` or
@@ -878,12 +878,13 @@ class PatchTSTPredictionHead(nn.Module):
         # output: [bs x num_channels x forecast_len] or
         # tuple ([bs x num_channels x forecast_len], [bs x num_channels x forecast_len]) if using distribution head
         output = self.projection(pooled_embedding)
+        prediction = output + center
 
         if isinstance(output, tuple):
             # output: ([bs x forecast_len x num_channels], [bs x forecast_len x num_channels])
-            output = tuple(z.transpose(2, 1) for z in output)
+            output = tuple(z.transpose(2, 1) for z in prediction)
         else:
-            output = output.transpose(2, 1)  # [bs x forecast_len x num_channels]
+            output = prediction.transpose(2, 1)  # [bs x forecast_len x num_channels]
         return output
 
 
@@ -975,7 +976,8 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             return_dict=True,
         )
         # get output head
-        y_hat = self.head(model_output.last_hidden_state)
+        center = past_values[:, -1, :].unsqueeze(-1)
+        y_hat = self.head(model_output.last_hidden_state, center=center)
 
         if self.distribution_output:
             y_hat_out = y_hat
