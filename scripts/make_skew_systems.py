@@ -15,6 +15,7 @@ import hydra
 import numpy as np
 from dysts.systems import DynSys, get_attractor_list
 
+import wandb
 from dystformer.attractor import (
     check_boundedness,
     check_lyapunov_exponent,
@@ -33,12 +34,14 @@ from dystformer.dyst_data import DynSysSampler
 from dystformer.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
 from dystformer.sampling import OnAttractorInitCondSampler, SignedGaussianParamSampler
 from dystformer.skew_system import SkewProduct
-from dystformer.utils import plot_trajs_multivariate
+from dystformer.utils import (
+    plot_trajs_multivariate,
+)
 
 
-def default_attractor_tests() -> list[Callable]:
+def default_attractor_tests(tests_to_use: list[str]) -> list[Callable]:
     """Builds default attractor tests to check for each trajectory ensemble"""
-    tests = [
+    default_tests = [
         partial(check_not_linear, r2_threshold=0.99, eps=1e-10),  # pretty lenient
         partial(check_boundedness, threshold=1e4, max_zscore=15),
         partial(check_not_fixed_point, atol=1e-3, tail_prop=0.1),
@@ -59,7 +62,12 @@ def default_attractor_tests() -> list[Callable]:
         partial(check_lyapunov_exponent, traj_len=200),
         partial(check_stationarity, p_value=0.05),
     ]
-    return tests
+    # choose only tests in default_tests that are in tests_to_use
+    filtered_tests = [
+        test for test in default_tests if test.func.__name__ in tests_to_use
+    ]
+    logger.info(f"Using {len(filtered_tests)} tests: {filtered_tests}")
+    return filtered_tests
 
 
 def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
@@ -330,6 +338,27 @@ def init_trajectory_stats_cache(
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
+    # set up wandb project and logging if enabled
+    if cfg.wandb.log:
+        run = wandb.init(
+            project=cfg.wandb.project_name,
+            entity=cfg.wandb.entity,
+            name=cfg.run_name,
+            config=dict(cfg),
+            sync_tensorboard=False,  # auto-upload tensorboard metrics
+            group=cfg.wandb.group_name,
+            resume=cfg.wandb.resume,
+        )
+        logger.info(f"Wandb initialized: {run.id}")
+
+        wandb.define_metric("sample_idx")
+        wandb.define_metric("num_systems_valid", step_metric="sample_idx")
+        wandb.define_metric("num_systems_integrated", step_metric="sample_idx")
+        for attractor_test_name in cfg.validator.attractor_tests:
+            wandb.define_metric(
+                f"failed_{attractor_test_name}", step_metric="sample_idx"
+            )
+
     systems = get_attractor_list(sys_class=cfg.sampling.sys_class)
 
     # events for solve_ivp
@@ -363,7 +392,7 @@ def main(cfg):
         reference_traj_atol=cfg.sampling.reference_traj.atol,
         reference_traj_rtol=cfg.sampling.reference_traj.rtol,
         recompute_standardization=cfg.sampling.standardize,  # Important (if standardize=True)
-        random_seed=cfg.sampling.rseed,
+        random_seed=cfg.sampling.ic_rseed,
         events=event_fns,
         silence_integration_errors=cfg.sampling.silence_integration_errors,
         verbose=int(cfg.sampling.verbose),
@@ -384,14 +413,14 @@ def main(cfg):
         events=event_fns,
         verbose=cfg.sampling.verbose,
         split_coords=cfg.sampling.split_coords,
-        attractor_tests=default_attractor_tests(),
+        attractor_tests=default_attractor_tests(cfg.validator.attractor_tests),
         validator_transient_frac=cfg.validator.transient_time_frac,
         save_failed_trajs=cfg.validator.save_failed_trajs,
+        wandb_run=run if cfg.wandb.log else None,
     )
 
     ###########################################################################
     # optionally plot a single skew system for debugging, and exit after
-    #
     # NOTE: additive map for now
     ###########################################################################
     if cfg.sampling.debug_system:
@@ -426,7 +455,7 @@ def main(cfg):
     logger.info(f"Making {len(skew_pairs)} skew pairs: {skew_pairs}")
 
     logger.info(
-        f"Sampled {cfg.skew.num_pairs}/{len(systems) * (len(systems) - 1)} system pair candidates"
+        f"Sampled {len(skew_pairs)}/{len(systems) * (len(systems) - 1)} system pair candidates"
     )
 
     base_systems = set(sys for pair in skew_pairs for sys in pair)
@@ -473,6 +502,8 @@ def main(cfg):
 
     split_prefix = cfg.sampling.split_prefix + "_" if cfg.sampling.split_prefix else ""
     run_name = cfg.run_name + "_" if cfg.run_name else ""
+
+    concise_comb_summary_dict = {}
     for split, systems in [("train", train_systems), ("test", test_systems)]:
         split_name = f"{split_prefix}{split}"
         sys_sampler.sample_ensembles(
@@ -493,12 +524,38 @@ def main(cfg):
             rtol=cfg.sampling.rtol,
             use_tqdm=False,
         )
-        sys_sampler.save_summary(
-            os.path.join(
-                "outputs",
-                f"{run_name}{split_prefix}{split}_attractor_checks.json",
-            ),
+        summary_json_path = os.path.join(
+            "outputs",
+            f"{run_name}{split_prefix}{split}_attractor_checks.json",
         )
+        summary_dict = sys_sampler.save_summary(summary_json_path, return_dict=True)
+        # now log summary_dict to wandb
+        if summary_dict is not None:
+            artifact = wandb.Artifact(
+                name=f"{split_prefix}{split}_attractor_checks",
+                type="attractor_summary",
+            )
+            artifact.add_file(summary_json_path)
+            run.log_artifact(artifact)
+
+            concise_comb_summary_dict[split] = {
+                k: summary_dict[k]
+                for k in [
+                    "num_parameter_successes",
+                    "num_total_candidates",
+                    "valid_dyst_counts",
+                    "valid_samples",
+                ]
+            }
+            run.summary.update(concise_comb_summary_dict)
+            print(f"updated summary for wandb run {run.id}")
+
+            # # NOTE: if we want to actually log the summary dict and make it queryable:
+            # run.log({f"{split_prefix}{split}_attractor_checks": summary_dict})
+
+    # terminate wandb run after data run
+    if cfg.wandb.log:
+        wandb.finish(exit_code=0)
 
 
 if __name__ == "__main__":

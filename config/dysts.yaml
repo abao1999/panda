@@ -3,7 +3,8 @@ sampling:
   sys_class: continuous_no_delay
   test_split: 0.3
   split_prefix: null
-  rseed: 999
+  rseed: 999 # rseed for param perturbations, and DynSysSampler's pp_rng_stream and choice of num_periods
+  ic_rseed: 888 # rseed for initial condition sampler
   num_points: 4096
   num_periods: 40 # default/fallback number of periods, need to specify for traj cache in skew system generation
   num_periods_min: 20
@@ -37,6 +38,15 @@ validator:
   transient_time_frac: 0.05
   plot_save_dir: null
   save_failed_trajs: false
+  attractor_tests:
+    - check_not_linear
+    - check_boundedness
+    - check_not_fixed_point
+    - check_zero_one_test
+    # - check_not_limit_cycle
+    # - check_lyapunov_exponent
+    - check_power_spectrum
+    - check_stationarity
 
 events:
   max_duration: 300
@@ -46,7 +56,7 @@ events:
 
 skew:
   num_pairs: 5000
-  pairs_rseed: 123
+  pairs_rseed: 123 # rseed for sampling skew system pairs
   sys_idx_low: 0
   sys_idx_high: null
   normalization_strategy: flow_rms
