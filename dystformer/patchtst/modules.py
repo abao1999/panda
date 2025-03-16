@@ -9,6 +9,18 @@ import torch.nn as nn
 from transformers import PatchTSTConfig
 
 
+class DyT(nn.Module):
+    def __init__(self, num_features, alpha_init_value=0.5):
+        super().__init__()
+        self.alpha = nn.Parameter(torch.ones(1) * alpha_init_value)
+        self.weight = nn.Parameter(torch.ones(num_features))
+        self.bias = nn.Parameter(torch.zeros(num_features))
+
+    def forward(self, x):
+        x = torch.tanh(self.alpha * x)
+        return x * self.weight + self.bias
+
+
 class PatchTSTKernelEmbedding(nn.Module):
     def __init__(self, config: PatchTSTConfig):
         super().__init__()
@@ -23,14 +35,13 @@ class PatchTSTKernelEmbedding(nn.Module):
             f" + {config.patch_length} != {config.d_model}"
         )
         self.num_poly_feats = config.num_poly_feats
-        self.poly_degrees = config.poly_degrees
         self.patch_indices = [
             torch.randint(
                 high=config.patch_length,
                 size=(self.num_poly_feats, d),
                 requires_grad=False,
             )
-            for d in self.poly_degrees
+            for d in range(2, config.poly_degrees + 1)
         ]
         self.freq_weights = nn.Parameter(
             config.rff_scale * torch.randn(config.patch_length, config.num_rff // 2),

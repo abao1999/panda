@@ -24,6 +24,7 @@ from transformers.models.patchtst.modeling_patchtst import (
 from transformers.utils import ModelOutput
 
 from .modules import (
+    DyT,
     PatchTSTKernelEmbedding,
     PatchTSTPatchify,
     PatchTSTRMSNorm,
@@ -294,6 +295,8 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             self.norm_sublayer1 = PatchTSTRMSNorm(config.d_model, config.norm_eps)
         elif config.norm_type == "layernorm":
             self.norm_sublayer1 = nn.LayerNorm(config.d_model, eps=config.norm_eps)
+        elif config.norm_type == "dyt":
+            self.norm_sublayer1 = DyT(config.d_model)
         else:
             raise ValueError(f"{config.norm_type} is not a supported norm layer type.")
 
@@ -308,6 +311,8 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
                 self.norm_sublayer2 = PatchTSTRMSNorm(config.d_model, config.norm_eps)
             elif config.norm_type == "layernorm":
                 self.norm_sublayer2 = nn.LayerNorm(config.d_model, eps=config.norm_eps)
+            elif config.norm_type == "dyt":
+                self.norm_sublayer2 = DyT(config.d_model)
             else:
                 raise ValueError(
                     f"{config.norm_type} is not a supported norm layer type."
@@ -331,6 +336,8 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             self.norm_sublayer3 = PatchTSTRMSNorm(config.d_model, config.norm_eps)
         elif config.norm_type == "layernorm":
             self.norm_sublayer3 = nn.LayerNorm(config.d_model, eps=config.norm_eps)
+        elif config.norm_type == "dyt":
+            self.norm_sublayer3 = DyT(config.d_model)
         else:
             raise ValueError(f"{config.norm_type} is not a supported norm layer type.")
 

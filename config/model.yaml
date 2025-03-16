@@ -50,7 +50,7 @@ patchtst:
   # for the dynamical embedding
   use_dynamics_embedding: false
   num_poly_feats: 256
-  poly_degrees: [2, 3, 4]
+  poly_degrees: 2  # starting from 2 i.e. 2 means include 2nd and 3rd order terms
   rff_trainable: false
   rff_scale: 1.0
   num_rff: 256
