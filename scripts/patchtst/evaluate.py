@@ -68,10 +68,34 @@ def main(cfg):
     context_length = model_config["context_length"]
     prediction_length = model_config["prediction_length"]
     channel_attention = model_config["channel_attention"]
+    use_dynamics_embedding = model_config["use_dynamics_embedding"]
+
     log(f"context_length: {context_length}")
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
     log(f"channel_attention: {channel_attention}")
+
+    if channel_attention:
+        # check use of channel rope
+        channel_rope = model_config["channel_rope"]
+        log(f"channel_rope: {channel_rope}")
+
+    log(f"use_dynamics_embedding: {use_dynamics_embedding}")
+
+    if use_dynamics_embedding:
+        # check dynamics embedding parameters
+        dynamics_embedding_config = {
+            k: model_config[k]
+            for k in [
+                "num_poly_feats",
+                "poly_degrees",
+                "rff_trainable",
+                "rff_scale",
+                "num_rff",
+            ]
+        }
+        log(f"dynamics embeddingconfig: {dynamics_embedding_config}")
+
     pipeline.model.eval()
 
     # get test data paths

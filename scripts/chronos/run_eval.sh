@@ -27,7 +27,7 @@ split_dir=final_skew40/test_zeroshot
 #         "$@"
 
 # run_name=chronos_finetune_stand_updated-0
-run_name=chronos_mini_ft-0
+run_name=chronos_bolt_mini-12
 python scripts/chronos/evaluate.py \
         eval.checkpoint_path=$checkpoint_dir/${run_name}/checkpoint-final \
         eval.data_path=$WORK/data/copy/${split_dir} \

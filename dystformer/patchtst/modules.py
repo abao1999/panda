@@ -24,14 +24,15 @@ class DyT(nn.Module):
 class PatchTSTKernelEmbedding(nn.Module):
     def __init__(self, config: PatchTSTConfig):
         super().__init__()
+        poly_degrees_lst = range(2, config.poly_degrees + 1)
         assert (
             config.patch_length
-            + len(config.poly_degrees) * config.num_poly_feats
+            + len(poly_degrees_lst) * config.num_poly_feats
             + config.num_rff
             == config.d_model
         ), (
             f"Sum of features must equal d_model: d_poly + d_rff + patch_length = "
-            f"{len(config.poly_degrees) * config.num_poly_feats} + {config.num_rff}"
+            f"{len(poly_degrees_lst) * config.num_poly_feats} + {config.num_rff}"
             f" + {config.patch_length} != {config.d_model}"
         )
         self.num_poly_feats = config.num_poly_feats
@@ -41,8 +42,10 @@ class PatchTSTKernelEmbedding(nn.Module):
                 size=(self.num_poly_feats, d),
                 requires_grad=False,
             )
-            for d in range(2, config.poly_degrees + 1)
+            for d in poly_degrees_lst
         ]
+        # # NOTE: temporary hacky fix for backward compatibility
+        # self.patch_indices = self.patch_indices[0]
         self.freq_weights = nn.Parameter(
             config.rff_scale * torch.randn(config.patch_length, config.num_rff // 2),
             requires_grad=config.rff_trainable,
