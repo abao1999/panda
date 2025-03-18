@@ -48,7 +48,7 @@ for run_name in ${run_names[@]}; do
         eval.metrics_save_dir=$main_dir/eval_results/patchtst/$run_name/$split_dir \
         eval.metrics_fname=metrics \
         eval.overwrite=true \
-        eval.device=cuda:3 \
+        eval.device=cuda:2 \
         eval.forecast_save_dir=$WORK/data/eval/patchtst/$run_name/$split_dir/forecasts \
         eval.labels_save_dir=$WORK/data/eval/patchtst/$run_name/$split_dir/labels \
         fixed_dim=3 \
