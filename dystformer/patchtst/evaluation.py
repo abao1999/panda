@@ -40,6 +40,7 @@ def evaluate_mlm_model(
 
     context_length = pipeline.model.config.context_length
 
+    # TODO: de-aggregate the "systems"-level metrics to separate each sample (unique parameter perturbation)
     for system in tqdm(systems, desc="Evaluating MLM pretrain model"):
         dataset = systems[system]  # IterableDataset
         all_completions = []
