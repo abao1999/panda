@@ -536,7 +536,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
             hidden_state = layer_outputs[0]
             # append attention matrix at each layer
             if output_attentions:
-                all_attentions = all_attentions + (layer_outputs[1],)  # type: ignore
+                all_attentions = all_attentions + layer_outputs[1:]  # type: ignore
         # return past_values, hidden_states
         return BaseModelOutput(
             last_hidden_state=hidden_state,  # type: ignore
@@ -1026,6 +1026,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         past_values: torch.Tensor,
         past_observed_mask: Optional[torch.Tensor] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
     ) -> SamplePatchTSTOutput:
         """
         Generate sequences of sample predictions from a model with a probability distribution head.
@@ -1055,6 +1056,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             past_observed_mask=past_observed_mask,
             output_hidden_states=False,
             channel_attention_mask=channel_attention_mask,
+            output_attentions=output_attentions,
         )
 
         if self.distribution_output:

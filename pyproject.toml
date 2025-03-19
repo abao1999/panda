@@ -30,6 +30,7 @@ dependencies = [
     "statsmodels",
     "orjson",
     "tensorboardX",
+    "seaborn"
 ]
 
 # Optional dependencies
