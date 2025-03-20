@@ -52,6 +52,7 @@ class PatchTSTKernelEmbedding(nn.Module):
             torch.randn(1, 1, 1, config.num_rff // 2),
             requires_grad=config.rff_trainable,
         )
+        self.projection = nn.Linear(config.d_model, config.d_model, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -65,6 +66,7 @@ class PatchTSTKernelEmbedding(nn.Module):
         weighted_x = x @ self.freq_weights + self.freq_biases
         rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
         features = torch.cat([x, *poly_feats, rff_feats], dim=-1)
+        features = self.projection(features)
         return features
 
 

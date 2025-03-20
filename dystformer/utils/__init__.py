@@ -5,11 +5,11 @@ from .data_utils import (
     dict_demote_from_numpy,
     get_dim_from_dataset,
     get_system_filepaths,
+    load_trajectory_from_arrow,
     make_ensemble_from_arrow_dir,
     process_trajs,
     safe_standardize,
     split_systems,
-    stack_and_extract_metadata,
     timeit,
 )
 from .dyst_utils import (

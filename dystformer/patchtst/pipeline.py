@@ -169,7 +169,7 @@ class PatchTSTPipeline:
         context
             Input series. This is either a 1D tensor, or a list
             of 1D tensors, or a 2D tensor whose first dimension
-            is batch. In the latter case, use left-padding with
+            is sequence length. In the latter case, use left-padding with
             ``torch.nan`` to align series of different lengths.
         prediction_length
             Time steps to predict. Defaults to what specified

@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 from dysts.systems import get_attractor_list
-from gluonts.dataset import Dataset
 from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
 
@@ -165,18 +164,7 @@ def accumulate_coords(
     for filepath in filepaths:
         if num_samples is not None and len(dyst_coords_samples) >= num_samples:
             break
-        # create dataset by reading directly from filepath into FileDataset
-        gts_dataset = FileDataset(
-            path=Path(filepath),
-            freq="h",
-            one_dim_target=one_dim_target,
-        )  # TODO: consider other frequencies?
-
-        # extract the coordinates
-        dyst_coords, metadata = stack_and_extract_metadata(
-            gts_dataset,
-        )
-
+        dyst_coords, _ = load_trajectory_from_arrow(filepath, one_dim_target)
         dyst_coords_samples.append(dyst_coords)
 
     dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
@@ -225,8 +213,12 @@ def process_trajs(
             convert_to_arrow(path, trajectory, split_coords=split_coords)
 
 
-def stack_and_extract_metadata(dataset: Dataset) -> Tuple[np.ndarray, Tuple[Any]]:
-    """Utility for unpacking gluonts dataset into array and extracting metadata"""
+def load_trajectory_from_arrow(
+    filepath: Path | str, one_dim_target: bool = False
+) -> Tuple[np.ndarray, Tuple[Any]]:
+    """Utility for loading a trajectory and metadatafrom an arrow file"""
+    assert Path(filepath).exists(), f"Filepath {filepath} does not exist"
+    dataset = FileDataset(path=Path(filepath), freq="h", one_dim_target=one_dim_target)
     coords, metadata = zip(*[(coord["target"], coord["start"]) for coord in dataset])
     coordinates = np.stack(coords)
     if coordinates.ndim > 2:  # if not one_dim_target:
@@ -278,14 +270,7 @@ def process_dyst_name(
     filepaths = get_system_filepaths(dyst_name, base_dir, split)
     dyst_coords_samples = []
     for filepath in filepaths[:num_samples]:
-        # create dataset by reading directly from filepath into FileDataset
-        gts_dataset = FileDataset(
-            path=Path(filepath),
-            freq="h",
-            one_dim_target=one_dim_target,
-        )
-        # extract the coordinates
-        dyst_coords, metadata = stack_and_extract_metadata(gts_dataset)
+        dyst_coords, _ = load_trajectory_from_arrow(filepath, one_dim_target)
         dyst_coords_samples.append(dyst_coords)
 
     dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
