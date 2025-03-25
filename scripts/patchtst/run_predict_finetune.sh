@@ -14,17 +14,17 @@ if [ "$DEBUG" -eq 0 ]; then
         CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
         CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
 
-        CUDA_DEVICES=0,1,2,3
-        # CUDA_DEVICES=4,5,6,7
+        # CUDA_DEVICES=0,1,2,3
+        CUDA_DEVICES=4,5,6,7
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node 4 \
-                --master-port 29500 \
+                --master-port 29501 \
                 scripts/patchtst/train.py \
                 shuffle_buffer_length=100_000 \
                 patchtst.mode=predict \
                 patchtst.use_dynamics_embedding=false \
-                patchtst.pretrained_encoder_path=null \
+                patchtst.pretrained_encoder_path=/stor/work/AMDG_Gilpin_Summer2024/checkpoints/mlm_cc_stand-0/checkpoint-final \
                 patchtst.context_length=512 \
                 patchtst.prediction_length=128 \
                 patchtst.patch_length=16 \

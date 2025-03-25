@@ -447,6 +447,7 @@ def plot_forecast_evaluation(
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
     max_samples: int = 6,
+    show_plot: bool = False,
 ) -> None:
     """
     Plot side-by-side 3D multivariate timeseries for completions and context,
@@ -581,4 +582,6 @@ def plot_forecast_evaluation(
     plt.suptitle(plot_name.replace("_", " + "), fontsize=18, fontweight="bold")
     save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
     plt.savefig(save_path, dpi=300)
+    if show_plot:
+        plt.show()
     plt.close()
