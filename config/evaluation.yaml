@@ -56,6 +56,6 @@ eval:
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:
   wandb_run_id: null
-  plot_dir: figs
+  plot_dir: figures
   save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/run_metrics
   save_fname: metrics.json
