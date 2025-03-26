@@ -72,7 +72,7 @@ skew:
   coupling_map:
 
     # for the additive map
-    transform_scales: false
+    transform_scales: true
     randomize_driver_indices: true
     normalization_strategy: flow_rms
 

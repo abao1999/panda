@@ -62,11 +62,9 @@ def default_attractor_tests(tests_to_use: list[str]) -> list[Callable]:
         partial(check_lyapunov_exponent, traj_len=200),
         partial(check_stationarity, p_value=0.05),
     ]
-    # choose only tests in default_tests that are in tests_to_use
     filtered_tests = [
         test for test in default_tests if test.func.__name__ in tests_to_use
     ]
-    logger.info(f"Using {len(filtered_tests)} tests: {filtered_tests}")
     return filtered_tests
 
 
