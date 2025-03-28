@@ -5,7 +5,7 @@ Suite of tests to determine if generated trajectories are valid attractors
 import functools
 import warnings
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from multiprocessing import Pool
 from typing import Callable, Dict, List, Literal, Optional, Tuple
 
@@ -29,6 +29,8 @@ class AttractorValidator:
 
     transient_time_frac: float = 0.05  # should be low, should be on attractor
     tests: Optional[List[Callable]] = None
+
+    multiprocess_kwargs: dict = field(default_factory=dict)
 
     def __post_init__(self):
         self.failed_checks = defaultdict(list)  # Dict[str, List[Tuple[int, str]]]
@@ -153,7 +155,7 @@ class AttractorValidator:
         """
         Multiprocessed version of self.filter_ensemble
         """
-        with Pool() as pool:
+        with Pool(**self.multiprocess_kwargs) as pool:
             results = pool.starmap(
                 self._filter_system_worker_fn,
                 [

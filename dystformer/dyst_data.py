@@ -3,12 +3,13 @@ import logging
 import os
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import starmap
 from multiprocessing import Manager, Pool
 from typing import Callable
 
 import dysts.flows as flows
+import memory_profiler
 import numpy as np
 from dysts.base import BaseDyn
 from dysts.sampling import BaseSampler
@@ -22,8 +23,6 @@ from dystformer.skew_system import SkewProduct
 from dystformer.utils import dict_demote_from_numpy, process_trajs, timeit
 
 logger = logging.getLogger(__name__)
-
-import memory_profiler
 
 
 @contextmanager
@@ -80,6 +79,8 @@ class DynSysSampler:
     save_failed_trajs: bool = False
     wandb_run: wandb.sdk.wandb_run.Run | None = None  # type: ignore
 
+    multiprocess_kwargs: dict = field(default_factory=dict)
+
     def __post_init__(self) -> None:
         if isinstance(self.num_periods, int):
             self.num_periods = [self.num_periods]
@@ -103,6 +104,7 @@ class DynSysSampler:
             self.attractor_validator = AttractorValidator(
                 transient_time_frac=self.validator_transient_frac,
                 tests=self.attractor_tests,
+                multiprocess_kwargs=self.multiprocess_kwargs,
             )
 
     def _prepare_save_directories(
@@ -293,7 +295,11 @@ class DynSysSampler:
             )
         )
 
-        with Pool() if use_multiprocessing else nullcontext() as pool:
+        with (
+            Pool(**self.multiprocess_kwargs)
+            if use_multiprocessing
+            else nullcontext() as pool
+        ):
             map_fn = pool.starmap if use_multiprocessing else starmap  # type: ignore
             transformed_systems = list(map_fn(self._transform_params_and_ics, args))
 

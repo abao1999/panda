@@ -319,6 +319,7 @@ def init_trajectory_stats_cache(
     traj_transient: float,
     atol: float,
     rtol: float,
+    multiprocess_kwargs: dict = {},
 ) -> dict[str, dict[str, np.ndarray]]:
     """Initialize a cache of vector field RMS scales and amplitudes for each system using multiprocessing"""
     _compute_stats_worker = partial(
@@ -329,7 +330,7 @@ def init_trajectory_stats_cache(
         atol=atol,
         rtol=rtol,
     )
-    with Pool() as pool:
+    with Pool(**multiprocess_kwargs) as pool:
         results = pool.map(_compute_stats_worker, systems)
     return dict(results)
 
@@ -431,6 +432,7 @@ def main(cfg):
             cfg.sampling.reference_traj.transient,
             atol=cfg.sampling.reference_traj.atol,
             rtol=cfg.sampling.reference_traj.rtol,
+            multiprocess_kwargs=cfg.multiprocess_kwargs,
         )  # type: ignore
 
         coupling_map = {
@@ -465,6 +467,7 @@ def main(cfg):
         cfg.sampling.reference_traj.transient,
         atol=cfg.sampling.reference_traj.atol,
         rtol=cfg.sampling.reference_traj.rtol,
+        multiprocess_kwargs=cfg.multiprocess_kwargs,
     )
 
     logger.info(

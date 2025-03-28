@@ -15,6 +15,7 @@ if [ "$DEBUG" -eq 0 ]; then
     TOTAL_CORES=$(nproc)
     CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
     CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
+    MEMORY_PROFILER_DISABLE=1
 
     # skew systems
     WANDB_DISABLE_GPU=true python -W ignore scripts/make_skew_systems.py \
@@ -71,10 +72,10 @@ else
     echo "debug mode"
         # skew systems
     WANDB_DISABLE_GPU=true python -W ignore scripts/make_skew_systems.py \
-        sampling.num_points=4311 \
+        sampling.num_points=5120 \
         sampling.num_periods=40 \
-        sampling.num_periods_min=20 \
-        sampling.num_periods_max=60 \
+        sampling.num_periods_min=25 \
+        sampling.num_periods_max=75 \
         sampling.num_param_perturbations=3 \
         sampling.num_ics=2 \
         sampling.param_scale=1.0 \
@@ -84,17 +85,20 @@ else
         sampling.data_dir=/stor/work/AMDG_Gilpin_Summer2024/data/skew_debug \
         sampling.rseed=21434 \
         sampling.verbose=false \
+        sampling.multiprocessing=true \
+        multiprocess_kwargs.processes=64 \
+        multiprocess_kwargs.maxtasksperchild=4 \
         events.verbose=false \
-        events.max_duration=300 \
+        events.max_duration=400 \
         skew.normalization_strategy=flow_rms \
         skew.transform_scales=true \
         skew.randomize_driver_indices=true \
-        skew.num_pairs=32 \
+        skew.num_pairs=2048 \
         skew.pairs_rseed=123 \
         skew.sys_idx_low=0 \
-        skew.sys_idx_high=16 \
-        validator.transient_time_frac=0.05 \
-        run_name=skew_debug_3 \
+        skew.sys_idx_high=128 \
+        validator.transient_time_frac=0.2 \
+        run_name=skew_debug_1 \
         wandb.log=true \
         wandb.project_name=dyst_data \
         "$@"

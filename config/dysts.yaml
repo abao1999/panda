@@ -1,3 +1,7 @@
+multiprocess_kwargs:
+  processes: null
+  maxtasksperchild: 4
+
 sampling:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
   sys_class: continuous_no_delay
