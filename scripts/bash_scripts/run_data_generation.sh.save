@@ -15,7 +15,7 @@ if [ "$DEBUG" -eq 0 ]; then
     TOTAL_CORES=$(nproc)
     CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
     CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
-    #MEMORY_PROFILER_DISABLE=1
+    MEMORY_PROFILER_DISABLE=1
 
     # skew systems
     WANDB_DISABLE_GPU=true python -W ignore scripts/make_skew_systems.py \
@@ -24,54 +24,51 @@ if [ "$DEBUG" -eq 0 ]; then
         sampling.num_periods_min=50 \
         sampling.num_periods_max=50 \
         sampling.num_param_perturbations=100 \
-        sampling.num_ics=8 \
+        sampling.num_ics=100 \
         sampling.param_scale=1.0 \
         sampling.atol=1e-10 \
         sampling.rtol=1e-8 \
         sampling.silence_integration_errors=true \
-        sampling.data_dir=/stor/work/AMDG_Gilpin_Summer2024/data/scalinglaw_p40_ic8_pairs128_256 \
+        sampling.data_dir=/stor/work/AMDG_Gilpin_Summer2024/data/big_skew_mixedp \
         sampling.rseed=21434 \
         sampling.ic_rseed=99 \
-	sampling.test_split=0.0 \
         sampling.verbose=false \
-        multiprocess_kwargs.processes=64 \
+        multiprocess_kwargs.processes=96 \
         multiprocess_kwargs.maxtasksperchild=4 \
         events.verbose=false \
-        events.max_duration=300 \
+        events.max_duration=400 \
         skew.normalization_strategy=flow_rms \
         skew.transform_scales=true \
         skew.randomize_driver_indices=true \
         skew.num_pairs=2048 \
         skew.pairs_rseed=123 \
-        skew.sys_idx_low=128 \
-        skew.sys_idx_high=256 \
+        skew.sys_idx_low=0 \
+        skew.sys_idx_high=512 \
         validator.transient_time_frac=0.2 \
-        run_name=scalinglaw_p40_ic8_pairs128_256 \
-        wandb.log=true \
-        wandb.project_name=dyst_data \
+        run_name=big_skew_mixedp \
         "$@"
 
 
     # base dysts
-    # WANDB_DISABLE_GPU=true python -W ignore scripts/make_dyst_data.py \
-    #    sampling.sys_class=continuous \
-    #    sampling.num_points=8192 \
-    #    sampling.num_periods=40 \
-    #    sampling.num_periods_min=20 \
-    #    sampling.num_periods_max=60 \
-    #    sampling.num_param_perturbations=200 \
-    #    sampling.param_scale=1.0 \
-    #    sampling.atol=1e-10 \
-    #    sampling.rtol=1e-8 \
-    #    sampling.silence_integration_errors=true \
-    #    sampling.data_dir=/stor/work/AMDG_Gilpin_Summer2024/data/big_base_mixedp \
-    #    sampling.rseed=21433 \
-    #    sampling.verbose=false \
-    #    events.verbose=false \
-    #    events.max_duration=600 \
-    #    validator.transient_time_frac=0.5 \
-    #    run_name=big_base_mixedp \
-    #    "$@"
+    WANDB_DISABLE_GPU=true python -W ignore scripts/make_dyst_data.py \
+        sampling.sys_class=continuous \
+        sampling.num_points=8192 \
+        sampling.num_periods=40 \
+        sampling.num_periods_min=20 \
+        sampling.num_periods_max=60 \
+        sampling.num_param_perturbations=200 \
+        sampling.param_scale=1.0 \
+        sampling.atol=1e-10 \
+        sampling.rtol=1e-8 \
+        sampling.silence_integration_errors=true \
+        sampling.data_dir=/stor/work/AMDG_Gilpin_Summer2024/data/big_base_mixedp \
+        sampling.rseed=21433 \
+        sampling.verbose=false \
+        events.verbose=false \
+        events.max_duration=600 \
+        validator.transient_time_frac=0.5 \
+        run_name=big_base_mixedp \
+        "$@"
 
 else
     echo "debug mode"

@@ -416,6 +416,7 @@ def main(cfg):
         validator_transient_frac=cfg.validator.transient_time_frac,
         save_failed_trajs=cfg.validator.save_failed_trajs,
         wandb_run=run if cfg.wandb.log else None,
+	multiprocess_kwargs=dict(cfg.multiprocess_kwargs)
     )
 
     ###########################################################################
@@ -432,7 +433,7 @@ def main(cfg):
             cfg.sampling.reference_traj.transient,
             atol=cfg.sampling.reference_traj.atol,
             rtol=cfg.sampling.reference_traj.rtol,
-            multiprocess_kwargs=cfg.multiprocess_kwargs,
+            multiprocess_kwargs=dict(cfg.multiprocess_kwargs),
         )  # type: ignore
 
         coupling_map = {
@@ -467,7 +468,7 @@ def main(cfg):
         cfg.sampling.reference_traj.transient,
         atol=cfg.sampling.reference_traj.atol,
         rtol=cfg.sampling.reference_traj.rtol,
-        multiprocess_kwargs=cfg.multiprocess_kwargs,
+        multiprocess_kwargs=dict(cfg.multiprocess_kwargs),
     )
 
     logger.info(

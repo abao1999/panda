@@ -210,6 +210,7 @@ def plot_grid_trajs_multivariate(
     dims_3d: list[int] = [0, 1, 2],
     subplot_size: tuple[int, int] = (3, 3),
     max_samples: int = 6,
+    show_plot: bool = False,
 ) -> None:
     """
     Plot a grid of multiple systems' multivariate timeseries from dyst_data
@@ -280,6 +281,8 @@ def plot_grid_trajs_multivariate(
     plt.subplots_adjust(hspace=row_padding, wspace=column_padding)
 
     plt.savefig(save_path, dpi=300)
+    if show_plot:
+        plt.show()
     plt.close()
 
 
