@@ -53,7 +53,7 @@ class PatchTSTKernelEmbedding(nn.Module):
             requires_grad=config.rff_trainable,
         )
         # NOTE: should comment this out for backwards compatibility with the checkpoints trained before polynomial features were added
-        self.projection = nn.Linear(config.d_model, config.d_model, bias=False)
+        # self.projection = nn.Linear(config.d_model, config.d_model, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -68,7 +68,7 @@ class PatchTSTKernelEmbedding(nn.Module):
         rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
         features = torch.cat([x, *poly_feats, rff_feats], dim=-1)
         # NOTE: NEED to comment this out for backwards compatibility with the checkpoints trained before polynomial features were added
-        features = self.projection(features)
+        # features = self.projection(features)
         return features
 
 

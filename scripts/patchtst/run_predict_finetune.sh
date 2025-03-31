@@ -24,7 +24,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 shuffle_buffer_length=100_000 \
                 patchtst.mode=predict \
                 patchtst.use_dynamics_embedding=false \
-                patchtst.pretrained_encoder_path=/stor/work/AMDG_Gilpin_Summer2024/checkpoints/mlm_cc_stand-0/checkpoint-final \
+                patchtst.pretrained_encoder_path=null \
                 patchtst.context_length=512 \
                 patchtst.prediction_length=128 \
                 patchtst.patch_length=16 \
