@@ -79,7 +79,6 @@ def plot_saved_data(
                     plot_name=f"{plot_name}_{name}",
                     samples_subset=samples_subset,
                     standardize=standardize,
-                    plot_2d_slice=False,
                     plot_projections=True,
                 )
         else:
@@ -89,7 +88,6 @@ def plot_saved_data(
                 plot_name=plot_name,
                 samples_subset=samples_subset,
                 standardize=standardize,
-                plot_2d_slice=False,
                 plot_projections=True,
             )
 

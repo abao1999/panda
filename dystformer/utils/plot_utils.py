@@ -17,10 +17,9 @@ if os.path.exists("custom_style.mplstyle"):
 
 def plot_trajs_multivariate(
     trajectories: np.ndarray,
-    save_dir: str = "tests/figs",
+    save_dir: str | None = None,
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
-    plot_2d_slice: bool = False,
     plot_projections: bool = False,
     standardize: bool = False,
     dims_3d: list[int] = [0, 1, 2],
@@ -36,14 +35,14 @@ def plot_trajs_multivariate(
         save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
         plot_name (str, optional): Base name for the saved plot files. Defaults to "dyst".
         samples_subset (list[int] | None): Subset of sample indices to plot. If None, all samples are used. Defaults to None.
-        plot_2d_slice (bool): Whether to plot a 2D slice of the first two dimensions. Defaults to True.
         plot_projections (bool): Whether to plot 2D projections on the coordinate planes
         standardize (bool): Whether to standardize the trajectories
         dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
         figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
         max_samples (int): Maximum number of samples to plot. Defaults to 6.
     """
-    os.makedirs(save_dir, exist_ok=True)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
     assert trajectories.shape[1] >= len(dims_3d), (
         f"Data has {trajectories.shape[1]} dimensions, but {len(dims_3d)} dimensions were requested for plotting"
     )
@@ -60,34 +59,6 @@ def plot_trajs_multivariate(
     if standardize:
         trajectories = safe_standardize(trajectories)
 
-    if plot_2d_slice:
-        save_path = os.path.join(save_dir, f"{plot_name}.png")
-        plt.figure(figsize=figsize)
-        for sample_idx in range(n_samples_plot):
-            label_sample_idx = (
-                samples_subset[sample_idx] if samples_subset is not None else sample_idx
-            )
-            label = f"Sample {label_sample_idx}"
-            curr_color = COLORS[sample_idx % len(COLORS)]
-
-            xy = trajectories[sample_idx, :2, :]
-            plt.plot(*xy, alpha=0.5, linewidth=1, color=curr_color, label=label)
-
-            ic_point = trajectories[sample_idx, :2, 0]
-            plt.scatter(*ic_point, marker="*", s=100, alpha=0.5, color=curr_color)
-
-            final_point = trajectories[sample_idx, :2, -1]
-            plt.scatter(*final_point, marker="x", s=100, alpha=0.5, color=curr_color)
-
-        print(f"Saving 2D plot to {save_path}")
-        plt.xlabel("X")
-        plt.ylabel("Y")
-        plt.legend()
-        plt.title(plot_name.replace("_", " "))
-        plt.savefig(save_path, dpi=300)
-        plt.close()
-
-    save_path = os.path.join(save_dir, f"{plot_name}_3D.png")
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111, projection="3d")
 
@@ -154,7 +125,11 @@ def plot_trajs_multivariate(
                 x_min, end_pt[1], end_pt[2], marker="x", alpha=palpha, color=curr_color
             )
 
-    print(f"Saving 3D plot to {save_path}")
+    save_path = (
+        os.path.join(save_dir, f"{plot_name}_3D.png") if save_dir is not None else None
+    )
+    if save_path is not None:
+        print(f"Saving 3D plot to {save_path}")
     ax.set_xlabel(f"dim_{dims_3d[0]}")
     ax.set_ylabel(f"dim_{dims_3d[1]}")
     ax.set_zlabel(f"dim_{dims_3d[2]}")  # type: ignore
@@ -162,7 +137,8 @@ def plot_trajs_multivariate(
     ax.tick_params(pad=3)
     ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
     plt.title(plot_name.replace("_", " "))
-    plt.savefig(save_path, dpi=300)
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300)
     if show_plot:
         print("Showing plot")
         plt.show()

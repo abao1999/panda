@@ -128,7 +128,6 @@ def test_system_jacobian(
                 save_dir=save_traj_plot_dir,
                 plot_name=f"reconstructed_{system_name}_{name}",
                 standardize=True,
-                plot_2d_slice=False,
                 plot_projections=True,
             )
 

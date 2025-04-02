@@ -102,7 +102,6 @@ def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
             samples_subset=samples_subset,
             save_dir="figs",
             plot_name=f"{system.name}_{subset_name}",
-            plot_2d_slice=True,
             plot_projections=True,
             standardize=True if not cfg.sampling.standardize else False,
             max_samples=len(coords),
@@ -416,7 +415,7 @@ def main(cfg):
         validator_transient_frac=cfg.validator.transient_time_frac,
         save_failed_trajs=cfg.validator.save_failed_trajs,
         wandb_run=run if cfg.wandb.log else None,
-	multiprocess_kwargs=dict(cfg.multiprocess_kwargs)
+        multiprocess_kwargs=dict(cfg.multiprocess_kwargs),
     )
 
     ###########################################################################
