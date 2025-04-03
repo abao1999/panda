@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
@@ -9,7 +10,6 @@ from multiprocessing import Manager, Pool
 from typing import Callable
 
 import dysts.flows as flows
-import memory_profiler
 import numpy as np
 from dysts.base import BaseDyn
 from dysts.sampling import BaseSampler
@@ -42,7 +42,58 @@ def managed_cache(
 
 
 @dataclass
-class DynSysSampler:
+class BaseDynSysSampler(ABC):
+    """
+    Abstract base class for dynamical system samplers.
+    Defines the interface for classes that generate and save trajectory ensembles.
+
+    Subclasses must implement the _generate_ensembles method and the sample_ensembles method.
+    """
+
+    @abstractmethod
+    def _generate_ensembles(
+        self,
+        systems: list[str | BaseDyn],
+        use_multiprocessing: bool = True,
+        postprocessing_callbacks: list[Callable] | None = None,
+        silent_errors: bool = False,
+        **kwargs,
+    ) -> None:
+        """
+        Generate trajectory ensembles for parameter perturbations of a set of dynamical systems.
+
+        Args:
+            systems: List of dynamical systems to generate ensembles for
+            use_multiprocessing: Whether to use multiprocessing for ensemble generation
+            postprocessing_callbacks: Callbacks to process ensembles after generation
+            silent_errors: Whether to silence errors during integration
+            **kwargs: Additional keyword arguments passed to the trajectory generation
+        """
+        pass
+
+    @abstractmethod
+    def sample_ensembles(
+        self,
+        systems: list[str] | list[BaseDyn],
+        save_dir: str,
+        split: str = "train",
+        **kwargs,
+    ) -> None:
+        """
+        Sample and process trajectory ensembles for a given set of dynamical systems.
+        Wrapper around _generate_ensembles.
+        Current functionality is to treat the default ensemble separately, generated here, and to handle the parameter perturbations in _generate_ensembles.
+
+        Args:
+            systems: List of dynamical systems to sample ensembles for
+            split: Dataset split name (e.g., "train", "val", "test")
+            **kwargs: Additional keyword arguments for sampling configuration
+        """
+        pass
+
+
+@dataclass
+class DynSysSampler(BaseDynSysSampler):
     """
     Class to generate and save trajectory ensembles for a given set of dynamical systems.
     Args:
@@ -128,15 +179,15 @@ class DynSysSampler:
             save_dyst_dir = failed_dyst_dir = None
         return save_dyst_dir, failed_dyst_dir
 
-    #@memory_profiler.profile
+    # @memory_profiler.profile
     @timeit(logger=logger)
     def sample_ensembles(
         self,
         systems: list[str] | list[BaseDyn],
+        save_dir: str,
         split: str = "train",
         split_failures: str = "failed_attractors",
         samples_process_interval: int = 1,
-        save_dir: str | None = None,
         save_params_dir: str | None = None,
         save_traj_stats_dir: str | None = None,
         standardize: bool = False,
@@ -144,7 +195,7 @@ class DynSysSampler:
         silent_errors: bool = False,
         reset_attractor_validator: bool = False,
         **kwargs,
-    ) -> list[dict[str, np.ndarray]]:
+    ) -> None:
         """
         Sample perturbed ensembles for a given set of dynamical systems. Optionally,
         save the ensembles to disk and save the parameters to a json file.
@@ -186,6 +237,7 @@ class DynSysSampler:
         logger.info(f"Generating default ensemble with {num_periods} periods")
 
         # treat the default params as the zeroth sample
+        # TODO: I want to eventually move this to _generate_ensembles since this is repeated code and also doesn't allow us to handle multiple initial conditions
         default_ensemble = make_trajectory_ensemble(
             self.num_points,
             subset=systems,
@@ -214,7 +266,8 @@ class DynSysSampler:
             )
 
         logger.info("Generating perturbed ensembles...")
-        ensembles = self._generate_ensembles(
+
+        self._generate_ensembles(
             systems,
             postprocessing_callbacks=callbacks,
             standardize=standardize,
@@ -222,11 +275,8 @@ class DynSysSampler:
             silent_errors=silent_errors,
             **kwargs,
         )
-        ensembles.insert(0, default_ensemble)
 
-        return ensembles
-
-    #@memory_profiler.profile
+    # @memory_profiler.profile
     def _transform_params_and_ics(
         self,
         system: BaseDyn | str,
@@ -262,7 +312,7 @@ class DynSysSampler:
 
         return sys if success else None
 
-    #@memory_profiler.profile
+    # @memory_profiler.profile
     def _init_perturbations(
         self,
         systems: list[str | BaseDyn],
@@ -305,7 +355,7 @@ class DynSysSampler:
 
         return transformed_systems
 
-    #@memory_profiler.profile
+    # @memory_profiler.profile
     def _generate_ensembles(
         self,
         systems: list[str | BaseDyn],
@@ -313,11 +363,10 @@ class DynSysSampler:
         postprocessing_callbacks: list[Callable] | None = None,
         silent_errors: bool = False,
         **kwargs,
-    ) -> list[dict[str, np.ndarray]]:
+    ) -> None:
         """
         Generate trajectory ensembles for a given set of dynamical systems.
         """
-        ensembles = []
         total_iterations = self.num_param_perturbations * self.num_ics
         pbar = tqdm(total=total_iterations, desc="Generating ensembles")
 
@@ -400,7 +449,6 @@ class DynSysSampler:
                         for key, value in ensemble.items()
                         if key not in excluded_systems
                     }
-                    ensembles.append(ensemble)
 
                     for callback in postprocessing_callbacks or []:
                         callback(
@@ -413,14 +461,12 @@ class DynSysSampler:
                     pbar.update(1)
                     pbar.set_postfix({"param_idx": i, "ic_idx": j})
 
-        return ensembles
-
     def _reset_events_callback(self, *args, **kwargs) -> None:
         for event in self.events or []:
             if hasattr(event, "reset") and callable(event.reset):
                 event.reset()
 
-    #@memory_profiler.profile
+    # @memory_profiler.profile
     def save_failed_integrations_callback(self, sample_idx, ensemble, **kwargs):
         excluded_keys = kwargs.get("excluded_keys", [])
         if len(excluded_keys) > 0:
@@ -428,7 +474,7 @@ class DynSysSampler:
             for dyst_name in excluded_keys:
                 self.failed_integrations[dyst_name].append(sample_idx)
 
-    #@memory_profiler.profile
+    # @memory_profiler.profile
     def _validate_and_save_ensemble_callback(
         self,
         num_total_samples: int,
@@ -466,7 +512,7 @@ class DynSysSampler:
 
         return _callback
 
-    #@memory_profiler.profile
+    # @memory_profiler.profile
     def _process_and_save_ensemble(
         self,
         ensemble_list: list[dict[str, np.ndarray]],
@@ -555,7 +601,7 @@ class DynSysSampler:
             if save_traj_stats_dir is not None:
                 self._save_traj_stats(ensemble, save_dir=save_traj_stats_dir)
 
-    #@memory_profiler.profile
+    # @memory_profiler.profile
     def _save_parameters(
         self,
         sample_idx: int,
@@ -641,7 +687,7 @@ class DynSysSampler:
         with open(save_path, "w") as f:
             json.dump(traj_stats, f, indent=4)
 
-    #@memory_profiler.profile
+    # @memory_profiler.profile
     def save_summary(
         self, save_json_path: str, return_dict: bool = False
     ) -> dict | None:
@@ -698,3 +744,272 @@ class DynSysSampler:
                     _, check_name = entry
                     counts_per_failed_check[f"failed_{check_name}"] += 1
         return counts_per_failed_check
+
+
+@dataclass
+class DynSysSamplerRestartIC(BaseDynSysSampler):
+    """
+    Generate trajectories of resampled initial conditions
+    User calls sample_ensembles with systems: List[str], which is a list of DynSys objects initialized from saved parameters
+            In particular, the DynSys object stores the initial condition and all the parameters needed to reconstruct the RHS of the flow
+    The main functionality is to take the re-initialized systems and resample the initial conditions to make + save trajectories with these different initial conditions
+    """
+
+    rseed: int = 999
+    num_periods: int | list[int] = 40
+    num_points: int = 4096
+
+    num_ics: int = 1
+    split_coords: bool = True  # by default save trajectories compatible with Chronos
+
+    events: list[Callable[[float, np.ndarray], float]] | None = None
+    validator_transient_frac: float = 0.05
+    attractor_tests: list[Callable] | None = None
+
+    wandb_run: wandb.sdk.wandb_run.Run | None = None  # type: ignore
+
+    multiprocess_kwargs: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.num_periods, int):
+            self.num_periods = [self.num_periods]
+
+        self.failed_integrations = defaultdict(list)
+        self.rng = np.random.default_rng(self.rseed)
+
+        self.attractor_validator = AttractorValidator(
+            transient_time_frac=self.validator_transient_frac,
+            tests=self.attractor_tests,
+            multiprocess_kwargs=self.multiprocess_kwargs,
+        )
+
+    def _get_counts_per_failed_check(self) -> dict[str, int]:
+        """
+        Get the number of systems that failed each check.
+        """
+        if self.attractor_validator is None:
+            return {}
+
+        counts_per_failed_check = defaultdict(int)
+        for failed_checks_lst in self.attractor_validator.failed_checks.values():
+            for entry_all_ics in failed_checks_lst:
+                for entry in entry_all_ics:
+                    _, check_name = entry
+                    counts_per_failed_check[f"failed_{check_name}"] += 1
+        return counts_per_failed_check
+
+    def _reset_events_callback(self, *args, **kwargs) -> None:
+        for event in self.events or []:
+            if hasattr(event, "reset") and callable(event.reset):
+                event.reset()
+
+    def save_failed_integrations_callback(self, sample_idx, ensemble, **kwargs):
+        excluded_keys = kwargs.get("excluded_keys", [])
+        if len(excluded_keys) > 0:
+            logger.warning(f"Integration failed for {len(excluded_keys)} systems")
+            for dyst_name in excluded_keys:
+                self.failed_integrations[dyst_name].append(sample_idx)
+
+    def _validate_and_save_ensemble_callback(
+        self,
+        systems: list[BaseDyn],
+        save_dyst_dir: str,
+        num_total_samples: int,
+        samples_process_interval: int,
+    ):
+        """
+        Callback to process and save ensembles and parameters
+        """
+        ensemble_list = []
+
+        def _callback(sample_idx, ensemble, **kwargs):
+            if len(ensemble.keys()) == 0:
+                if save_dyst_dir is not None:
+                    logger.warning("No successful trajectories for this sample")
+                return
+
+            ensemble_list.append(ensemble)
+
+            is_last_sample = (sample_idx + 1) == num_total_samples
+            if ((sample_idx + 1) % samples_process_interval) == 0 or is_last_sample:
+                self._process_and_save_ensemble(
+                    systems,
+                    ensemble_list,
+                    sample_idx,
+                    save_dyst_dir,
+                )
+                ensemble_list.clear()
+
+        return _callback
+
+    def _process_and_save_ensemble(
+        self,
+        systems: list[BaseDyn],
+        ensemble_list: list[dict[str, np.ndarray]],
+        sample_idx: int,
+        save_dyst_dir: str,
+    ) -> None:
+        """
+        Process the ensemble list by checking for valid attractors and filtering out invalid ones.
+        Also, transposes and stacks trajectories to get shape (num_samples, num_dims, num_timesteps).
+        """
+        # stack and transpose to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
+        ensemble_sys_names = [sys for ens in ensemble_list for sys in ens.keys()]
+        ensemble = {
+            sys: np.stack(
+                [ens[sys] for ens in ensemble_list if sys in ens], axis=0
+            ).transpose(0, 2, 1)
+            for sys in ensemble_sys_names
+        }
+
+        current_param_pert_summary = {}
+        current_param_pert_summary["num_systems_integrated"] = len(ensemble)
+
+        # if skew, then saves only the response coords
+        dims = {sys.name: getattr(sys, "driver_dim", 0) for sys in systems}
+        ensemble = {sys: traj[:, dims[sys] :, :] for sys, traj in ensemble.items()}
+
+        if self.attractor_validator is not None:
+            logger.info(f"Applying attractor validator to {len(ensemble)} systems")
+            ensemble, _ = self.attractor_validator.multiprocessed_filter_ensemble(
+                ensemble, first_sample_idx=sample_idx
+            )
+            current_param_pert_summary["num_systems_valid"] = len(ensemble)
+
+        if self.wandb_run is not None:
+            self.wandb_run.log(current_param_pert_summary)
+            counts_per_failed_check = self._get_counts_per_failed_check()
+            logger.info(f"Logging counts per failed check: {counts_per_failed_check}")
+            self.wandb_run.log(counts_per_failed_check)
+
+        process_trajs(
+            save_dyst_dir,
+            ensemble,
+            split_coords=self.split_coords,
+            verbose=False,
+            overwrite=True,
+            base_sample_idx=sample_idx,
+        )
+
+    @timeit(logger=logger)
+    def sample_ensembles(
+        self,
+        systems: list[BaseDyn],
+        save_dir: str,
+        split: str = "train",
+        samples_process_interval: int = 1,
+        standardize: bool = False,
+        use_multiprocessing: bool = True,
+        silent_errors: bool = False,
+        **kwargs,
+    ) -> None:
+        sys_names = [sys.name for sys in systems]
+        assert len(set(sys_names)) == len(sys_names), (
+            "Cannot have duplicate system names"
+        )
+        logger.info(
+            f"Making {split} split with {len(systems)} dynamical systems"
+            f" (showing first {min(5, len(sys_names))}): \n {sys_names[:5]}"
+        )
+
+        save_dyst_dir = os.path.join(save_dir, split)
+        os.makedirs(save_dyst_dir, exist_ok=True)
+        logger.info(f"valid attractors will be saved to {save_dyst_dir}")
+
+        if self.attractor_validator is not None:
+            self.attractor_validator.reset()
+            self.failed_integrations.clear()
+
+        callbacks = [
+            self._reset_events_callback,
+            self._validate_and_save_ensemble_callback(
+                systems,
+                save_dyst_dir,
+                self.num_ics,
+                samples_process_interval,
+            ),
+            self.save_failed_integrations_callback,
+        ]
+
+        self._generate_ensembles(
+            systems,
+            postprocessing_callbacks=callbacks,
+            standardize=standardize,
+            use_multiprocessing=use_multiprocessing,
+            silent_errors=silent_errors,
+            **kwargs,
+        )
+
+    def _generate_ensembles(
+        self,
+        systems: list[BaseDyn],
+        use_multiprocessing: bool = True,
+        postprocessing_callbacks: list[Callable] | None = None,
+        silent_errors: bool = False,
+        **kwargs,
+    ) -> None:
+        """
+        Generate trajectory ensembles for a given set of dynamical systems.
+        """
+        n_systems = len(systems)
+        pbar = tqdm(
+            total=self.num_ics, desc=f"Generating ensembles for {n_systems} systems"
+        )
+        for ic_idx in range(self.num_ics):
+            if self.wandb_run is not None:
+                self.wandb_run.log({"sample_idx": ic_idx})
+
+            num_periods = self.rng.choice(self.num_periods)
+            logger.info(
+                f"Generating ensemble of ic perturbation {ic_idx} with {num_periods} periods"
+            )
+
+            ensemble = make_trajectory_ensemble(
+                self.num_points,
+                subset=systems,
+                pts_per_period=self.num_points // num_periods,
+                event_fns=self.events,
+                use_multiprocessing=use_multiprocessing,
+                silent_errors=silent_errors,
+                **kwargs,
+            )
+
+            # filter out failed integrations
+            excluded_systems = [
+                key
+                for key, value in ensemble.items()
+                if value is None or np.isnan(value).any()
+            ]
+            ensemble = {
+                key: value
+                for key, value in ensemble.items()
+                if key not in excluded_systems
+            }
+
+            for callback in postprocessing_callbacks or []:
+                callback(
+                    ic_idx,
+                    ensemble,
+                    excluded_keys=excluded_systems,
+                )
+
+            # resample ic
+            for sys in systems:
+                sys_name = sys.name
+
+                # skip if system failed integration
+                if sys_name in excluded_systems:
+                    continue
+                # shape: (num_points, num_dims)
+                curr_traj = ensemble[sys_name]
+                # cut off transient from curr_traj
+                transient_cutoff = int(
+                    self.validator_transient_frac * curr_traj.shape[0]
+                )
+                curr_traj = curr_traj[transient_cutoff:]
+                # sample new ic as point randomly from curr_traj
+                new_ic = self.rng.choice(curr_traj)
+                sys.ic = new_ic
+
+            pbar.update(1)
+            pbar.set_postfix({"ic_idx": ic_idx})

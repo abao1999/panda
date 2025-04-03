@@ -32,7 +32,7 @@ if [ "$DEBUG" -eq 0 ]; then
         sampling.data_dir=/stor/work/AMDG_Gilpin_Summer2024/data/scalinglaw_p40_ic8_pairs128_256 \
         sampling.rseed=21434 \
         sampling.ic_rseed=99 \
-	sampling.test_split=0.0 \
+        sampling.test_split=0.0 \
         sampling.verbose=false \
         multiprocess_kwargs.processes=64 \
         multiprocess_kwargs.maxtasksperchild=4 \

@@ -2,7 +2,6 @@
 Search for valid skew-product dynamical sytems and generate trajectory datasets
 """
 
-import json
 import logging
 import os
 from functools import partial
@@ -34,9 +33,6 @@ from dystformer.dyst_data import DynSysSampler
 from dystformer.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
 from dystformer.sampling import OnAttractorInitCondSampler, SignedGaussianParamSampler
 from dystformer.skew_system import SkewProduct
-from dystformer.utils import (
-    plot_trajs_multivariate,
-)
 
 
 def default_attractor_tests(tests_to_use: list[str]) -> list[Callable]:
@@ -66,46 +62,6 @@ def default_attractor_tests(tests_to_use: list[str]) -> list[Callable]:
         test for test in default_tests if test.func.__name__ in tests_to_use
     ]
     return filtered_tests
-
-
-def plot_single_system(system: DynSys, sys_sampler: DynSysSampler, cfg):
-    """Plot a single skew system and its ensembles for debugging"""
-    logger.info(f"Generating ensembles for {system.name}")
-    ensembles = sys_sampler.sample_ensembles(
-        systems=[system],
-        save_dir=None,  # NOTE: do not save trajectories in debug mode!
-        standardize=cfg.sampling.standardize,
-        use_multiprocessing=cfg.sampling.multiprocessing,
-        silent_errors=cfg.sampling.silence_integration_errors,
-        atol=cfg.sampling.atol,
-        rtol=cfg.sampling.rtol,
-    )
-
-    summary_json_path = os.path.join("outputs", "debug_skew_attractor_checks.json")
-    logger.info(f"Saving summary for {system.name} to {summary_json_path}")
-    sys_sampler.save_summary(summary_json_path)
-
-    with open(summary_json_path, "r") as f:
-        summary = json.load(f)
-
-    for subset_name in ["valid_samples", "failed_samples"]:
-        samples_subset = summary[subset_name].get(system.name, [])
-        if samples_subset == []:
-            continue
-        coords = np.array(
-            [ensembles[i][system.name] for i in samples_subset]
-        ).transpose(0, 2, 1)
-        coords_response = coords[:, system.driver_dim :]
-
-        plot_trajs_multivariate(
-            coords_response,
-            samples_subset=samples_subset,
-            save_dir="figs",
-            plot_name=f"{system.name}_{subset_name}",
-            plot_projections=True,
-            standardize=True if not cfg.sampling.standardize else False,
-            max_samples=len(coords),
-        )
 
 
 def additive_coupling_map_factory(
@@ -418,34 +374,6 @@ def main(cfg):
         multiprocess_kwargs=dict(cfg.multiprocess_kwargs),
     )
 
-    ###########################################################################
-    # optionally plot a single skew system for debugging, and exit after
-    # NOTE: additive map for now
-    ###########################################################################
-    if cfg.sampling.debug_system:
-        driver, response = cfg.sampling.debug_system.split("_")
-        logger.info(f"Initializing trajectory scale cache for {driver} and {response}")
-        stats_cache = init_trajectory_stats_cache(
-            [driver, response],
-            cfg.sampling.num_points,
-            cfg.sampling.num_periods,
-            cfg.sampling.reference_traj.transient,
-            atol=cfg.sampling.reference_traj.atol,
-            rtol=cfg.sampling.reference_traj.rtol,
-            multiprocess_kwargs=dict(cfg.multiprocess_kwargs),
-        )  # type: ignore
-
-        coupling_map = {
-            "additive": additive_coupling_map_factory,
-            "activated": activated_coupling_map_factory,
-        }[cfg.skew.coupling_map_type](
-            driver, response, **{"stats_cache": stats_cache, **cfg.skew.coupling_map}
-        )
-        system = init_skew_system(driver, response, coupling_map_fn=coupling_map)
-        plot_single_system(system, sys_sampler, cfg)
-        exit()
-    ###########################################################################
-
     # sample skew system train/test splits
     skew_pairs = sample_skew_systems(
         systems, cfg.skew.num_pairs, random_seed=cfg.skew.pairs_rseed
@@ -509,10 +437,10 @@ def main(cfg):
         split_name = f"{split_prefix}{split}"
         sys_sampler.sample_ensembles(
             systems=systems,
+            save_dir=cfg.sampling.data_dir,
             split=split_name,
             split_failures=f"{split_prefix}failed_attractors_{split}",
             samples_process_interval=1,
-            save_dir=cfg.sampling.data_dir,
             save_params_dir=f"{param_dir}/{split_name}" if param_dir else None,
             save_traj_stats_dir=f"{traj_stats_dir}/{split_name}"
             if traj_stats_dir
