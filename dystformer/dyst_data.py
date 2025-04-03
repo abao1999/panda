@@ -955,6 +955,7 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
         pbar = tqdm(
             total=self.num_ics, desc=f"Generating ensembles for {n_systems} systems"
         )
+        ic_cache = {}
         for ic_idx in range(self.num_ics):
             if self.wandb_run is not None:
                 self.wandb_run.log({"sample_idx": ic_idx})
@@ -993,23 +994,42 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
                     excluded_keys=excluded_systems,
                 )
 
-            # resample ic
-            for sys in systems:
-                sys_name = sys.name
+            # drop systems that failed integration and prepare IC cache
+            if ic_idx == 0:
+                systems = [sys for sys in systems if sys.name not in excluded_systems]
+                logger.info(f"Dropped {len(excluded_systems)} systems")
 
-                # skip if system failed integration
-                if sys_name in excluded_systems:
-                    continue
-                # shape: (num_points, num_dims)
-                curr_traj = ensemble[sys_name]
-                # cut off transient from curr_traj
-                transient_cutoff = int(
-                    self.validator_transient_frac * curr_traj.shape[0]
-                )
-                curr_traj = curr_traj[transient_cutoff:]
-                # sample new ic as point randomly from curr_traj
-                new_ic = self.rng.choice(curr_traj)
-                sys.ic = new_ic
+                # Cache ICs for future iterations
+                for sys in systems:
+                    curr_traj = ensemble[sys.name][
+                        int(self.validator_transient_frac * self.num_points) :
+                    ]
+                    ic_cache[sys.name] = self.rng.choice(
+                        curr_traj, size=(self.num_ics - 1)
+                    )
+
+            # Set next IC for each system
+            if ic_idx < self.num_ics - 1:
+                for sys in systems:
+                    sys.ic = ic_cache[sys.name][ic_idx]
 
             pbar.update(1)
             pbar.set_postfix({"ic_idx": ic_idx})
+
+            # # resample ic
+            # for sys in systems:
+            #     sys_name = sys.name
+
+            #     # skip if system failed integration
+            #     if sys_name in excluded_systems:
+            #         continue
+            #     # shape: (num_points, num_dims)
+            #     curr_traj = ensemble[sys_name]
+            #     # cut off transient from curr_traj
+            #     transient_cutoff = int(
+            #         self.validator_transient_frac * curr_traj.shape[0]
+            #     )
+            #     curr_traj = curr_traj[transient_cutoff:]
+            #     # sample new ic as point randomly from curr_traj
+            #     new_ic = self.rng.choice(curr_traj)
+            #     sys.ic = new_ic
