@@ -1005,7 +1005,7 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
                         int(self.validator_transient_frac * self.num_points) :
                     ]
                     ic_cache[sys.name] = self.rng.choice(
-                        curr_traj, size=(self.num_ics - 1)
+                        curr_traj, size=(self.num_ics - 1), replace=False
                     )
 
             # Set next IC for each system
@@ -1015,21 +1015,3 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
 
             pbar.update(1)
             pbar.set_postfix({"ic_idx": ic_idx})
-
-            # # resample ic
-            # for sys in systems:
-            #     sys_name = sys.name
-
-            #     # skip if system failed integration
-            #     if sys_name in excluded_systems:
-            #         continue
-            #     # shape: (num_points, num_dims)
-            #     curr_traj = ensemble[sys_name]
-            #     # cut off transient from curr_traj
-            #     transient_cutoff = int(
-            #         self.validator_transient_frac * curr_traj.shape[0]
-            #     )
-            #     curr_traj = curr_traj[transient_cutoff:]
-            #     # sample new ic as point randomly from curr_traj
-            #     new_ic = self.rng.choice(curr_traj)
-            #     sys.ic = new_ic
