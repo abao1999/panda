@@ -111,7 +111,7 @@ if __name__ == "__main__":
         "--plot_save_dir",
         help="Directory to save plots",
         type=str,
-        default="figs/forecasts",
+        default="figures/forecasts",
     )
     parser.add_argument(
         "--num_systems",

@@ -93,7 +93,7 @@ def main(cfg):
 
     plot_univariate_trajs(
         filtered_nonsmooth_systems,
-        save_path="tests/figs/filtering",
+        save_path="tests/figures/filtering",
         figsize=(12, 8),
         max_samples=3,
     )

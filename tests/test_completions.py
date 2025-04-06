@@ -118,7 +118,7 @@ if __name__ == "__main__":
         "--plot_save_dir",
         help="Directory to save plots",
         type=str,
-        default="figs/completions",
+        default="figures/completions",
     )
     args = parser.parse_args()
 

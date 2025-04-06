@@ -160,6 +160,7 @@ class PatchTSTPipeline:
         channel_sampler: Callable[[torch.Tensor | list[torch.Tensor]], torch.Tensor]
         | None = None,
         sliding_context: bool = False,
+        **kwargs,
     ) -> torch.Tensor:
         """
         Generate an autoregressive forecast for a given context timeseries
@@ -220,7 +221,7 @@ class PatchTSTPipeline:
         remaining = prediction_length
 
         while remaining > 0:
-            outputs = self.model.generate(context_tensor)
+            outputs = self.model.generate(context_tensor, **kwargs)
 
             # prediction: [bs x num_samples x forecast_len x num_channels]
             prediction = outputs.sequences  # type: ignore

@@ -70,11 +70,11 @@ If you run into a weird miopen error, see: https://github.com/pytorch/pytorch/is
 ## Evaluation
 Script for evaluating the forecasts: [tests/test_forecasts.py](tests/test_forecasts.py). An example:
 ```
-python tests/test_forecasts.py ThomasLabyrinth_Coullet --split_forecasts eval/run-380/forecasts --split_ground_truth eval/run-380/labels --plot_save_dir figs/forecasts_run-380
+python tests/test_forecasts.py ThomasLabyrinth_Coullet --split_forecasts eval/run-380/forecasts --split_ground_truth eval/run-380/labels --plot_save_dir figures/forecasts_run-380
 ```
 Script for evaluating the completions from MLM pretraining of PatchTST: [tests/test_completions.py](tests/test_completions.py). An example:
 ```
-python tests/test_completions.py ThomasLabyrinth_Coullet --split_completions eval/run-367/completions --split_context eval/run-367/patch_input --split_mask eval/run-367/timestep_masks --plot_save_dir figs/completions_run-367
+python tests/test_completions.py ThomasLabyrinth_Coullet --split_completions eval/run-367/completions --split_context eval/run-367/patch_input --split_mask eval/run-367/timestep_masks --plot_save_dir figures/completions_run-367
 ```
 
 ## Development Goals

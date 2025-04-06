@@ -350,6 +350,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
         hidden_state: torch.Tensor,
         output_attentions: Optional[bool] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
+        linear_attn: bool = False,
     ):
         """
         Parameters:
@@ -374,13 +375,16 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             attn_output, attn_weights, _ = self.temporal_self_attn(
                 hidden_states=self.norm_sublayer1(hidden_state),
                 output_attentions=output_attentions,
+                linear_attn=linear_attn,
             )
             # Add: residual connection with residual dropout
             hidden_state = hidden_state + self.dropout_path1(attn_output)
         else:
             ## Multi-Head attention and Add residual connection and Norm - Standard Transformer from BERT
             attn_output, attn_weights, _ = self.temporal_self_attn(
-                hidden_states=hidden_state, output_attentions=output_attentions
+                hidden_states=hidden_state,
+                output_attentions=output_attentions,
+                linear_attn=linear_attn,
             )
             # hidden_states: [(bs*num_channels) x sequence_length x d_model]
             hidden_state = self.norm_sublayer1(
@@ -406,6 +410,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
                     hidden_states=self.norm_sublayer2(hidden_state),
                     output_attentions=output_attentions,
                     attention_mask=channel_attention_mask,
+                    linear_attn=linear_attn,
                 )
                 # Add: residual connection with residual dropout
                 hidden_state = hidden_state + self.dropout_path2(attn_output)
@@ -415,6 +420,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
                     hidden_states=hidden_state,
                     output_attentions=output_attentions,
                     attention_mask=channel_attention_mask,
+                    linear_attn=linear_attn,
                 )
                 # hidden_states: [(bs*sequence_length) x num_channels x d_model]
                 hidden_state = self.norm_sublayer2(
@@ -492,6 +498,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         channel_attention_mask: Optional[torch.Tensor] = None,
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
+        linear_attn: bool = False,
     ) -> BaseModelOutput:
         """
         Parameters:
@@ -518,9 +525,6 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         patch_input = self.embedder(patch_input)
         hidden_state = patch_input
 
-        # Positional encoding
-        # hidden_state = self.positional_encoder(patch_input)
-
         encoder_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
 
@@ -532,6 +536,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
                 hidden_state=hidden_state,
                 output_attentions=output_attentions,
                 channel_attention_mask=channel_attention_mask,
+                linear_attn=linear_attn,
             )
             # get hidden state. hidden_state shape is [bs x num_channels x num_patches x d_model]
             # or [bs x num_channels x (num_patches+1) x d_model] if use cls_token
@@ -574,6 +579,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         output_attentions: Optional[bool] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
+        linear_attn: bool = False,
     ) -> Union[Tuple, PatchTSTModelOutput]:
         r"""
         Parameters:
@@ -629,6 +635,7 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
             channel_attention_mask=channel_attention_mask,
+            linear_attn=linear_attn,
         )
 
         if not return_dict:
@@ -717,7 +724,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
         output_attentions: Optional[bool] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
-        schedule_param: float = 0.0,
+        linear_attn: bool = False,
     ) -> Union[Tuple, PatchTSTForPretrainingOutput]:
         r"""
         Parameters:
@@ -753,6 +760,7 @@ class PatchTSTForPretraining(PatchTSTPreTrainedModel):
             output_attentions=output_attentions,
             channel_attention_mask=channel_attention_mask,
             return_dict=True,
+            linear_attn=linear_attn,
         )
 
         # last_hidden_state: [bs x num_channels x num_patches x d_model] or
@@ -943,7 +951,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         output_attentions: Optional[bool] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
-        schedule_param: float = 0.0,
+        linear_attn: bool = False,
     ) -> Union[Tuple, PatchTSTForPredictionOutput]:
         r"""
         Parameters:
@@ -982,6 +990,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             output_attentions=output_attentions,
             channel_attention_mask=channel_attention_mask,
             return_dict=True,
+            linear_attn=linear_attn,
         )
         y_hat = self.head(model_output.last_hidden_state)
 
@@ -1029,6 +1038,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         past_observed_mask: Optional[torch.Tensor] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
+        linear_attn: bool = False,
     ) -> SamplePatchTSTOutput:
         """
         Generate sequences of sample predictions from a model with a probability distribution head.
@@ -1059,6 +1069,7 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             output_hidden_states=False,
             channel_attention_mask=channel_attention_mask,
             output_attentions=output_attentions,
+            linear_attn=linear_attn,
         )
 
         if self.distribution_output:

@@ -5,7 +5,7 @@
 #     HastingsPowell_SprottTorus \
 #     Hopfield_DoubleGyre \
 #     MacArthur_KawczynskiStrizhak \
-#     --plot_save_dir figs/chronos_eval/forecasts/run-${run_num} \
+#     --plot_save_dir figures/chronos_eval/forecasts/run-${run_num} \
 #     --split_forecasts eval/chronos/run-${run_num}/forecasts \
 #     --split_ground_truth eval/chronos/run-${run_num}/labels \
 
@@ -16,7 +16,7 @@
 #     HastingsPowell_SprottTorus \
 #     Hopfield_DoubleGyre \
 #     MacArthur_KawczynskiStrizhak \
-#     --plot_save_dir figs/patchtst_eval/forecasts/run-${run_num} \
+#     --plot_save_dir figures/patchtst_eval/forecasts/run-${run_num} \
 #     --split_forecasts eval/patchtst/run-${run_num}/forecasts \
 #     --split_ground_truth eval/patchtst/run-${run_num}/labels \
 
@@ -26,7 +26,7 @@ split_dir=final_skew40/test_zeroshot
 
 python tests/test_forecasts.py \
     all \
-    --plot_save_dir figs/patchtst/${run_name}/${split_dir}/forecasts \
+    --plot_save_dir figures/patchtst/${run_name}/${split_dir}/forecasts \
     --split_forecasts eval/patchtst/${run_name}/${split_dir}/forecasts \
     --split_ground_truth eval/patchtst/${run_name}/${split_dir}/labels \
     --num_systems 20
@@ -37,7 +37,7 @@ python tests/test_forecasts.py \
 
 # python tests/test_forecasts.py \
 #     all \
-#     --plot_save_dir figs/chronos/${run_name}/${split_dir}/forecasts \
+#     --plot_save_dir figures/chronos/${run_name}/${split_dir}/forecasts \
 #     --split_forecasts eval/chronos/${run_name}/${split_dir}/forecasts \
 #     --split_ground_truth eval/chronos/${run_name}/${split_dir}/labels \
 #     --num_systems 20
