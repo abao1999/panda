@@ -51,7 +51,7 @@ if [ "$DEBUG" -eq 0 ]; then
 else  # this mode allows for breakpoints inside model code
         CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py \
                 run_name=DEBUG \
-                patchtst.pretrained_encoder_path=$WORK/checkpoints/mlm40_stand-0/checkpoint-final \
+                patchtst.pretrained_encoder_path=null \
                 shuffle_buffer_length=100 \
                 patchtst.mode=predict \
                 train.ddp_backend=null \

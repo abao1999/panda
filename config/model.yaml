@@ -14,6 +14,7 @@ patchtst:
   d_model: 512
   num_attention_heads: 8
   channel_attention: true # This mixes across channels in the encoder 
+  linear_attn: true
   ffn_dim: 512
   
   norm_type: "rmsnorm"
