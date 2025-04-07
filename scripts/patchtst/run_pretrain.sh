@@ -30,6 +30,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 patchtst.d_model=512 \
                 patchtst.norm_type=rmsnorm \
                 patchtst.channel_attention=true \
+                patchtst.use_dynamics_embedding=false \
                 patchtst.mask_type=random \
                 patchtst.random_mask_ratio=0.5 \
                 patchtst.channel_consistent_masking=true \
