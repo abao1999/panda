@@ -10,7 +10,7 @@ split_dir=final_skew40/test_zeroshot
 # run_name=chronos_mini_zeroshot
 # python scripts/chronos/evaluate.py \
 #         eval.checkpoint_path=amazon/chronos-t5-mini \
-#         eval.data_path=$WORK/data/copy/${split_dir} \
+#         eval.data_path=$WORK/data/improved/${split_dir} \
 #         eval.num_systems=null \
 #         eval.num_test_instances=1 \
 #         eval.window_style=sampled \
@@ -30,7 +30,7 @@ split_dir=final_skew40/test_zeroshot
 run_name=chronos_bolt_mini-12
 python scripts/chronos/evaluate.py \
         eval.checkpoint_path=$checkpoint_dir/${run_name}/checkpoint-final \
-        eval.data_path=$WORK/data/copy/${split_dir} \
+        eval.data_path=$WORK/data/improved/${split_dir} \
         eval.num_systems=null \
         eval.num_test_instances=1 \
         eval.window_style=sampled \

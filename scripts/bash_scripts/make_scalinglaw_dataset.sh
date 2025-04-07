@@ -1,6 +1,6 @@
 #!/bin/bash
 
-params_dir=$WORK/data/copy/scalinglaw/params_disjoint/
+params_dir=$WORK/data/improved/scalinglaw/params_disjoint/
 
 param_dicts_splits=(
     params_dict_split_0-163.json
@@ -50,7 +50,7 @@ for i in "${!param_dicts_splits[@]}"; do
     python scripts/make_dataset_from_params.py \
         restart_sampling.params_json_path=$params_json_path \
         restart_sampling.systems_batch_size=128 \
-        sampling.data_dir=$WORK/data/copy/scalinglaw/split_${suffix}_ic${n_ics} \
+        sampling.data_dir=$WORK/data/improved/scalinglaw/split_${suffix}_ic${n_ics} \
         sampling.rseed=1000 \
         sampling.num_ics=$n_ics \
         sampling.num_points=5120 \
@@ -70,7 +70,7 @@ for i in "${!param_dicts_splits[@]}"; do
 done
 
 
-# params_dir=$WORK/data/copy/scalinglaw/params_disjoint/
+# params_dir=$WORK/data/improved/scalinglaw/params_disjoint/
 
 # param_dicts_splits=(
 #     params_dict_split_0-163.json
@@ -108,7 +108,7 @@ done
 #     python scripts/make_dataset_from_params.py \
 #         restart_sampling.params_json_path=$params_json_path \
 #         restart_sampling.systems_batch_size=1 \
-#         sampling.data_dir=$WORK/data/copy/scalinglaw/split_${suffix}_ic${n_ics} \
+#         sampling.data_dir=$WORK/data/improved/scalinglaw/split_${suffix}_ic${n_ics} \
 #         sampling.rseed=1000 \
 #         sampling.num_ics=$n_ics \
 #         sampling.num_periods=40 \

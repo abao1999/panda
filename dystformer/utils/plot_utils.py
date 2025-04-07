@@ -243,7 +243,7 @@ def plot_grid_trajs_multivariate(
             ax.scatter(*end_pt, marker="x", s=100, alpha=0.5, color=curr_color)
 
         system_name_title = system_name.replace("_", " + ")
-        ax.set_title(f"{system_name_title}.", fontsize=18, fontweight="bold")
+        ax.set_title(f"{system_name_title}.", fontweight="bold")
         fig.patch.set_facecolor("white")  # Set the figure's face color to white
         ax.set_facecolor("white")  # Set the axes' face color to white
         ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))

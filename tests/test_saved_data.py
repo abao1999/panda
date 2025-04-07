@@ -230,15 +230,12 @@ if __name__ == "__main__":
     plot_name_suffix = "_".join(args.split.split("/"))
     plot_name_suffix += "_failures" if args.samples_subset == "failed_samples" else ""
     if args.plot_grid:
-        n_rows = round(1 + args.n_systems_plot**0.5)
-        subplot_size = (n_rows, n_rows)
         plot_saved_data_grid(
             dyst_names_lst,
             split=args.split,
             max_samples=args.n_samples_plot,
             plot_name_suffix=plot_name_suffix,
             plot_save_dir=args.plot_save_dir,
-            subplot_size=subplot_size,
             standardize=args.standardize,
         )
     else:

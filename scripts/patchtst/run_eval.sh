@@ -39,7 +39,7 @@ for run_name in ${run_names[@]}; do
     python scripts/patchtst/evaluate.py \
         eval.mode=predict \
         eval.checkpoint_path=$checkpoint_dir/$run_name/checkpoint-final \
-        eval.data_path=$WORK/data/copy/$split_dir \
+        eval.data_path=$WORK/data/improved/$split_dir \
         eval.num_systems=null \
         eval.num_test_instances=1 \
         eval.window_style=sampled \
