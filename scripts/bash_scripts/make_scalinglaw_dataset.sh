@@ -70,14 +70,15 @@ for i in "${!param_dicts_splits[@]}"; do
 done
 
 
-# params_dir=$WORK/data/improved/scalinglaw/params_disjoint/
+# params_dir=$WORK/data/improved/scalinglaw/params
+# # params_dir=$WORK/dystformer/params
 
 # param_dicts_splits=(
-#     params_dict_split_0-163.json
+#     params_dict_split_0-20979.json
 # )
 
 # n_ics_splits=(
-#     2
+#     16
 # )
 
 # # Assert that the number of elements in n_ics_splits matches param_dicts_splits
@@ -107,16 +108,21 @@ done
 
 #     python scripts/make_dataset_from_params.py \
 #         restart_sampling.params_json_path=$params_json_path \
-#         restart_sampling.systems_batch_size=1 \
-#         sampling.data_dir=$WORK/data/improved/scalinglaw/split_${suffix}_ic${n_ics} \
-#         sampling.rseed=1000 \
+#         restart_sampling.systems_batch_size=128 \
+#         restart_sampling.batch_idx_low=0 \
+#         restart_sampling.batch_idx_high=2 \
+#         sampling.data_dir=$WORK/data/scalinglaw/debug/split_${suffix}_ic${n_ics} \
+#         sampling.rseed=7433 \
 #         sampling.num_ics=$n_ics \
-#         sampling.num_periods=40 \
 #         sampling.num_points=5120 \
+#         sampling.num_periods_min=25 \
+#         sampling.num_periods_max=100 \
 #         sampling.split_coords=false \
-#         sampling.multiprocessing=false \
+#         sampling.atol=1e-10 \
+#         sampling.rtol=1e-8 \
+#         sampling.silence_integration_errors=true \
 #         events.verbose=false \
-#         events.max_duration=300 \
+#         events.max_duration=400 \
 #         validator.transient_time_frac=0.2 \
 #         wandb.log=false \
 #         wandb.project_name=dyst_data \

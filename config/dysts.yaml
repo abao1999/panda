@@ -5,6 +5,8 @@ multiprocess_kwargs:
 restart_sampling:
   params_json_path: null
   systems_batch_size: 128
+  batch_idx_low: null
+  batch_idx_high: null
 
 sampling:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
