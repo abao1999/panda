@@ -179,7 +179,6 @@ class DynSysSampler(BaseDynSysSampler):
             save_dyst_dir = failed_dyst_dir = None
         return save_dyst_dir, failed_dyst_dir
 
-    # @memory_profiler.profile
     @timeit(logger=logger)
     def sample_ensembles(
         self,
@@ -276,7 +275,6 @@ class DynSysSampler(BaseDynSysSampler):
             **kwargs,
         )
 
-    # @memory_profiler.profile
     def _transform_params_and_ics(
         self,
         system: BaseDyn | str,
@@ -312,7 +310,6 @@ class DynSysSampler(BaseDynSysSampler):
 
         return sys if success else None
 
-    # @memory_profiler.profile
     def _init_perturbations(
         self,
         systems: list[str | BaseDyn],
@@ -355,7 +352,6 @@ class DynSysSampler(BaseDynSysSampler):
 
         return transformed_systems
 
-    # @memory_profiler.profile
     def _generate_ensembles(
         self,
         systems: list[str | BaseDyn],
@@ -466,7 +462,6 @@ class DynSysSampler(BaseDynSysSampler):
             if hasattr(event, "reset") and callable(event.reset):
                 event.reset()
 
-    # @memory_profiler.profile
     def save_failed_integrations_callback(self, sample_idx, ensemble, **kwargs):
         excluded_keys = kwargs.get("excluded_keys", [])
         if len(excluded_keys) > 0:
@@ -474,7 +469,6 @@ class DynSysSampler(BaseDynSysSampler):
             for dyst_name in excluded_keys:
                 self.failed_integrations[dyst_name].append(sample_idx)
 
-    # @memory_profiler.profile
     def _validate_and_save_ensemble_callback(
         self,
         num_total_samples: int,
@@ -512,7 +506,6 @@ class DynSysSampler(BaseDynSysSampler):
 
         return _callback
 
-    # @memory_profiler.profile
     def _process_and_save_ensemble(
         self,
         ensemble_list: list[dict[str, np.ndarray]],
@@ -537,7 +530,6 @@ class DynSysSampler(BaseDynSysSampler):
         }
 
         current_param_pert_summary = {}
-        # TEMPORARY: remove driver dims from trajectories
         if perturbed_systems is not None:
             dims = {
                 sys.name: getattr(sys, "driver_dim", 0) for sys in perturbed_systems
@@ -601,7 +593,6 @@ class DynSysSampler(BaseDynSysSampler):
             if save_traj_stats_dir is not None:
                 self._save_traj_stats(ensemble, save_dir=save_traj_stats_dir)
 
-    # @memory_profiler.profile
     def _save_parameters(
         self,
         sample_idx: int,
@@ -687,7 +678,6 @@ class DynSysSampler(BaseDynSysSampler):
         with open(save_path, "w") as f:
             json.dump(traj_stats, f, indent=4)
 
-    # @memory_profiler.profile
     def save_summary(
         self, save_json_path: str, return_dict: bool = False
     ) -> dict | None:
