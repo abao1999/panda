@@ -95,10 +95,9 @@ def evaluate_mlm_model(
                 completions = completions * scale + loc
                 processed_past_values = processed_past_values * scale + loc
 
-            # transpose back to (batch_size, num_channels, num_timesteps)
-            completions = completions.transpose(0, 2, 1)
-            processed_past_values = processed_past_values.transpose(0, 2, 1)
-
+            # NOTE: important! completions and processed_past_values must be of shape:
+            # (batch_size, num_timesteps, num_channels) in order for compute_metrics to work as intended
+            # TODO: check this in debugging
             if metric_names is not None:
                 eval_metrics = compute_metrics(
                     completions,
@@ -120,12 +119,14 @@ def evaluate_mlm_model(
 
         if return_completions:
             full_completion = np.concatenate(all_completions, axis=0)
-            system_completions[system] = full_completion
+            system_completions[system] = full_completion.transpose(0, 2, 1)
         if return_processed_past_values:
             full_processed_past_values = np.concatenate(
                 all_processed_past_values, axis=0
             )
-            system_processed_past_values[system] = full_processed_past_values
+            system_processed_past_values[system] = full_processed_past_values.transpose(
+                0, 2, 1
+            )
         if return_masks:
             full_timestep_masks = np.concatenate(all_timestep_masks, axis=0)
             system_timestep_masks[system] = full_timestep_masks
@@ -261,13 +262,14 @@ def evaluate_forecasting_model(
             contexts.append(context)
 
         # if num_parallel_reduction_fn is None, the shape is:
-        # shape: (num_parallel_samples, num_eval_windows*num_datasets, prediction_length, num_channels)
+        # shape: (num_parallel_samples, num_eval_windows * num_datasets, prediction_length, num_channels)
         # otherwise, the shape is:
-        # shape: (num_eval_windows*num_datasets, prediction_length, num_channels)
+        # shape: (num_eval_windows * num_datasets, prediction_length, num_channels)
         predictions = np.concatenate(predictions, axis=1)
         predictions = parallel_sample_reduction_fn(predictions)
         labels = np.concatenate(labels, axis=0)
-        # shape: (num_eval_windows*num_datasets, context_length, num_channels)
+
+        # shape: (num_eval_windows * num_datasets, context_length, num_channels)
         contexts = np.concatenate(contexts, axis=0)
 
         # evaluate metrics for multiple forecast lengths on user-specified subintervals
@@ -284,7 +286,7 @@ def evaluate_forecasting_model(
                     batch_axis=0,
                 )
 
-        # NOTE: these all need to be of shape: (num_eval_windows*num_datasets, num_channels, prediction_length)
+        # NOTE: these all need to be of shape: (num_eval_windows * num_datasets, num_channels, prediction_length)
         if return_predictions:
             system_predictions[system] = predictions.transpose(0, 2, 1)
         if return_contexts:

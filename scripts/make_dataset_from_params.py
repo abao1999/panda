@@ -187,13 +187,25 @@ def main(cfg):
         f"Total batches: {n_batches} with systems batch size {systems_batch_size}"
     )
 
-    for batch_idx in range(n_batches):
+    bi_low = cfg.restart_sampling.batch_idx_low
+    bi_high = cfg.restart_sampling.batch_idx_high
+    if bi_low is not None and bi_high is not None:
+        if bi_low < 0 or bi_high >= n_batches:
+            raise ValueError("invalid batch index!")
+        batch_indices = np.arange(bi_low, bi_high)
+    else:
+        batch_indices = np.arange(0, n_batches)
+
+    logger.info(f"batch indices: {batch_indices}")
+    for batch_idx in batch_indices:
         start_idx = batch_idx * systems_batch_size
         end_idx = min((batch_idx + 1) * systems_batch_size, tot_systems)
         sample_idx_lst = np.arange(start_idx, end_idx)
         logger.info(f"Processing batch {batch_idx} with {len(sample_idx_lst)} systems")
+        # positions is list of param_pert index e.g. Lorenz-pp0, Lorenz-pp1, etc.
         system_names, positions = get_system_names_and_positions(sample_idx_lst)
-        # Initialize systems, assumign skew systems
+
+        # Initialize systems, assuming skew systems
         systems = []
         for name, pos in zip(system_names, positions):
             driver_name, response_name = name.split("_")
