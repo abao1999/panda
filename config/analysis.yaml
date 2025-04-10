@@ -1,7 +1,7 @@
 analysis:
   data_dir: /stor/work/AMDG_Gilpin_Summer2024/data
   split: improved/final_skew40/train
-  num_samples: 1
+  num_samples: null
   one_dim_target: false
   save_dir: outputs
   plots_dir: figures
@@ -31,3 +31,10 @@ analysis:
   check_zero_one_test:
     threshold: 0.2
     strategy: score
+
+recompute_metrics:
+  eval_data_dir: null
+  forecast_split: null
+  labels_split: null
+  num_samples: null
+  save_dir: null
