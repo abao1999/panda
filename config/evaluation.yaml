@@ -9,7 +9,7 @@ eval:
   num_systems: 10
 
   # inference mode for patchtst
-  sliding_context: false
+  sliding_context: false # TODO: set to true
 
   metric_names:
     - mse

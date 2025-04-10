@@ -5,7 +5,7 @@ from datetime import datetime
 from functools import wraps
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, List, Literal, Tuple, Union
 
 import numpy as np
 from dysts.systems import get_attractor_list
@@ -254,6 +254,7 @@ def get_system_filepaths(
     if not os.path.exists(dyst_dir):
         raise Exception(f"Directory {dyst_dir} does not exist.")
 
+    # NOTE: sorting by numerical order wrt sample index is very important for consistency
     filepaths = sorted(
         list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0])
     )
@@ -281,11 +282,12 @@ def process_dyst_name(
 def make_ensemble_from_arrow_dir(
     base_dir: str,
     split: str,
-    dyst_names_lst: Optional[List[str]] = None,
+    dyst_names_lst: list[str] | None = None,
     num_samples: int | None = None,
     one_dim_target: bool = False,
-) -> Dict[str, np.ndarray]:
-    ensemble = {}
+    num_processes: int = cpu_count(),
+) -> dict[str, np.ndarray]:
+    ensemble: dict[str, np.ndarray] = {}
     if dyst_names_lst is None:
         data_dir = os.path.join(base_dir, split)
         dyst_names_lst = [
@@ -300,7 +302,7 @@ def make_ensemble_from_arrow_dir(
     ]
 
     # Use multiprocessing to process each dyst_name
-    with Pool(cpu_count()) as pool:
+    with Pool(num_processes) as pool:
         results = pool.starmap(process_dyst_name, args)
 
     # Collect results into the ensemble dictionary

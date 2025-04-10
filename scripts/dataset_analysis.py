@@ -7,7 +7,7 @@ import logging
 import os
 from functools import partial
 from itertools import chain
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from typing import Callable, Dict, Tuple
 
 import hydra
@@ -22,6 +22,27 @@ from dystformer.utils import (
     plot_grid_trajs_multivariate,
     safe_standardize,
 )
+
+
+def multiprocessed_compute_wrapper(
+    ensemble: Dict[str, np.ndarray],
+    compute_fn: Callable,
+    num_processes: int = cpu_count(),
+) -> Dict[str, np.ndarray]:
+    """
+    Compute the quantities for the ensemble of trajectories in parallel (multiprocessed)
+    Args:
+        ensemble: Ensemble of trajectories
+        compute_fn: Function to compute a quantity from trajectory coordinates
+    Returns:
+        Dict[str, np.ndarray]: Dictionary of the computed quantities for each system. Key is system name, value is the computed quantity
+    """
+    with Pool(num_processes) as pool:
+        results = pool.starmap(
+            compute_fn,
+            [(dyst_name, all_traj) for dyst_name, all_traj in ensemble.items()],
+        )
+    return {k: v for k, v in zip(list(ensemble.keys()), results)}
 
 
 def compute_lyapunov_exponents(
@@ -57,26 +78,6 @@ def compute_quantile_limits(
     high = np.max(standard_traj, axis=(1, 2))
     low = np.min(standard_traj, axis=(1, 2))
     return high, low
-
-
-def multiprocessed_compute_wrapper(
-    ensemble: Dict[str, np.ndarray],
-    compute_fn: Callable,
-) -> Dict[str, np.ndarray]:
-    """
-    Compute the quantities for the ensemble of trajectories in parallel (multiprocessed)
-    Args:
-        ensemble: Ensemble of trajectories
-        compute_fn: Function to compute the quantity
-    Returns:
-        Dict[str, np.ndarray]: Dictionary of the computed quantities for each system. Key is system name, value is the computed quantity
-    """
-    with Pool() as pool:
-        results = pool.starmap(
-            compute_fn,
-            [(dyst_name, all_traj) for dyst_name, all_traj in ensemble.items()],
-        )
-    return {k: v for k, v in zip(list(ensemble.keys()), results)}
 
 
 def plot_from_npy_paths(
