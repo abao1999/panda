@@ -28,6 +28,7 @@ tests/*.png
 *ablations*.sh
 
 # output and logging files
+tests/
 output/
 eval_results/
 *.pt
