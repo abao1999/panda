@@ -840,12 +840,27 @@ class PatchTSTPredictionHead(nn.Module):
         else:  # included for completeness
             # num_patches is set to a dummy value,
             head_dim = config.d_model * num_patches
+        self.prediction_length = config.prediction_length
 
         # all the channels share the same head
         self.flatten = nn.Flatten(start_dim=2)
         if distribution_output is None:
-            # use linear head with custom weight initialization
-            self.projection = nn.Linear(head_dim, config.prediction_length, bias=False)
+            self.num_modes = 20
+            self.forecaster_trunk = nn.Sequential(
+                nn.Linear(head_dim, config.d_model),
+                nn.GELU(),
+                nn.Linear(config.d_model, config.d_model),
+            )
+            self.periodic_head = nn.Sequential(
+                self.forecaster_trunk,
+                nn.GELU(),
+                nn.Linear(config.d_model, 2 * self.num_modes),
+            )
+            self.correction_head = nn.Sequential(
+                self.forecaster_trunk,
+                nn.GELU(),
+                nn.Linear(config.d_model, config.prediction_length),
+            )
         else:
             # use distribution head
             self.projection = distribution_output.get_parameter_projection(head_dim)
@@ -883,9 +898,16 @@ class PatchTSTPredictionHead(nn.Module):
         pooled_embedding = self.flatten(pooled_embedding)
         pooled_embedding = self.dropout(pooled_embedding)
 
-        # output: [bs x num_channels x forecast_len] or
-        # tuple ([bs x num_channels x forecast_len], [bs x num_channels x forecast_len]) if using distribution head
-        output = self.projection(pooled_embedding)
+        # want to map (bs x num_channels x (d_model * num_patches)) to (bs x num_channels x 2*num_modes)
+        modes = self.periodic_head(pooled_embedding)
+        periodic_predictions = torch.fft.irfft(
+            modes[..., : self.num_modes] + 1j * modes[..., self.num_modes :],
+            n=self.prediction_length,
+            dim=-1,
+        )
+        correction_predictions = self.correction_head(pooled_embedding)
+
+        output = periodic_predictions + correction_predictions
 
         if isinstance(output, tuple):
             # output: ([bs x forecast_len x num_channels], [bs x forecast_len x num_channels])
