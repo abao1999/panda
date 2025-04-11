@@ -33,7 +33,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 patchtst.use_dynamics_embedding=false \
                 patchtst.mask_type=random \
                 patchtst.random_mask_ratio=0.5 \
-                patchtst.channel_consistent_masking=true \
+                patchtst.channel_consistent_masking=false \
                 patchtst.max_wavelength=500 \
                 patchtst.rope_percent=0.75 \
                 patchtst.loss=mse \
