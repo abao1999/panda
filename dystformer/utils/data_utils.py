@@ -255,7 +255,7 @@ def get_system_filepaths(
     return filepaths
 
 
-def process_dyst_name(
+def load_dyst_samples(
     dyst_name: str,
     base_dir: str,
     split: str,
@@ -307,7 +307,7 @@ def make_ensemble_from_arrow_dir(
 
     # Use multiprocessing to process each dyst_name
     with Pool(num_processes) as pool:
-        results = pool.starmap(process_dyst_name, args)
+        results = pool.starmap(load_dyst_samples, args)
 
     # Collect results into the ensemble dictionary
     for dyst_name, dyst_coords_samples in zip(dyst_names_lst, results):

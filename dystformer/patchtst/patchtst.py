@@ -630,7 +630,6 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
             masked_values, mask = self.masking(patched_values)
         else:
             masked_values, mask = self.masking(patched_values), None
-        breakpoint()
 
         encoder_output = self.encoder(
             patch_input=masked_values,
