@@ -56,8 +56,8 @@ eval:
 
   baselines:
     baseline_model: fourier_arima
-    order: [2, 2, 2]  # (p, d, q) for ARIMA
-    num_fourier_terms: 3
+    order: [4, 1, 4]  # (p, d, q) for ARIMA
+    num_fourier_terms: 5
 
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:
