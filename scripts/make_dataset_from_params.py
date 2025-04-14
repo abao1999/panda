@@ -222,6 +222,8 @@ def main(cfg):
             save_dir=cfg.sampling.data_dir,
             split="train",
             samples_process_interval=1,
+            starting_sample_idx=cfg.restart_sampling.starting_sample_idx,
+            save_first_sample=cfg.restart_sampling.save_first_sample,
             standardize=cfg.sampling.standardize,
             use_multiprocessing=cfg.sampling.multiprocessing,
             silent_errors=cfg.sampling.silence_integration_errors,

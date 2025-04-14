@@ -104,13 +104,19 @@ def main(cfg):
 
     breakpoint()
 
-    eval_subintervals = []
+    # Get trajectory shape from the first system in the ensemble
+    first_system = next(iter(combined_ensemble))
+    traj_shape = combined_ensemble[first_system]["forecasts"].shape
+    context_length = cfg.recompute_metrics.context_length
+    rollout_pred_length = traj_shape[2] - context_length
+    eval_subintervals = [(0, i + 64) for i in range(0, rollout_pred_length, 64)]
+
     system_metrics = compute_metrics_from_combined_ensemble(
         combined_ensemble,
         metric_names=cfg.recompute_metrics.metric_names,
-        eval_subintervals=cfg.recompute_metrics.eval_subintervals,
-        context_length=cfg.recompute_metrics.context_length,
-        prediction_length=cfg.recompute_metrics.prediction_length,
+        eval_subintervals=eval_subintervals,
+        context_length=context_length,
+        prediction_length=rollout_pred_length,
     )
 
     save_evaluation_results(

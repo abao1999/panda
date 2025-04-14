@@ -94,7 +94,7 @@ def main(cfg):
                 "num_rff",
             ]
         }
-        log(f"dynamics embeddingconfig: {dynamics_embedding_config}")
+        log(f"dynamics embedding config: {dynamics_embedding_config}")
 
     pipeline.model.eval()
 

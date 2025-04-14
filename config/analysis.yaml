@@ -33,8 +33,24 @@ analysis:
     strategy: score
 
 recompute_metrics:
+
+  # directories
   eval_data_dir: null
   forecast_split: null
   labels_split: null
+
   num_samples: null
+  # need to specify context length that was used when generating the forecasts
+  context_length: 512
+
+  # save results
   save_dir: null
+  metrics_fname: metrics_recomputed.json
+
+  # metrics to compute
+  metric_names:
+    - mse
+    - mae
+    - smape
+    - r2_score
+    - spearman

@@ -888,11 +888,16 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
         save_dir: str,
         split: str = "train",
         samples_process_interval: int = 1,
+        starting_sample_idx: int = 0,
+        save_first_sample: bool = True,
         standardize: bool = False,
         use_multiprocessing: bool = True,
         silent_errors: bool = False,
         **kwargs,
     ) -> None:
+        """
+        Wrapper around _generate_ensembles, for sampling ensembles with different initial conditions
+        """
         sys_names = [sys.name for sys in systems]
         assert len(set(sys_names)) == len(sys_names), (
             "Cannot have duplicate system names"
@@ -923,6 +928,8 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
 
         self._generate_ensembles(
             systems,
+            starting_sample_idx=starting_sample_idx,
+            save_first_sample=save_first_sample,
             postprocessing_callbacks=callbacks,
             standardize=standardize,
             use_multiprocessing=use_multiprocessing,
@@ -933,13 +940,15 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
     def _generate_ensembles(
         self,
         systems: list[BaseDyn],
+        starting_sample_idx: int = 0,
+        save_first_sample: bool = True,
         use_multiprocessing: bool = True,
         postprocessing_callbacks: list[Callable] | None = None,
         silent_errors: bool = False,
         **kwargs,
     ) -> None:
         """
-        Generate trajectory ensembles for a given set of dynamical systems.
+        Generate trajectory ensembles for a given set of dynamical systems, with different initial conditions
         """
         n_systems = len(systems)
         pbar = tqdm(
@@ -977,12 +986,19 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
                 if key not in excluded_systems
             }
 
-            for callback in postprocessing_callbacks or []:
-                callback(
-                    ic_idx,
-                    ensemble,
-                    excluded_keys=excluded_systems,
+            if ic_idx == 0 and not save_first_sample:
+                logger.info(
+                    f"Skipping validation and saving for first sample, ic_idx={ic_idx}"
                 )
+                self._reset_events_callback()
+
+            else:
+                for callback in postprocessing_callbacks or []:
+                    callback(
+                        ic_idx + starting_sample_idx,
+                        ensemble,
+                        excluded_keys=excluded_systems,
+                    )
 
             # drop systems that failed integration and prepare IC cache
             if ic_idx == 0:
