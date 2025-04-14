@@ -122,7 +122,7 @@ def plot_trajs_multivariate(
 
     Args:
         trajectories (np.ndarray): Array of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
-        save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
+        save_dir (str, optional): Directory to save the plots. Defaults to None.
         plot_name (str, optional): Base name for the saved plot files. Defaults to "dyst".
         samples_subset (list[int] | None): Subset of sample indices to plot. If None, all samples are used. Defaults to None.
         plot_projections (bool): Whether to plot 2D projections on the coordinate planes
@@ -283,7 +283,7 @@ def plot_grid_trajs_multivariate(
 
     Args:
         ensemble (dict[str, np.ndarray]): Dictionary of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
-        save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
+        save_dir (str, optional): Directory to save the plots. Defaults to None.
         standardize (bool): Whether to standardize the trajectories
         dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
         figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
@@ -356,7 +356,7 @@ def plot_completions_evaluation(
     completions: np.ndarray,
     context: np.ndarray,
     mask: np.ndarray | None = None,
-    save_dir: str = "tests/figs",
+    save_dir: str | None = None,
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
     max_samples: int = 6,
@@ -365,7 +365,6 @@ def plot_completions_evaluation(
     Plot side-by-side 3D multivariate timeseries for completions and context,
     and overlay univariate series for each dimension below with shared legends.
     """
-    os.makedirs(save_dir, exist_ok=True)
     num_tot_samples = min(completions.shape[0], context.shape[0])
     n_samples_plot = min(max_samples, num_tot_samples)
 
@@ -503,8 +502,10 @@ def plot_completions_evaluation(
     # plt.subplots_adjust(hspace=0.6)  # Fine-tune spacing between rows
     plt.tight_layout()
 
-    save_path = os.path.join(save_dir, f"{plot_name}_combined.pdf")
-    plt.savefig(save_path, dpi=300)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{plot_name}_combined.pdf")
+        plt.savefig(save_path, dpi=300)
     plt.close()
 
 
@@ -512,7 +513,7 @@ def plot_forecast_evaluation(
     forecasts: np.ndarray,
     ground_truth: np.ndarray,
     context_length: int,
-    save_dir: str = "tests/figs",
+    save_dir: str | None = None,
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
     max_samples: int = 6,
@@ -522,7 +523,6 @@ def plot_forecast_evaluation(
     Plot side-by-side 3D multivariate timeseries for completions and context,
     and overlay univariate series for each dimension below with shared legends.
     """
-    os.makedirs(save_dir, exist_ok=True)
     num_tot_samples = min(forecasts.shape[0], ground_truth.shape[0])
     n_samples_plot = min(max_samples, num_tot_samples)
     forecast_length = forecasts.shape[2] - context_length
@@ -649,8 +649,10 @@ def plot_forecast_evaluation(
     ax3.legend(handles=[line_ground_truth, line_forecasts], loc="upper right")
 
     plt.suptitle(plot_name.replace("_", " + "), fontsize=18, fontweight="bold")
-    save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
-    plt.savefig(save_path, dpi=300)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
+        plt.savefig(save_path, dpi=300)
     if show_plot:
         plt.show()
     plt.close()
