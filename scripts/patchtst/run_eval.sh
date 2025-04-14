@@ -54,6 +54,7 @@ for run_name in ${run_names[@]}; do
         eval.num_test_instances=1 \
         eval.window_style=sampled \
         eval.batch_size=64 \
+        eval.context_length=512 \
         eval.prediction_length=512 \
         eval.limit_prediction_length=false \
         eval.metrics_save_dir=$main_dir/eval_results/$model_dirname/$run_name/$split_dir \

@@ -4,18 +4,32 @@ utils for evaluation scripts
 
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import torch
-from gluonts.dataset.common import FileDataset
-from gluonts.dataset.split import TestData, split
 
 from dystformer.utils import process_trajs
 
 logger = logging.getLogger(__name__)
+
+
+def left_pad_and_stack_1D(tensors: list[torch.Tensor]) -> torch.Tensor:
+    """
+    Left pad a list of 1D tensors to the same length and stack them.
+    Used in pipeline, if given context is a list of tensors.
+    """
+    max_len = max(len(c) for c in tensors)
+    padded = []
+    for c in tensors:
+        assert isinstance(c, torch.Tensor)
+        assert c.ndim == 1
+        padding = torch.full(
+            size=(max_len - len(c),), fill_value=torch.nan, device=c.device
+        )
+        padded.append(torch.concat((padding, c), dim=-1))
+    return torch.stack(padded)
 
 
 def left_pad_and_stack_multivariate(tensors: list[torch.Tensor]) -> torch.Tensor:
@@ -107,74 +121,3 @@ def save_evaluation_results(
             overwrite=overwrite,
             verbose=verbose,
         )
-
-
-### OLD CHRONOS UTILS (TODO: delete eventually, once we refactor Chronos code more) ###
-def left_pad_and_stack_1D(tensors: list[torch.Tensor]) -> torch.Tensor:
-    """
-    Left pad a list of 1D tensors to the same length and stack them.
-    Used in pipeline, if given context is a list of tensors.
-    """
-    max_len = max(len(c) for c in tensors)
-    padded = []
-    for c in tensors:
-        assert isinstance(c, torch.Tensor)
-        assert c.ndim == 1
-        padding = torch.full(
-            size=(max_len - len(c),), fill_value=torch.nan, device=c.device
-        )
-        padded.append(torch.concat((padding, c), dim=-1))
-    return torch.stack(padded)
-
-
-def load_and_split_dataset_from_arrow(
-    prediction_length: int,
-    offset: int,
-    num_rolls: int,
-    filepath: str | Path,
-    one_dim_target: bool = False,
-    verbose: bool = False,
-) -> TestData:
-    """
-    Directly loads Arrow file into GluonTS FileDataset
-        https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.common.html
-    And then uses GluonTS split to generate test instances from windows of original timeseries
-        https://ts.gluon.ai/stable/api/gluonts/gluonts.dataset.split.html
-
-    Load and split a dataset from an Arrow file, applies split to generate test instances
-    Returns:
-      ``TestData`` object.
-            Elements of a ``TestData`` object are pairs ``(input, label)``, where
-            ``input`` is input data for models, while ``label`` is the future
-            ground truth that models are supposed to predict.
-    """
-    # TODO: load selected dimensions for dyst system config, so we can have separate forecast for each univariate trajectory
-    if verbose:
-        print("loading: ", filepath)
-        print(f"Splitting timeseries by creating {num_rolls} non-overlapping windows")
-        print(f"And using offset {offset} and prediction length {prediction_length}")
-
-    gts_dataset = FileDataset(
-        path=Path(filepath), freq="h", one_dim_target=one_dim_target
-    )
-
-    # Split dataset for evaluation
-    _, test_template = split(gts_dataset, offset=offset)
-
-    # see Gluonts split documentation: https://ts.gluon.ai/v0.11.x/_modules/gluonts/dataset/split.html#TestTemplate.generate_instances
-    # https://ts.gluon.ai/v0.11.x/api/gluonts/gluonts.dataset.split.html#gluonts.dataset.split.TestData
-    test_data = test_template.generate_instances(prediction_length, windows=num_rolls)
-
-    return test_data
-
-
-def average_nested_dict(
-    data: dict[Any, dict[Any, list[float]]],
-) -> dict[Any, dict[Any, float]]:
-    return {
-        outer_key: {
-            inner_key: sum(values) / len(values)
-            for inner_key, values in outer_dict.items()
-        }
-        for outer_key, outer_dict in data.items()
-    }

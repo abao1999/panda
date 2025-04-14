@@ -10,7 +10,7 @@ import torch
 import transformers
 from gluonts.dataset.common import FileDataset
 
-from dystformer.patchtst.dataset import PatchTSTDataset
+from dystformer.patchtst.dataset import TimeSeriesDataset
 from dystformer.patchtst.evaluation import (
     evaluate_forecasting_model,
     evaluate_mlm_model,
@@ -74,13 +74,12 @@ def main(cfg):
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
     log(f"channel_attention: {channel_attention}")
+    log(f"use_dynamics_embedding: {use_dynamics_embedding}")
 
     if channel_attention:
         # check use of channel rope
         channel_rope = model_config["channel_rope"]
         log(f"channel_rope: {channel_rope}")
-
-    log(f"use_dynamics_embedding: {use_dynamics_embedding}")
 
     if use_dynamics_embedding:
         # check dynamics embedding parameters
@@ -124,7 +123,7 @@ def main(cfg):
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     test_datasets = {
-        system_name: PatchTSTDataset(
+        system_name: TimeSeriesDataset(
             datasets=test_data_dict[system_name],
             probabilities=[1.0 / len(test_data_dict[system_name])]
             * len(test_data_dict[system_name]),

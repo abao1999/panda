@@ -11,8 +11,98 @@ from dystformer.utils import safe_standardize
 
 COLORS = list(TABLEAU_COLORS.values())
 
-if os.path.exists("custom_style.mplstyle"):
-    plt.style.use(["ggplot", "custom_style.mplstyle"])
+
+def plot_forecast_3d(
+    forecast: np.ndarray,
+    ground_truth: np.ndarray,
+    context: np.ndarray,
+    figsize: tuple[int, int] = (6, 6),
+    indices: list[int] = [0, 1, 2],
+    save_path: str | None = None,
+) -> None:
+    """
+    Plot a 3D forecast
+
+    Args:
+        forecast (np.ndarray): A (num_features, num_timesteps) numpy array containing the forecast
+        ground_truth (np.ndarray): A (num_features, num_timesteps) numpy array containing the ground truth
+        context (np.ndarray): A (num_features, num_timesteps) numpy array containing the context
+        save_path (str, optional): Path to save the plot. Defaults to None.
+    """
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111, projection="3d")
+    ax.plot(
+        context[indices[0]],
+        context[indices[1]],
+        context[indices[2]],
+        color="black",
+        label="context",
+    )
+    ax.plot(
+        forecast[indices[0]],
+        forecast[indices[1]],
+        forecast[indices[2]],
+        color="red",
+        label="forecast",
+    )
+    ax.plot(
+        ground_truth[indices[0]],
+        ground_truth[indices[1]],
+        ground_truth[indices[2]],
+        color="black",
+        linestyle="--",
+        label="ground truth",
+    )
+    ax.legend()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300)
+    else:
+        plt.show()
+    plt.close()
+
+
+def plot_forecast_1d(
+    forecast: np.ndarray,
+    ground_truth: np.ndarray,
+    context: np.ndarray,
+    figsize: tuple[int, int] = (6, 6),
+    save_path: str | None = None,
+    indices: list[int] = [0, 1, 2],
+    channel_axis: int = 0,
+) -> None:
+    """
+    Plot a 1D forecast
+
+    Args:
+        forecast (np.ndarray): A (num_features, num_timesteps) numpy array containing the forecast
+        ground_truth (np.ndarray): A (num_features, num_timesteps) numpy array containing the ground truth
+        context (np.ndarray): A (num_features, num_timesteps) numpy array containing the context
+        save_path (str, optional): Path to save the plot. Defaults to None.
+    """
+    assert forecast.shape[0] == ground_truth.shape[0] == context.shape[0]
+    assert all(0 <= idx < forecast.shape[0] for idx in indices)
+
+    context_ts = np.arange(context.shape[1])
+    forecast_ts = np.arange(context.shape[1], context.shape[1] + forecast.shape[1])
+
+    fig, axes = plt.subplots(nrows=3, ncols=1, figsize=figsize, sharex=True)
+    for i in range(forecast.shape[0]):
+        axes[i].plot(context_ts, context[i], color="black", label="context")
+        axes[i].plot(forecast_ts, forecast[i], color="red", label="forecast")
+        axes[i].plot(
+            forecast_ts,
+            ground_truth[i],
+            color="black",
+            linestyle="--",
+            label="ground truth",
+        )
+    axes[0].legend()
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300)
+    else:
+        plt.show()
+    plt.close()
 
 
 def plot_trajs_multivariate(

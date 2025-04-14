@@ -5,7 +5,7 @@ from datetime import datetime
 from functools import wraps
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
-from typing import Any, Callable, List, Literal, Tuple, Union
+from typing import Any, Callable, List, Literal, Union
 
 import numpy as np
 from dysts.systems import get_attractor_list
@@ -114,8 +114,8 @@ def split_systems(
     prop: float,
     seed: int,
     sys_class: str = "continuous",
-    excluded_systems: List[str] = [],
-) -> Tuple[List[str], List[str]]:
+    excluded_systems: list[str] = [],
+) -> tuple[list[str], list[str]]:
     """
     Split the list of attractors into training and testing sets.
     if exclude_systems is provided, the systems in the list will be excluded
@@ -155,20 +155,6 @@ def convert_to_arrow(
         dataset,
         path=Path(path),
     )
-
-
-def accumulate_coords(
-    filepaths: List[Path], one_dim_target: bool = False, num_samples: int | None = None
-) -> np.ndarray:
-    dyst_coords_samples = []
-    for filepath in filepaths:
-        if num_samples is not None and len(dyst_coords_samples) >= num_samples:
-            break
-        dyst_coords, _ = load_trajectory_from_arrow(filepath, one_dim_target)
-        dyst_coords_samples.append(dyst_coords)
-
-    dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
-    return dyst_coords_samples
 
 
 def process_trajs(
@@ -215,8 +201,16 @@ def process_trajs(
 
 def load_trajectory_from_arrow(
     filepath: Path | str, one_dim_target: bool = False
-) -> Tuple[np.ndarray, Tuple[Any]]:
-    """Utility for loading a trajectory and metadatafrom an arrow file"""
+) -> tuple[np.ndarray, tuple[Any]]:
+    """Load a trajectory and metadata from an arrow file
+
+    Args:
+        filepath: The path to the arrow file
+        one_dim_target: Whether the target is one-dimensional
+
+    Returns:
+        A tuple containing the trajectory and metadata
+    """
     assert Path(filepath).exists(), f"Filepath {filepath} does not exist"
     dataset = FileDataset(path=Path(filepath), freq="h", one_dim_target=one_dim_target)
     coords, metadata = zip(*[(coord["target"], coord["start"]) for coord in dataset])
@@ -261,13 +255,25 @@ def get_system_filepaths(
     return filepaths
 
 
-def process_dyst_name(
+def load_dyst_samples(
     dyst_name: str,
     base_dir: str,
     split: str,
     one_dim_target: bool,
     num_samples: int | None = None,
-) -> Tuple[str, np.ndarray]:
+) -> np.ndarray:
+    """
+    Load a set of sample trajectories of a given dynamical system from an arrow file
+
+    Args:
+        dyst_name: The name of the dynamical system
+        base_dir: The base directory containing the data
+        split: The data split to use (e.g., "train", "test")
+        num_samples: The number of samples to load
+
+    Returns:
+        A (num_samples, num_features, num_timesteps) numpy array containing the trajectories
+    """
     filepaths = get_system_filepaths(dyst_name, base_dir, split)
     dyst_coords_samples = []
     for filepath in filepaths[:num_samples]:
@@ -275,8 +281,7 @@ def process_dyst_name(
         dyst_coords_samples.append(dyst_coords)
 
     dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
-    print(dyst_coords_samples.shape)
-    return dyst_name, dyst_coords_samples
+    return dyst_coords_samples
 
 
 def make_ensemble_from_arrow_dir(
@@ -293,7 +298,6 @@ def make_ensemble_from_arrow_dir(
         dyst_names_lst = [
             folder.name for folder in Path(data_dir).iterdir() if folder.is_dir()
         ]
-    print(f"making ensemble from {split} split, with systems: {dyst_names_lst}")
 
     # Prepare arguments for multiprocessing
     args = [
@@ -303,10 +307,10 @@ def make_ensemble_from_arrow_dir(
 
     # Use multiprocessing to process each dyst_name
     with Pool(num_processes) as pool:
-        results = pool.starmap(process_dyst_name, args)
+        results = pool.starmap(load_dyst_samples, args)
 
     # Collect results into the ensemble dictionary
-    for dyst_name, dyst_coords_samples in results:
+    for dyst_name, dyst_coords_samples in zip(dyst_names_lst, results):
         ensemble[dyst_name] = dyst_coords_samples
 
     return ensemble

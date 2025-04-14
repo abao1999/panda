@@ -32,6 +32,7 @@ eval:
   # for generating forecasts and getting test split
   parallel_sample_reduction: mean
   limit_prediction_length: true
+  context_length: 512
   prediction_length: 64
 
   # window style can be either sampled or rolling
@@ -52,6 +53,11 @@ eval:
   channel_sampler:
     num_channels: 3
     num_samples: 2
+
+  baselines:
+    baseline_model: fourier_arima
+    order: [2, 2, 2]  # (p, d, q) for ARIMA
+    num_fourier_terms: 3
 
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:
