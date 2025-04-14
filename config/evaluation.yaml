@@ -25,7 +25,7 @@ eval:
   timestep_masks_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/timestep_masks
 
   metrics_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/metrics
-  metrics_fname: metrics.json
+  metrics_fname: metrics
   overwrite: false
   seed: 42
 

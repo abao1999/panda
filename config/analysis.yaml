@@ -40,12 +40,13 @@ recompute_metrics:
   labels_split: null
 
   num_samples: null
+  num_systems: null
   # need to specify context length that was used when generating the forecasts
   context_length: 512
 
   # save results
   save_dir: null
-  metrics_fname: metrics_recomputed.json
+  metrics_fname: metrics
 
   # metrics to compute
   metric_names:
@@ -54,3 +55,6 @@ recompute_metrics:
     - smape
     - r2_score
     - spearman
+    - hellinger_distance
+    - corr_gpdim
+    # - kl_divergence

@@ -9,6 +9,7 @@ from collections import defaultdict
 import hydra
 import numpy as np
 from dysts.metrics import compute_metrics  # type: ignore
+from tqdm import tqdm
 
 from dystformer.utils import make_ensemble_from_arrow_dir, save_evaluation_results
 
@@ -27,14 +28,17 @@ def compute_metrics_from_combined_ensemble(
             Dictionary with key being system name, whose entries are dictionaries with keys "forecasts" and "labels"
             and values being numpy arrays of shape (num_samples, dim, context_length + forecast_length)
     """
-
+    print(metric_names)
     system_metrics = defaultdict(dict)
     if eval_subintervals is None:
         eval_subintervals = [(0, prediction_length)]
     elif (0, prediction_length) not in eval_subintervals:
         eval_subintervals.append((0, prediction_length))
 
-    for system_name, system_data in combined_ensemble.items():
+    for system_name, system_data in tqdm(
+        combined_ensemble.items(),
+        desc=f"Computing metrics for all {len(combined_ensemble)} systems...",
+    ):
         forecasts_with_context = system_data["forecasts"].transpose(0, 2, 1)
         labels_with_context = system_data["labels"].transpose(0, 2, 1)
         forecasts = forecasts_with_context[:, context_length:, :]
@@ -68,6 +72,7 @@ def main(cfg):
         cfg.recompute_metrics.forecast_split,
         one_dim_target=False,
         num_samples=cfg.recompute_metrics.num_samples,
+        num_systems=cfg.recompute_metrics.num_systems,
     )
     logger.info(
         f"Loaded {len(forecast_ensemble)} systems from {cfg.recompute_metrics.eval_data_dir} split {cfg.recompute_metrics.forecast_split}"
@@ -79,9 +84,14 @@ def main(cfg):
         cfg.recompute_metrics.labels_split,
         one_dim_target=False,
         num_samples=cfg.recompute_metrics.num_samples,
+        num_systems=cfg.recompute_metrics.num_systems,
     )
     logger.info(
         f"Loaded {len(labels_ensemble)} systems from {cfg.recompute_metrics.eval_data_dir} split {cfg.recompute_metrics.labels_split}"
+    )
+
+    assert list(forecast_ensemble.keys()) == list(labels_ensemble.keys()), (
+        "Forecast and labels ensembles must have the same systems!"
     )
 
     # now combine the forecast_ensemble and labels_ensemble into a single ensemble
@@ -101,8 +111,6 @@ def main(cfg):
         }
 
     logger.info(f"Combined ensemble has {len(combined_ensemble)} systems")
-
-    breakpoint()
 
     # Get trajectory shape from the first system in the ensemble
     first_system = next(iter(combined_ensemble))

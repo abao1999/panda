@@ -12,6 +12,7 @@ from dystformer.patchtst.pipeline import PatchTSTPipeline
 from dystformer.utils import safe_standardize
 
 
+# TODO: test this and compute metrics for mlms, distributional metrics
 def evaluate_mlm_model(
     pipeline: PatchTSTPipeline,
     systems: dict[str, TimeSeriesDataset],
