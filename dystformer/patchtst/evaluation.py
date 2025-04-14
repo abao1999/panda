@@ -7,14 +7,14 @@ from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.itertools import batcher
 from tqdm import tqdm
 
-from dystformer.patchtst.dataset import PatchTSTDataset
+from dystformer.patchtst.dataset import TimeSeriesDataset
 from dystformer.patchtst.pipeline import PatchTSTPipeline
 from dystformer.utils import safe_standardize
 
 
 def evaluate_mlm_model(
     pipeline: PatchTSTPipeline,
-    systems: dict[str, PatchTSTDataset],
+    systems: dict[str, TimeSeriesDataset],
     batch_size: int,
     metric_names: list[str] | None = None,
     undo_normalization: bool = False,
@@ -141,7 +141,7 @@ def evaluate_mlm_model(
 
 def evaluate_forecasting_model(
     pipeline: PatchTSTPipeline,
-    systems: dict[str, PatchTSTDataset],
+    systems: dict[str, TimeSeriesDataset],
     batch_size: int,
     prediction_length: int,
     limit_prediction_length: bool = False,
@@ -165,7 +165,7 @@ def evaluate_forecasting_model(
 
     Args:
         model: The PatchTST model to evaluate.
-        systems: A dictionary mapping system names to their respective PatchTSTDataset.
+        systems: A dictionary mapping system names to their respective TimeSeriesDataset.
         batch_size: The batch size to use for evaluation.
         prediction_length: The length of the predictions to make.
         limit_prediction_length: Whether to limit the prediction length to the prediction length.

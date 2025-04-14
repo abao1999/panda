@@ -272,7 +272,7 @@ def load_dyst_samples(
         num_samples: The number of samples to load
 
     Returns:
-        A (num_samples, num_timesteps, num_features) numpy array containing the trajectories
+        A (num_samples, num_features, num_timesteps) numpy array containing the trajectories
     """
     filepaths = get_system_filepaths(dyst_name, base_dir, split)
     dyst_coords_samples = []

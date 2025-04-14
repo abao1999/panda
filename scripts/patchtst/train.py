@@ -24,7 +24,7 @@ from dystformer.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from dystformer.patchtst.dataset import PatchTSTDataset
+from dystformer.patchtst.dataset import TimeSeriesDataset
 from dystformer.patchtst.patchtst import (
     PatchTSTForPrediction,
     PatchTSTForPretraining,
@@ -210,7 +210,7 @@ def main(cfg):
         RandomDimSelectionTransform(num_dims=cfg.fixed_dim),
     ]
 
-    shuffled_train_dataset = PatchTSTDataset(
+    shuffled_train_dataset = TimeSeriesDataset(
         datasets=train_datasets,
         probabilities=probability,
         context_length=cfg.patchtst.context_length,
