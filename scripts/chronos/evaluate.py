@@ -44,7 +44,9 @@ def main(cfg):
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
     pipeline = ChronosPipeline.from_pretrained(
-        cfg.eval.checkpoint_path,
+        cfg.chronos.model_id
+        if cfg.eval.chronos.zero_shot
+        else cfg.eval.checkpoint_path,
         device_map=cfg.eval.device,
         torch_dtype=torch_dtype,
     )

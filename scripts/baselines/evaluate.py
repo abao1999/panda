@@ -101,8 +101,7 @@ def main(cfg):
         return_labels=True,
         redo_normalization=True,
         eval_subintervals=[
-            (0, i + cfg.eval.prediction_length)
-            for i in range(0, cfg.eval.prediction_length, cfg.eval.prediction_length)
+            (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
         ],
     )
 

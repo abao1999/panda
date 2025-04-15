@@ -49,15 +49,13 @@ eval:
   split_coords: false
   verbose: false
 
-  use_channel_sampler: false
-  channel_sampler:
-    num_channels: 3
-    num_samples: 2
-
   baselines:
     baseline_model: fourier_arima
     order: [4, 1, 4]  # (p, d, q) for ARIMA
     num_fourier_terms: 5
+
+  chronos:
+    zero_shot: false
 
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:

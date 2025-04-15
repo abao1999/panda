@@ -57,7 +57,7 @@ for run_name in ${run_names[@]}; do
         eval.context_length=512 \
         eval.prediction_length=512 \
         eval.limit_prediction_length=false \
-        eval.metrics_save_dir=$main_dir/eval_results/$model_dirname/$run_name/$split_dir \
+        eval.metrics_save_dir=$WORK/eval_results/$model_dirname/$run_name/$split_dir \
         eval.metrics_fname=metrics \
         eval.overwrite=true \
         eval.device=cuda:2 \
