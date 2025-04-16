@@ -103,6 +103,7 @@ class ChronosPipeline:
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
         limit_prediction_length: bool = True,
+        verbose: bool = True,
     ) -> torch.Tensor:
         """
         Get forecasts for the given time series.
@@ -146,7 +147,7 @@ class ChronosPipeline:
         if prediction_length is None:
             prediction_length = self.model.config.prediction_length
 
-        if prediction_length > self.model.config.prediction_length:
+        if prediction_length > self.model.config.prediction_length and verbose:
             msg = (
                 f"We recommend keeping prediction length <= {self.model.config.prediction_length}. "
                 "The quality of longer predictions may degrade since the model is not optimized for it. "

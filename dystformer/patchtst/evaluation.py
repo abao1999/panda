@@ -152,6 +152,7 @@ def evaluate_forecasting_model(
     return_labels: bool = False,
     redo_normalization: bool = False,
     sliding_context: bool = False,
+    prediction_kwargs: dict | None = None,
     eval_subintervals: list[tuple[int, int]] | None = None,
 ) -> tuple[
     dict[str, np.ndarray] | None,
@@ -191,6 +192,7 @@ def evaluate_forecasting_model(
     system_contexts = {}
     system_labels = {}
     system_metrics = defaultdict(dict)
+    prediction_kwargs = prediction_kwargs or {}
 
     if eval_subintervals is None:
         eval_subintervals = [(0, prediction_length)]
@@ -221,11 +223,7 @@ def evaluate_forecasting_model(
             # matter if one just needs to aggregate over that to get metrics
             preds = (
                 pipeline.predict(
-                    past_batch,
-                    prediction_length=prediction_length,
-                    limit_prediction_length=limit_prediction_length,
-                    channel_sampler=channel_sampler,
-                    sliding_context=sliding_context,
+                    past_batch, prediction_length=prediction_length, **prediction_kwargs
                 )
                 .transpose(0, 1)
                 .cpu()
@@ -284,7 +282,7 @@ def evaluate_forecasting_model(
                     batch_axis=0,
                 )
 
-        # NOTE: these all need to be of shape: (num_eval_windows*num_datasets, num_channels, prediction_length)
+        # shape: (num_eval_windows * num_datasets, num_channels, prediction_length or context_length)
         if return_predictions:
             system_predictions[system] = predictions.transpose(0, 2, 1)
         if return_contexts:
