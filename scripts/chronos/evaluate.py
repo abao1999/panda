@@ -17,6 +17,7 @@ from dystformer.chronos.pipeline import ChronosPipeline
 from dystformer.utils import (
     get_dim_from_dataset,
     log_on_main,
+    process_trajs,
     save_evaluation_results,
 )
 
@@ -44,7 +45,9 @@ def main(cfg):
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
     pipeline = ChronosPipeline.from_pretrained(
-        cfg.eval.checkpoint_path,
+        cfg.chronos.model_id
+        if cfg.eval.chronos.zero_shot
+        else cfg.eval.checkpoint_path,
         device_map=cfg.eval.device,
         torch_dtype=torch_dtype,
     )
@@ -121,7 +124,7 @@ def main(cfg):
         for system_name in test_data_dict
     }
 
-    save_eval_results = partial(
+    save_eval_results_fn = partial(
         save_evaluation_results,
         metrics_metadata={
             "system_dims": system_dims,
@@ -130,7 +133,11 @@ def main(cfg):
         metrics_save_dir=cfg.eval.metrics_save_dir,
         metrics_fname=cfg.eval.metrics_fname,
         overwrite=cfg.eval.overwrite,
+    )
+    process_trajs_fn = partial(
+        process_trajs,
         split_coords=cfg.eval.split_coords,
+        overwrite=cfg.eval.overwrite,
         verbose=cfg.eval.verbose,
     )
     log(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
@@ -145,52 +152,43 @@ def main(cfg):
         test_datasets,
         batch_size=cfg.eval.batch_size,
         prediction_length=cfg.eval.prediction_length,
-        limit_prediction_length=cfg.eval.limit_prediction_length,
         metric_names=cfg.eval.metric_names,
         system_dims=system_dims,
-        return_predictions=True,
-        return_contexts=True,
-        return_labels=True,
+        return_predictions=cfg.eval.save_predictions,
+        return_contexts=cfg.eval.save_contexts,
+        return_labels=cfg.eval.save_labels,
+        num_samples=cfg.eval.num_samples,
         parallel_sample_reduction_fn=parallel_sample_reduction_fn,
         redo_normalization=True,
-        temperature=model_config["temperature"],
-        top_k=model_config["top_k"],
-        top_p=model_config["top_p"],
+        prediction_kwargs=dict(
+            limit_prediction_length=cfg.eval.limit_prediction_length,
+            temperature=model_config["temperature"],
+            top_k=model_config["top_k"],
+            top_p=model_config["top_p"],
+            verbose=cfg.eval.verbose,
+        ),
         eval_subintervals=[
             (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
         ],
     )
+    save_eval_results_fn(metrics)
 
-    log("Saving predictions...")
-    if predictions is not None and contexts is not None:
-        full_trajs = {}
-        for system in predictions:
-            if system not in contexts:
-                raise ValueError(f"System {system} not in contexts")
-            full_trajs[system] = np.concatenate(
-                [contexts[system], predictions[system]], axis=2
-            )
-            print(full_trajs[system].shape)
-        save_eval_results(
-            metrics,
-            coords=full_trajs,
-            coords_save_dir=cfg.eval.forecast_save_dir,
+    if cfg.eval.save_predictions and predictions is not None and contexts is not None:
+        process_trajs_fn(
+            cfg.eval.forecast_save_dir,
+            {
+                system: np.concatenate([contexts[system], predictions[system]], axis=2)
+                for system in predictions
+            },
         )
 
-    log("Saving labels...")
-    if labels is not None and contexts is not None:
-        full_trajs = {}
-        for system in labels:
-            if system not in contexts:
-                raise ValueError(f"System {system} not in contexts")
-            full_trajs[system] = np.concatenate(
-                [contexts[system], labels[system]], axis=2
-            )
-            print(full_trajs[system].shape)
-        save_eval_results(
-            None,  # do not save metrics again
-            coords=full_trajs,
-            coords_save_dir=cfg.eval.labels_save_dir,
+    if cfg.eval.save_labels and labels is not None and contexts is not None:
+        process_trajs_fn(
+            cfg.eval.labels_save_dir,
+            {
+                system: np.concatenate([contexts[system], labels[system]], axis=2)
+                for system in labels
+            },
         )
 
 

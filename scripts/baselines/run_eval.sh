@@ -2,8 +2,8 @@
 main_dir=$(cd "$(dirname "$0")/../.." && pwd)
 
 ulimit -n 99999
-# baselines=(mean fourier fourier_arima)
-baselines=(fourier_arima)
+baselines=(mean fourier)
+# baselines=(fourier_arima)
 split_dir=final_skew40/test_zeroshot
 
 for baseline in ${baselines[@]}; do
@@ -17,7 +17,7 @@ for baseline in ${baselines[@]}; do
         eval.batch_size=64 \
         eval.prediction_length=512 \
         eval.limit_prediction_length=false \
-        eval.metrics_save_dir=$main_dir/eval_results/baselines/$baseline/$split_dir \
+        eval.metrics_save_dir=$WORK/eval_results/baselines/$baseline/$split_dir \
         eval.metrics_fname=metrics \
         eval.overwrite=true \
         eval.device=cuda:2 \

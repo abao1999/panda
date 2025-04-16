@@ -9,7 +9,13 @@ eval:
   num_systems: 10
 
   # inference mode for patchtst
-  sliding_context: false # TODO: set to true
+  sliding_context: true
+
+  save_contexts: false
+  save_labels: false
+  save_predictions: false  # for forecasting model eval
+  save_completions: false  # for mlm model eval
+  save_masks: false  # for mlm model eval
 
   metric_names:
     - mse
@@ -30,6 +36,7 @@ eval:
   seed: 42
 
   # for generating forecasts and getting test split
+  num_samples: 1
   parallel_sample_reduction: mean
   limit_prediction_length: true
   context_length: 512
@@ -49,15 +56,13 @@ eval:
   split_coords: false
   verbose: false
 
-  use_channel_sampler: false
-  channel_sampler:
-    num_channels: 3
-    num_samples: 2
-
   baselines:
     baseline_model: fourier_arima
     order: [4, 1, 4]  # (p, d, q) for ARIMA
     num_fourier_terms: 5
+
+  chronos:
+    zero_shot: false
 
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:

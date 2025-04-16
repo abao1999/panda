@@ -165,7 +165,19 @@ def process_trajs(
     verbose: bool = False,
     base_sample_idx: int = -1,
 ) -> None:
-    """Saves each trajectory in timeseries ensemble to a separate directory"""
+    """
+    Saves each trajectory in timeseries ensemble to a separate directory
+
+    Args:
+        base_dir: The base directory to save the trajectories to
+        timeseries: A dictionary mapping system names to numpy arrays of shape
+            (num_eval_windows * num_datasets, num_channels, T) where T is the prediction
+            length or context length.
+        split_coords: Whether to split the coordinates by dimension
+        overwrite: Whether to overwrite existing trajectories
+        verbose: Whether to print verbose output
+        base_sample_idx: The base sample index to use for the trajectories
+    """
     for sys_name, trajectories in timeseries.items():
         if verbose:
             print(
@@ -183,7 +195,7 @@ def process_trajs(
 
         for i, trajectory in enumerate(trajectories):
             # very hacky, if there is only one trajectory, we can just use the base_sample_idx
-            curr_sample_idx = base_sample_idx + i + (trajectories.shape[0] != 1)
+            curr_sample_idx = base_sample_idx + i + 1
 
             if trajectory.ndim == 1:
                 trajectory = np.expand_dims(trajectory, axis=0)
