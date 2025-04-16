@@ -9,7 +9,13 @@ eval:
   num_systems: 10
 
   # inference mode for patchtst
-  sliding_context: false # TODO: set to true
+  sliding_context: true
+
+  save_contexts: false
+  save_labels: false
+  save_predictions: false  # for forecasting model eval
+  save_completions: false  # for mlm model eval
+  save_masks: false  # for mlm model eval
 
   metric_names:
     - mse
@@ -30,6 +36,7 @@ eval:
   seed: 42
 
   # for generating forecasts and getting test split
+  num_samples: 1
   parallel_sample_reduction: mean
   limit_prediction_length: true
   context_length: 512

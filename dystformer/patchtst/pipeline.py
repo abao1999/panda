@@ -160,6 +160,7 @@ class PatchTSTPipeline:
         channel_sampler: Callable[[torch.Tensor | list[torch.Tensor]], torch.Tensor]
         | None = None,
         sliding_context: bool = False,
+        verbose: bool = True,
     ) -> torch.Tensor:
         """
         Generate an autoregressive forecast for a given context timeseries
@@ -206,7 +207,7 @@ class PatchTSTPipeline:
         else:
             context_tensor = self._prepare_and_validate_context(context=context)
 
-        if prediction_length > self.model.config.prediction_length:
+        if prediction_length > self.model.config.prediction_length and verbose:
             msg = (
                 f"We recommend keeping prediction length <= {self.model.config.prediction_length}. "
                 "The quality of longer predictions may degrade since the model is not optimized for it. "

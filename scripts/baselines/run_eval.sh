@@ -2,8 +2,8 @@
 main_dir=$(cd "$(dirname "$0")/../.." && pwd)
 
 ulimit -n 99999
-# baselines=(mean fourier)
-baselines=(fourier_arima)
+baselines=(mean fourier)
+# baselines=(fourier_arima)
 split_dir=final_skew40/test_zeroshot
 
 for baseline in ${baselines[@]}; do

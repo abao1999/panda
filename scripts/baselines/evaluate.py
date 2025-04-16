@@ -15,7 +15,12 @@ from dystformer.baselines.baselines import (
 )
 from dystformer.baselines.evaluation import evaluate_forecasting_model
 from dystformer.patchtst.dataset import TimeSeriesDataset
-from dystformer.utils import get_dim_from_dataset, log_on_main, save_evaluation_results
+from dystformer.utils import (
+    get_dim_from_dataset,
+    log_on_main,
+    process_trajs,
+    save_evaluation_results,
+)
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
@@ -66,7 +71,7 @@ def main(cfg):
         for system_name in test_data_dict
     }
 
-    save_eval_results = partial(
+    save_eval_results_fn = partial(
         save_evaluation_results,
         metrics_metadata={
             "system_dims": system_dims,
@@ -75,7 +80,11 @@ def main(cfg):
         metrics_save_dir=cfg.eval.metrics_save_dir,
         metrics_fname=cfg.eval.metrics_fname,
         overwrite=cfg.eval.overwrite,
+    )
+    process_trajs_fn = partial(
+        process_trajs,
         split_coords=cfg.eval.split_coords,
+        overwrite=cfg.eval.overwrite,
         verbose=cfg.eval.verbose,
     )
     log(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
@@ -104,35 +113,24 @@ def main(cfg):
             (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
         ],
     )
+    save_eval_results_fn(metrics)
 
-    if predictions is not None and contexts is not None:
-        full_trajs = {}
-        for system in predictions:
-            if system not in contexts:
-                raise ValueError(f"System {system} not in contexts")
-            # shape: (num_eval_windows*num_datasets, num_channels, context_length + prediction_length)
-            full_trajs[system] = np.concatenate(
-                [contexts[system], predictions[system]], axis=2
-            )
-        save_eval_results(
-            metrics,
-            coords=full_trajs,
-            coords_save_dir=cfg.eval.forecast_save_dir,
+    if cfg.eval.save_predictions and predictions is not None and contexts is not None:
+        process_trajs_fn(
+            cfg.eval.forecast_save_dir,
+            {
+                system: np.concatenate([contexts[system], predictions[system]], axis=2)
+                for system in predictions
+            },
         )
 
-    if labels is not None and contexts is not None:
-        full_trajs = {}
-        for system in labels:
-            if system not in contexts:
-                raise ValueError(f"System {system} not in contexts")
-            # shape: (num_eval_windows*num_datasets, num_channels, context_length + prediction_length)
-            full_trajs[system] = np.concatenate(
-                [contexts[system], labels[system]], axis=2
-            )
-        save_eval_results(
-            None,  # do not save metrics again
-            coords=full_trajs,
-            coords_save_dir=cfg.eval.labels_save_dir,
+    if cfg.eval.save_labels and labels is not None and contexts is not None:
+        process_trajs_fn(
+            cfg.eval.labels_save_dir,
+            {
+                system: np.concatenate([contexts[system], labels[system]], axis=2)
+                for system in labels
+            },
         )
 
 

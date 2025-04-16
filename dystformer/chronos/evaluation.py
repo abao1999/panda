@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, Callable
+from typing import Callable
 
 import numpy as np
 import torch
@@ -19,7 +19,6 @@ def evaluate_chronos_forecast(
     prediction_length: int,
     system_dims: dict[str, int],
     num_samples: int = 1,
-    limit_prediction_length: bool = False,
     metric_names: list[str] | None = None,
     eval_subintervals: list[tuple[int, int]] | None = None,
     parallel_sample_reduction_fn: Callable | None = None,
@@ -27,7 +26,7 @@ def evaluate_chronos_forecast(
     return_contexts: bool = False,
     return_labels: bool = False,
     redo_normalization: bool = False,
-    **predict_kwargs: Any,
+    prediction_kwargs: dict | None = None,
 ) -> tuple[
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
@@ -59,14 +58,11 @@ def evaluate_chronos_forecast(
             Only returned if `return_labels` is True.
         - system_metrics: A nested dictionary containing computed metrics for each system.
     """
-    assert isinstance(num_samples, int) and num_samples > 0, (
-        "num_samples must be a positive integer"
-    )
     system_predictions = {}
     system_contexts = {}
     system_labels = {}
     system_metrics = defaultdict(dict)
-
+    prediction_kwargs = prediction_kwargs or {}
     if eval_subintervals is None:
         eval_subintervals = [(0, prediction_length)]
     elif (0, prediction_length) not in eval_subintervals:
@@ -102,8 +98,7 @@ def evaluate_chronos_forecast(
                     past_batch,
                     prediction_length=prediction_length,
                     num_samples=num_samples,
-                    limit_prediction_length=limit_prediction_length,
-                    **predict_kwargs,
+                    **prediction_kwargs,
                 )
                 .transpose(0, 1)
                 .cpu()

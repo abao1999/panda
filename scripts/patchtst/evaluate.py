@@ -16,7 +16,12 @@ from dystformer.patchtst.evaluation import (
     evaluate_mlm_model,
 )
 from dystformer.patchtst.pipeline import PatchTSTPipeline
-from dystformer.utils import get_dim_from_dataset, log_on_main, save_evaluation_results
+from dystformer.utils import (
+    get_dim_from_dataset,
+    log_on_main,
+    process_trajs,
+    save_evaluation_results,
+)
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
@@ -138,7 +143,7 @@ def main(cfg):
         for system_name in test_data_dict
     }
 
-    save_eval_results = partial(
+    save_eval_results_fn = partial(
         save_evaluation_results,
         metrics_metadata={
             "system_dims": system_dims,
@@ -147,7 +152,11 @@ def main(cfg):
         metrics_save_dir=cfg.eval.metrics_save_dir,
         metrics_fname=cfg.eval.metrics_fname,
         overwrite=cfg.eval.overwrite,
+    )
+    process_trajs_fn = partial(
+        process_trajs,
         split_coords=cfg.eval.split_coords,
+        overwrite=cfg.eval.overwrite,
         verbose=cfg.eval.verbose,
     )
     log(f"Saving evaluation results to {cfg.eval.metrics_save_dir}")
@@ -163,47 +172,43 @@ def main(cfg):
             test_datasets,
             batch_size=cfg.eval.batch_size,
             prediction_length=cfg.eval.prediction_length,
-            limit_prediction_length=cfg.eval.limit_prediction_length,
             metric_names=cfg.eval.metric_names,
-            return_predictions=True,
-            return_contexts=True,
-            return_labels=True,
+            return_predictions=cfg.eval.save_predictions,
+            return_contexts=cfg.eval.save_contexts,
+            return_labels=cfg.eval.save_labels,
             parallel_sample_reduction_fn=parallel_sample_reduction_fn,
             redo_normalization=True,
-            sliding_context=cfg.eval.sliding_context,
+            prediction_kwargs=dict(
+                sliding_context=cfg.eval.sliding_context,
+                limit_prediction_length=cfg.eval.limit_prediction_length,
+                verbose=cfg.eval.verbose,
+            ),
             eval_subintervals=[
                 (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
             ],
         )
+        save_eval_results_fn(metrics)
 
-        if predictions is not None and contexts is not None:
-            full_trajs = {}
-            for system in predictions:
-                if system not in contexts:
-                    raise ValueError(f"System {system} not in contexts")
-                # shape: (num_eval_windows*num_datasets, num_channels, context_length + prediction_length)
-                full_trajs[system] = np.concatenate(
-                    [contexts[system], predictions[system]], axis=2
-                )
-            save_eval_results(
-                metrics,
-                coords=full_trajs,
-                coords_save_dir=cfg.eval.forecast_save_dir,
+        if cfg.eval.save_predictions and cfg.eval.save_contexts:
+            assert predictions is not None and contexts is not None
+            process_trajs_fn(
+                cfg.eval.forecast_save_dir,
+                {  # concatenate contexts and predictions
+                    system: np.concatenate(
+                        [contexts[system], predictions[system]], axis=2
+                    )
+                    for system in predictions
+                },
             )
 
-        if labels is not None and contexts is not None:
-            full_trajs = {}
-            for system in labels:
-                if system not in contexts:
-                    raise ValueError(f"System {system} not in contexts")
-                # shape: (num_eval_windows*num_datasets, num_channels, context_length + prediction_length)
-                full_trajs[system] = np.concatenate(
-                    [contexts[system], labels[system]], axis=2
-                )
-            save_eval_results(
-                None,  # do not save metrics again
-                coords=full_trajs,
-                coords_save_dir=cfg.eval.labels_save_dir,
+        if cfg.eval.save_labels and cfg.eval.save_contexts:
+            assert labels is not None and contexts is not None
+            process_trajs_fn(
+                cfg.eval.labels_save_dir,
+                {  # concatenate contexts and labels
+                    system: np.concatenate([contexts[system], labels[system]], axis=2)
+                    for system in labels
+                },
             )
 
     elif cfg.eval.mode == "pretrain":
@@ -214,29 +219,19 @@ def main(cfg):
                 metric_names=cfg.eval.metric_names,
                 batch_size=cfg.eval.batch_size,
                 undo_normalization=False,
-                return_completions=True,
-                return_processed_past_values=True,
-                return_masks=True,
+                return_completions=cfg.eval.save_completions,
+                return_processed_past_values=cfg.eval.save_contexts,
+                return_masks=cfg.eval.save_masks,
             )
         )
-        if completions is not None:
-            save_eval_results(
-                metrics,
-                coords=completions,
-                coords_save_dir=cfg.eval.completions_save_dir,
-            )
-        if processed_past_values is not None:
-            save_eval_results(
-                None,  # do not save metrics again
-                coords=processed_past_values,
-                coords_save_dir=cfg.eval.patch_input_save_dir,
-            )
-        if timestep_masks is not None:
-            save_eval_results(
-                None,  # do not save metrics again
-                coords=timestep_masks,
-                coords_save_dir=cfg.eval.timestep_masks_save_dir,
-            )
+        save_eval_results_fn(metrics)
+
+        if cfg.eval.save_completions and completions is not None:
+            process_trajs_fn(cfg.eval.completions_save_dir, completions)
+        if cfg.eval.save_contexts and processed_past_values is not None:
+            process_trajs_fn(cfg.eval.patch_input_save_dir, processed_past_values)
+        if cfg.eval.save_masks and timestep_masks is not None:
+            process_trajs_fn(cfg.eval.timestep_masks_save_dir, timestep_masks)
     else:
         raise ValueError(f"Invalid eval mode: {cfg.eval.mode}")
 
