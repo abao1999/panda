@@ -301,15 +301,22 @@ def make_ensemble_from_arrow_dir(
     split: str,
     dyst_names_lst: list[str] | None = None,
     num_samples: int | None = None,
+    num_systems: int | None = None,
     one_dim_target: bool = False,
     num_processes: int = cpu_count(),
 ) -> dict[str, np.ndarray]:
     ensemble: dict[str, np.ndarray] = {}
     if dyst_names_lst is None:
         data_dir = os.path.join(base_dir, split)
-        dyst_names_lst = [
-            folder.name for folder in Path(data_dir).iterdir() if folder.is_dir()
-        ]
+        dyst_names_lst = sorted(
+            [folder.name for folder in Path(data_dir).iterdir() if folder.is_dir()]
+        )
+
+    if num_systems is not None:
+        assert num_systems <= len(dyst_names_lst), (
+            f"num_systems {num_systems} must be less than or equal to the number of systems in the directory {len(dyst_names_lst)}"
+        )
+        dyst_names_lst = dyst_names_lst[:num_systems]
 
     # Prepare arguments for multiprocessing
     args = [
