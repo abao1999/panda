@@ -49,7 +49,7 @@ for run_name in ${run_names[@]}; do
         eval.mode=predict \
         eval.sliding_context=$use_sliding_context \
         eval.checkpoint_path=$checkpoint_dir/$run_name/checkpoint-final \
-        eval.data_path=$WORK/data/$split_dir \
+        eval.data_path=$WORK/data/improved/$split_dir \
         eval.num_systems=null \
         eval.num_samples_per_subdir=null \
         eval.num_test_instances=5 \
