@@ -5,35 +5,10 @@ checkpoint_dir=$WORK/checkpoints
 
 ulimit -n 99999
 
-# # univariate with old dynamics embedding
-# run_names=(
-#     pft_emb_equal_param_univariate_from_scratch-0
-#     pft_rff_univariate_pretrained-0
-# )
-
-# # univariate either without dynamics embedding or with the new poly one
 run_names=(
-    # pft_noemb_equal_param_univariate_from_scratch-0
-    pft_vanilla_pretrained_correct-0
-    # pft_equal_param_deeper_univariate_from_scratch_noemb-0
+    pft_linattnpolyemb_from_scratch-0
 )
 
-# # multivariate with old dynamics embedding
-# run_names=(
-#     pft_stand_rff_only_pretrained-0 
-#     pft_fullyfeat_from_scratch-0 # this is actually just rff from scratch
-# )
-
-# multivariate either without dynamics embedding or with the new poly one
-# run_names=(
-    # pft_chattn_noembed_pretrained_correct-0 
-    # pft_stand_chattn_noemb-0 
-    # pft_chattn_fullemb_quartic_enc-0
-    # pft_chattn_emb_w_poly-0
-    # pft_chattn_fullemb_pretrained-0
-# )
-
-# split_dir=final_skew40/train
 split_dir=final_skew40/test_zeroshot
 
 use_sliding_context=true
@@ -49,9 +24,8 @@ for run_name in ${run_names[@]}; do
         eval.mode=predict \
         eval.sliding_context=$use_sliding_context \
         eval.checkpoint_path=$checkpoint_dir/$run_name/checkpoint-final \
-        eval.data_path=$WORK/data/$split_dir \
+        eval.data_path=$WORK/data/improved/$split_dir \
         eval.num_systems=null \
-        eval.num_samples_per_subdir=null \
         eval.num_test_instances=5 \
         eval.window_style=sampled \
         eval.batch_size=64 \
@@ -62,10 +36,9 @@ for run_name in ${run_names[@]}; do
         eval.metrics_fname=metrics \
         eval.overwrite=true \
         eval.device=cuda:2 \
-        eval.save_predictions=false \
-        eval.save_labels=false \
         eval.forecast_save_dir=$WORK/data/eval/$model_dirname/$run_name/$split_dir/forecasts \
         eval.labels_save_dir=$WORK/data/eval/$model_dirname/$run_name/$split_dir/labels \
+        fixed_dim=3 \
         eval.seed=99 \
         "$@"
 done
