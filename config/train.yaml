@@ -4,6 +4,7 @@ train:
   max_steps: 100_000
   save_steps: 10_000
   log_steps: 100
+  resume_from_checkpoint: null
 
   per_device_train_batch_size: 512
   gradient_accumulation_steps: 1
