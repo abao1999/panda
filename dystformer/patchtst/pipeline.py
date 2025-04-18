@@ -221,7 +221,7 @@ class PatchTSTPipeline:
         remaining = prediction_length
 
         while remaining > 0:
-            outputs = self.model.generate(context_tensor, **kwargs)
+            outputs = self.model.generate(context_tensor)
 
             # prediction: [bs x num_samples x forecast_len x num_channels]
             prediction = outputs.sequences  # type: ignore
