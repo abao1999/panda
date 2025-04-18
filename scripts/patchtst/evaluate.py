@@ -10,7 +10,7 @@ import torch
 import transformers
 from gluonts.dataset.common import FileDataset
 
-from dystformer.patchtst.dataset import PatchTSTDataset
+from dystformer.patchtst.dataset import TimeSeriesDataset
 from dystformer.patchtst.evaluation import (
     evaluate_forecasting_model,
     evaluate_mlm_model,
@@ -79,13 +79,12 @@ def main(cfg):
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
     log(f"channel_attention: {channel_attention}")
+    log(f"use_dynamics_embedding: {use_dynamics_embedding}")
 
     if channel_attention:
         # check use of channel rope
         channel_rope = model_config["channel_rope"]
         log(f"channel_rope: {channel_rope}")
-
-    log(f"use_dynamics_embedding: {use_dynamics_embedding}")
 
     if use_dynamics_embedding:
         # check dynamics embedding parameters
@@ -99,7 +98,7 @@ def main(cfg):
                 "num_rff",
             ]
         }
-        log(f"dynamics embeddingconfig: {dynamics_embedding_config}")
+        log(f"dynamics embedding config: {dynamics_embedding_config}")
 
     pipeline.model.eval()
 
@@ -111,6 +110,14 @@ def main(cfg):
     for system_dir in system_dirs[: cfg.eval.num_systems]:
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
+        # sort system_files by sample_idx where the files in system_files are named like {sample_idx}_T-4096.arrow
+        # also, take only the first cfg.eval.num_samples_per_subdir files in each subdirectory
+        # ---> This means only the first 10 parameter perturbations per skew pair, if the subdirectory names are the skew pairs
+        system_files = sorted(
+            system_files,
+            key=lambda x: int(x.stem.split("_")[0]),
+        )[: cfg.eval.num_samples_per_subdir]
+
         test_data_dict[system_name] = [
             FileDataset(path=Path(file_path), freq="h", one_dim_target=False)
             for file_path in system_files
@@ -122,11 +129,14 @@ def main(cfg):
         system_name: get_dim_from_dataset(test_data_dict[system_name][0])
         for system_name in test_data_dict
     }
+    n_system_samples = {
+        system_name: len(test_data_dict[system_name]) for system_name in test_data_dict
+    }
 
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     test_datasets = {
-        system_name: PatchTSTDataset(
+        system_name: TimeSeriesDataset(
             datasets=test_data_dict[system_name],
             probabilities=[1.0 / len(test_data_dict[system_name])]
             * len(test_data_dict[system_name]),
@@ -144,8 +154,9 @@ def main(cfg):
     save_eval_results_fn = partial(
         save_evaluation_results,
         metrics_metadata={
-            "system_dims": system_dims
-        },  # pass system_dims to be saved as column in metrics csv
+            "system_dims": system_dims,
+            "n_system_samples": n_system_samples,
+        },  # pass metadata to be saved as columns in metrics csv
         metrics_save_dir=cfg.eval.metrics_save_dir,
         metrics_fname=cfg.eval.metrics_fname,
         overwrite=cfg.eval.overwrite,

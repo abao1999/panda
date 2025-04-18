@@ -6,7 +6,8 @@ eval:
   device: cuda:7
   torch_dtype: float32 # bfloat16?
   batch_size: 32
-  num_systems: 10
+  num_systems: null
+  num_samples_per_subdir: null
 
   # inference mode for patchtst
   sliding_context: true
@@ -21,8 +22,8 @@ eval:
     - mse
     - mae
     - smape
-    - r2_score
     - spearman
+    # - hellinger_distance
 
   forecast_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/forecasts
   labels_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/labels
@@ -31,14 +32,15 @@ eval:
   timestep_masks_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/timestep_masks
 
   metrics_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/metrics
-  metrics_fname: metrics.json
+  metrics_fname: metrics
   overwrite: false
   seed: 42
 
   # for generating forecasts and getting test split
-  num_samples: 1
+  num_samples: 1 # NOTE: this is only used in chronos/evaluate.py
   parallel_sample_reduction: mean
   limit_prediction_length: true
+  context_length: 512
   prediction_length: 64
 
   # window style can be either sampled or rolling
@@ -55,10 +57,13 @@ eval:
   split_coords: false
   verbose: false
 
-  use_channel_sampler: false
-  channel_sampler:
-    num_channels: 3
-    num_samples: 2
+  baselines:
+    baseline_model: fourier_arima
+    order: [4, 1, 4]  # (p, d, q) for ARIMA
+    num_fourier_terms: 5
+
+  chronos:
+    zero_shot: false
 
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:

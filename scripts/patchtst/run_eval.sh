@@ -20,20 +20,31 @@ if [ "$use_sliding_context" = true ]; then
     echo "Using sliding context"
 fi
 
+use_sliding_context=true
+model_dirname=patchtst
+if [ "$use_sliding_context" = true ]; then
+    model_dirname=patchtst_sliding
+    echo "Using sliding context"
+fi
+
 for run_name in ${run_names[@]}; do
     echo "Evaluating $run_name"
     python scripts/patchtst/evaluate.py \
         eval.mode=predict \
         eval.sliding_context=$use_sliding_context \
+        eval.sliding_context=$use_sliding_context \
         eval.checkpoint_path=$checkpoint_dir/$run_name/checkpoint-final \
+        eval.data_path=$WORK/data/improved/$split_dir \
         eval.data_path=$WORK/data/improved/$split_dir \
         eval.num_systems=null \
         eval.num_test_instances=5 \
         eval.window_style=sampled \
         eval.batch_size=64 \
         eval.context_length=512 \
+        eval.context_length=512 \
         eval.prediction_length=512 \
         eval.limit_prediction_length=false \
+        eval.metrics_save_dir=$WORK/eval_results/$model_dirname/$run_name/$split_dir \
         eval.metrics_save_dir=$WORK/eval_results/$model_dirname/$run_name/$split_dir \
         eval.metrics_fname=metrics \
         eval.overwrite=true \

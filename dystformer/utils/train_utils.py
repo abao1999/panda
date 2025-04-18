@@ -110,6 +110,7 @@ def get_next_path(
     base_dir: Path,
     file_type: str = "yaml",
     separator: str = "-",
+    overwrite: bool = False,
 ):
     """
     Gets the next available path in a directory. For example, if `base_fname="results"`
@@ -132,7 +133,7 @@ def get_next_path(
         map(lambda x: int(x.stem.replace(base_fname + separator, "")), items)
     ) + [-1]
 
-    next_num = max(run_nums) + 1
+    next_num = max(run_nums) + (0 if overwrite else 1)
     fname = f"{base_fname}{separator}{next_num}" + (
         f".{file_type}" if file_type != "" else ""
     )

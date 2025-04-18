@@ -24,7 +24,7 @@ from dystformer.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from dystformer.patchtst.dataset import PatchTSTDataset
+from dystformer.patchtst.dataset import TimeSeriesDataset
 from dystformer.patchtst.patchtst import (
     PatchTSTForPrediction,
     PatchTSTForPretraining,
@@ -126,6 +126,7 @@ def main(cfg):
         cfg.run_name if cfg.run_name else "run",
         base_dir=Path(cfg.train.output_dir),
         file_type="",
+        overwrite=cfg.train.resume_from_checkpoint is not None,
     )
 
     log_on_main(f"Logging dir: {output_dir}", logger)
@@ -210,7 +211,7 @@ def main(cfg):
         RandomDimSelectionTransform(num_dims=cfg.fixed_dim),
     ]
 
-    shuffled_train_dataset = PatchTSTDataset(
+    shuffled_train_dataset = TimeSeriesDataset(
         datasets=train_datasets,
         probabilities=probability,
         context_length=cfg.patchtst.context_length,
@@ -273,6 +274,7 @@ def main(cfg):
         ddp_backend=cfg.train.ddp_backend,
         remove_unused_columns=cfg.train.remove_unused_columns,
         seed=cfg.train.seed,
+        resume_from_checkpoint=cfg.train.resume_from_checkpoint,
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.

@@ -28,6 +28,7 @@ tests/*.png
 *ablations*.sh
 
 # output and logging files
+tests/
 output/
 eval_results/
 *.pt
@@ -35,6 +36,7 @@ eval_results/
 *.safetensors
 */events.out*
 logs/
+**/tmp_scripts*
 **/results/
 **/run/
 **/.ipynb_checkpoints*

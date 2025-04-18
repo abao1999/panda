@@ -8,14 +8,14 @@ run_name=timemoe-50m
 split_dir=final_skew40/test_zeroshot
 
 python scripts/timemoe/evaluate.py \
-        eval.data_path=$WORK/data/copy/${split_dir} \
+        eval.data_path=$WORK/data/improved/${split_dir} \
         eval.num_systems=null \
         eval.num_test_instances=1 \
         eval.window_style=sampled \
         eval.batch_size=64 \
         eval.prediction_length=512 \
         eval.limit_prediction_length=false \
-        eval.metrics_save_dir=$main_dir/eval_results/timemoe/${run_name}/${split_dir} \
+        eval.metrics_save_dir=$WORK/eval_results/timemoe/${run_name}/${split_dir} \
         eval.metrics_fname=metrics \
         eval.overwrite=true \
         eval.device=cuda:0 \

@@ -11,16 +11,105 @@ from dystformer.utils import safe_standardize
 
 COLORS = list(TABLEAU_COLORS.values())
 
-if os.path.exists("custom_style.mplstyle"):
-    plt.style.use(["ggplot", "custom_style.mplstyle"])
+
+def plot_forecast_3d(
+    forecast: np.ndarray,
+    ground_truth: np.ndarray,
+    context: np.ndarray,
+    figsize: tuple[int, int] = (6, 6),
+    indices: list[int] = [0, 1, 2],
+    save_path: str | None = None,
+) -> None:
+    """
+    Plot a 3D forecast
+
+    Args:
+        forecast (np.ndarray): A (num_features, num_timesteps) numpy array containing the forecast
+        ground_truth (np.ndarray): A (num_features, num_timesteps) numpy array containing the ground truth
+        context (np.ndarray): A (num_features, num_timesteps) numpy array containing the context
+        save_path (str, optional): Path to save the plot. Defaults to None.
+    """
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111, projection="3d")
+    ax.plot(
+        context[indices[0]],
+        context[indices[1]],
+        context[indices[2]],
+        color="black",
+        label="context",
+    )
+    ax.plot(
+        forecast[indices[0]],
+        forecast[indices[1]],
+        forecast[indices[2]],
+        color="red",
+        label="forecast",
+    )
+    ax.plot(
+        ground_truth[indices[0]],
+        ground_truth[indices[1]],
+        ground_truth[indices[2]],
+        color="black",
+        linestyle="--",
+        label="ground truth",
+    )
+    ax.legend()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300)
+    else:
+        plt.show()
+    plt.close()
+
+
+def plot_forecast_1d(
+    forecast: np.ndarray,
+    ground_truth: np.ndarray,
+    context: np.ndarray,
+    figsize: tuple[int, int] = (6, 6),
+    save_path: str | None = None,
+    indices: list[int] = [0, 1, 2],
+    channel_axis: int = 0,
+) -> None:
+    """
+    Plot a 1D forecast
+
+    Args:
+        forecast (np.ndarray): A (num_features, num_timesteps) numpy array containing the forecast
+        ground_truth (np.ndarray): A (num_features, num_timesteps) numpy array containing the ground truth
+        context (np.ndarray): A (num_features, num_timesteps) numpy array containing the context
+        save_path (str, optional): Path to save the plot. Defaults to None.
+    """
+    assert forecast.shape[0] == ground_truth.shape[0] == context.shape[0]
+    assert all(0 <= idx < forecast.shape[0] for idx in indices)
+
+    context_ts = np.arange(context.shape[1])
+    forecast_ts = np.arange(context.shape[1], context.shape[1] + forecast.shape[1])
+
+    fig, axes = plt.subplots(nrows=3, ncols=1, figsize=figsize, sharex=True)
+    for i in range(forecast.shape[0]):
+        axes[i].plot(context_ts, context[i], color="black", label="context")
+        axes[i].plot(forecast_ts, forecast[i], color="red", label="forecast")
+        axes[i].plot(
+            forecast_ts,
+            ground_truth[i],
+            color="black",
+            linestyle="--",
+            label="ground truth",
+        )
+    axes[0].legend()
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300)
+    else:
+        plt.show()
+    plt.close()
 
 
 def plot_trajs_multivariate(
     trajectories: np.ndarray,
-    save_dir: str = "tests/figs",
+    save_dir: str | None = None,
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
-    plot_2d_slice: bool = False,
     plot_projections: bool = False,
     standardize: bool = False,
     dims_3d: list[int] = [0, 1, 2],
@@ -33,17 +122,17 @@ def plot_trajs_multivariate(
 
     Args:
         trajectories (np.ndarray): Array of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
-        save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
+        save_dir (str, optional): Directory to save the plots. Defaults to None.
         plot_name (str, optional): Base name for the saved plot files. Defaults to "dyst".
         samples_subset (list[int] | None): Subset of sample indices to plot. If None, all samples are used. Defaults to None.
-        plot_2d_slice (bool): Whether to plot a 2D slice of the first two dimensions. Defaults to True.
         plot_projections (bool): Whether to plot 2D projections on the coordinate planes
         standardize (bool): Whether to standardize the trajectories
         dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
         figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
         max_samples (int): Maximum number of samples to plot. Defaults to 6.
     """
-    os.makedirs(save_dir, exist_ok=True)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
     assert trajectories.shape[1] >= len(dims_3d), (
         f"Data has {trajectories.shape[1]} dimensions, but {len(dims_3d)} dimensions were requested for plotting"
     )
@@ -60,34 +149,6 @@ def plot_trajs_multivariate(
     if standardize:
         trajectories = safe_standardize(trajectories)
 
-    if plot_2d_slice:
-        save_path = os.path.join(save_dir, f"{plot_name}.png")
-        plt.figure(figsize=figsize)
-        for sample_idx in range(n_samples_plot):
-            label_sample_idx = (
-                samples_subset[sample_idx] if samples_subset is not None else sample_idx
-            )
-            label = f"Sample {label_sample_idx}"
-            curr_color = COLORS[sample_idx % len(COLORS)]
-
-            xy = trajectories[sample_idx, :2, :]
-            plt.plot(*xy, alpha=0.5, linewidth=1, color=curr_color, label=label)
-
-            ic_point = trajectories[sample_idx, :2, 0]
-            plt.scatter(*ic_point, marker="*", s=100, alpha=0.5, color=curr_color)
-
-            final_point = trajectories[sample_idx, :2, -1]
-            plt.scatter(*final_point, marker="x", s=100, alpha=0.5, color=curr_color)
-
-        print(f"Saving 2D plot to {save_path}")
-        plt.xlabel("X")
-        plt.ylabel("Y")
-        plt.legend()
-        plt.title(plot_name.replace("_", " "))
-        plt.savefig(save_path, dpi=300)
-        plt.close()
-
-    save_path = os.path.join(save_dir, f"{plot_name}_3D.png")
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111, projection="3d")
 
@@ -154,7 +215,11 @@ def plot_trajs_multivariate(
                 x_min, end_pt[1], end_pt[2], marker="x", alpha=palpha, color=curr_color
             )
 
-    print(f"Saving 3D plot to {save_path}")
+    save_path = (
+        os.path.join(save_dir, f"{plot_name}_3D.png") if save_dir is not None else None
+    )
+    if save_path is not None:
+        print(f"Saving 3D plot to {save_path}")
     ax.set_xlabel(f"dim_{dims_3d[0]}")
     ax.set_ylabel(f"dim_{dims_3d[1]}")
     ax.set_zlabel(f"dim_{dims_3d[2]}")  # type: ignore
@@ -162,7 +227,8 @@ def plot_trajs_multivariate(
     ax.tick_params(pad=3)
     ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
     plt.title(plot_name.replace("_", " "))
-    plt.savefig(save_path, dpi=300)
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300)
     if show_plot:
         print("Showing plot")
         plt.show()
@@ -217,7 +283,7 @@ def plot_grid_trajs_multivariate(
 
     Args:
         ensemble (dict[str, np.ndarray]): Dictionary of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
-        save_dir (str, optional): Directory to save the plots. Defaults to "tests/figs".
+        save_dir (str, optional): Directory to save the plots. Defaults to None.
         standardize (bool): Whether to standardize the trajectories
         dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
         figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
@@ -267,7 +333,7 @@ def plot_grid_trajs_multivariate(
             ax.scatter(*end_pt, marker="x", s=100, alpha=0.5, color=curr_color)
 
         system_name_title = system_name.replace("_", " + ")
-        ax.set_title(f"{system_name_title}.", fontsize=18, fontweight="bold")
+        ax.set_title(f"{system_name_title}.", fontweight="bold")
         fig.patch.set_facecolor("white")  # Set the figure's face color to white
         ax.set_facecolor("white")  # Set the axes' face color to white
         ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
@@ -290,7 +356,7 @@ def plot_completions_evaluation(
     completions: np.ndarray,
     context: np.ndarray,
     mask: np.ndarray | None = None,
-    save_dir: str = "tests/figs",
+    save_dir: str | None = None,
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
     max_samples: int = 6,
@@ -299,7 +365,6 @@ def plot_completions_evaluation(
     Plot side-by-side 3D multivariate timeseries for completions and context,
     and overlay univariate series for each dimension below with shared legends.
     """
-    os.makedirs(save_dir, exist_ok=True)
     num_tot_samples = min(completions.shape[0], context.shape[0])
     n_samples_plot = min(max_samples, num_tot_samples)
 
@@ -437,8 +502,10 @@ def plot_completions_evaluation(
     # plt.subplots_adjust(hspace=0.6)  # Fine-tune spacing between rows
     plt.tight_layout()
 
-    save_path = os.path.join(save_dir, f"{plot_name}_combined.pdf")
-    plt.savefig(save_path, dpi=300)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{plot_name}_combined.pdf")
+        plt.savefig(save_path, dpi=300)
     plt.close()
 
 
@@ -446,7 +513,7 @@ def plot_forecast_evaluation(
     forecasts: np.ndarray,
     ground_truth: np.ndarray,
     context_length: int,
-    save_dir: str = "tests/figs",
+    save_dir: str | None = None,
     plot_name: str = "dyst",
     samples_subset: list[int] | None = None,
     max_samples: int = 6,
@@ -456,7 +523,6 @@ def plot_forecast_evaluation(
     Plot side-by-side 3D multivariate timeseries for completions and context,
     and overlay univariate series for each dimension below with shared legends.
     """
-    os.makedirs(save_dir, exist_ok=True)
     num_tot_samples = min(forecasts.shape[0], ground_truth.shape[0])
     n_samples_plot = min(max_samples, num_tot_samples)
     forecast_length = forecasts.shape[2] - context_length
@@ -583,8 +649,10 @@ def plot_forecast_evaluation(
     ax3.legend(handles=[line_ground_truth, line_forecasts], loc="upper right")
 
     plt.suptitle(plot_name.replace("_", " + "), fontsize=18, fontweight="bold")
-    save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
-    plt.savefig(save_path, dpi=300)
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{plot_name}_combined.png")
+        plt.savefig(save_path, dpi=300)
     if show_plot:
         plt.show()
     plt.close()

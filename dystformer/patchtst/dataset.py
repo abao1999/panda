@@ -52,7 +52,7 @@ class PseudoShuffledIterableDataset(IterableDataset):
 
 
 @dataclass
-class PatchTSTDataset(IterableDataset):
+class TimeSeriesDataset(IterableDataset):
     datasets: list
     probabilities: list[float]
     context_length: int = 512

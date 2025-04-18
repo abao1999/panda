@@ -97,6 +97,14 @@ def main(cfg):
     for system_dir in system_dirs[: cfg.eval.num_systems]:
         system_name = system_dir.name
         system_files = list(system_dir.glob("*"))
+        # sort system_files by sample_idx where the files in system_files are named like {sample_idx}_T-4096.arrow
+        # also, take only the first cfg.eval.num_samples_per_subdir files in each subdirectory
+        # ---> This means only the first 10 parameter perturbations per skew pair, if the subdirectory names are the skew pairs
+        system_files = sorted(
+            system_files,
+            key=lambda x: int(x.stem.split("_")[0]),
+        )[: cfg.eval.num_samples_per_subdir]
+
         test_data_dict[system_name] = [
             FileDataset(path=Path(file_path), freq="h", one_dim_target=False)
             for file_path in system_files
@@ -107,6 +115,9 @@ def main(cfg):
     system_dims = {
         system_name: get_dim_from_dataset(test_data_dict[system_name][0])
         for system_name in test_data_dict
+    }
+    n_system_samples = {
+        system_name: len(test_data_dict[system_name]) for system_name in test_data_dict
     }
 
     log(f"Running evaluation on {list(test_data_dict.keys())}")
@@ -135,8 +146,9 @@ def main(cfg):
     save_eval_results_fn = partial(
         save_evaluation_results,
         metrics_metadata={
-            "system_dims": system_dims
-        },  # pass system_dims to be saved as column in metrics csv
+            "system_dims": system_dims,
+            "n_system_samples": n_system_samples,
+        },  # pass metadata to be saved as columns in metrics csv
         metrics_save_dir=cfg.eval.metrics_save_dir,
         metrics_fname=cfg.eval.metrics_fname,
         overwrite=cfg.eval.overwrite,
