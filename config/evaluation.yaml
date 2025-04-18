@@ -6,7 +6,8 @@ eval:
   device: cuda:7
   torch_dtype: float32 # bfloat16?
   batch_size: 32
-  num_systems: 10
+  num_systems: null
+  num_samples_per_subdir: null
 
   # inference mode for patchtst
   sliding_context: true
@@ -21,8 +22,8 @@ eval:
     - mse
     - mae
     - smape
-    - r2_score
     - spearman
+    # - hellinger_distance
 
   forecast_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/forecasts
   labels_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/labels
@@ -36,7 +37,7 @@ eval:
   seed: 42
 
   # for generating forecasts and getting test split
-  num_samples: 1
+  num_samples: 1 # NOTE: this is only used in chronos/evaluate.py
   parallel_sample_reduction: mean
   limit_prediction_length: true
   context_length: 512
