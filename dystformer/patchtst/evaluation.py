@@ -145,7 +145,6 @@ def evaluate_forecasting_model(
     systems: dict[str, TimeSeriesDataset],
     batch_size: int,
     prediction_length: int,
-    limit_prediction_length: bool = False,
     metric_names: list[str] | None = None,
     parallel_sample_reduction_fn: Callable | None = None,
     channel_sampler: Callable | None = None,
@@ -153,7 +152,6 @@ def evaluate_forecasting_model(
     return_contexts: bool = False,
     return_labels: bool = False,
     redo_normalization: bool = False,
-    sliding_context: bool = False,
     prediction_kwargs: dict | None = None,
     eval_subintervals: list[tuple[int, int]] | None = None,
 ) -> tuple[
