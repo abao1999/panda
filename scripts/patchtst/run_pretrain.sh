@@ -18,7 +18,7 @@ scalinglaw_data_dir=$WORK/data/improved/scalinglaw
 # split_5244-10489_ic2
 
 train_data_dirs=(
-    $scalinglaw_data_dir/split_2622-5244_ic4/train
+    $scalinglaw_data_dir/split_327-655_ic32/train
 )
 train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "train_data_dirs: $train_data_dirs_json"

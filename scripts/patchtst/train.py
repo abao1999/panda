@@ -91,6 +91,7 @@ def main(cfg):
             sync_tensorboard=False,  # auto-upload tensorboard metrics
             group=cfg.wandb.group_name,
             resume=cfg.wandb.resume,
+            id=cfg.wandb.resume_run_id,
         )
         log_on_main(f"Wandb initialized: {run.id}", logger)
 
