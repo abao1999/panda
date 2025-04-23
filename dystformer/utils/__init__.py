@@ -33,6 +33,7 @@ from .plot_utils import (
     plot_forecast_3d,
     plot_forecast_evaluation,
     plot_grid_trajs_multivariate,
+    plot_model_prediction,
     plot_trajs_multivariate,
     plot_univariate_trajs,
 )
