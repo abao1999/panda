@@ -20,6 +20,7 @@ data/
 *_debug.py
 *.mplstyle
 *.nfs*
+*.pkl
 nohup.out
 tests/*.json
 tests/*.png
