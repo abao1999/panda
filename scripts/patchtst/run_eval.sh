@@ -9,6 +9,7 @@ ulimit -n 99999
 run_names=(
     pft_chattn_mlm_sys164_ic128-0
     pft_chattn_mlm_sys5245_ic4-0
+    pft_chattn_noembed_pretrained_correct-0
 )
 # # univariate with old dynamics embedding
 # run_names=(
@@ -40,24 +41,17 @@ run_names=(
 
 # split_dir=final_skew40/train
 split_dir=final_skew40/test_zeroshot
-
-use_sliding_context=true
 model_dirname=patchtst
-if [ "$use_sliding_context" = true ]; then
-    model_dirname=patchtst_sliding
-    echo "Using sliding context"
-fi
 
 for run_name in ${run_names[@]}; do
     echo "Evaluating $run_name"
     python scripts/patchtst/evaluate.py \
         eval.mode=predict \
-        eval.sliding_context=$use_sliding_context \
         eval.checkpoint_path=$checkpoint_dir/$run_name/checkpoint-final \
         eval.data_path=$WORK/data/improved/$split_dir \
         eval.num_systems=null \
         eval.num_samples_per_subdir=null \
-        eval.num_test_instances=5 \
+        eval.num_test_instances=6 \
         eval.window_style=sampled \
         eval.batch_size=64 \
         eval.context_length=512 \
