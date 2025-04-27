@@ -10,23 +10,16 @@ run_names=(
 )
 
 split_dir=final_skew40/test_zeroshot
-
-use_sliding_context=true
 model_dirname=patchtst
-if [ "$use_sliding_context" = true ]; then
-    model_dirname=patchtst_sliding
-    echo "Using sliding context"
-fi
 
 for run_name in ${run_names[@]}; do
     echo "Evaluating $run_name"
     python scripts/patchtst/evaluate.py \
         eval.mode=predict \
-        eval.sliding_context=$use_sliding_context \
         eval.checkpoint_path=$checkpoint_dir/$run_name/checkpoint-final \
         eval.data_path=$WORK/data/improved/$split_dir \
         eval.num_systems=null \
-        eval.num_test_instances=5 \
+        eval.num_test_instances=6 \
         eval.window_style=sampled \
         eval.batch_size=64 \
         eval.context_length=512 \
@@ -36,6 +29,8 @@ for run_name in ${run_names[@]}; do
         eval.metrics_fname=metrics \
         eval.overwrite=true \
         eval.device=cuda:2 \
+        eval.save_labels=false \
+        eval.save_predictions=false \
         eval.forecast_save_dir=$WORK/data/eval/$model_dirname/$run_name/$split_dir/forecasts \
         eval.labels_save_dir=$WORK/data/eval/$model_dirname/$run_name/$split_dir/labels \
         fixed_dim=3 \

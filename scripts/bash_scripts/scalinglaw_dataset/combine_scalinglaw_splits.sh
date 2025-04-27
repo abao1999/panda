@@ -1,5 +1,20 @@
 #!/bin/bash
-# Usage: ./move_samples.sh /path/to/source /path/to/destination
+
+# Combine scalinglaw splits into a single dataset.
+# For example, say we have the following splits:
+# split_0-163 with 128 ICs
+# split_163-327 with 64 ICs
+# split_327-655 with 32 ICs
+# split_655-1311 with 16 ICs
+# split_1311-2622 with 8 ICs
+# split_2622-5244 with 4 ICs
+# split_5244-10489 with 2 ICs
+
+# Where the smaller splits are subsets of the larger splits. We saved compute time by using the fact that
+# split_0-163 is a subset of split_0-327, which is a subset of split_0-655, which is a subset of split_0-1311, etc.
+
+# This script will combine splits from the bottom up, so it will start with split_0-163 and move up to split_0-10489.
+# e.g. the first 64 ICs from all systems in split_0-163 will be copied to split_163-327, etc.
 
 SRC_DIR="$1"
 DEST_DIR="$2"

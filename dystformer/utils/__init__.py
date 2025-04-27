@@ -28,11 +28,13 @@ from .eval_utils import (
     save_evaluation_results,
 )
 from .plot_utils import (
+    apply_custom_style,
     plot_completions_evaluation,
     plot_forecast_1d,
     plot_forecast_3d,
     plot_forecast_evaluation,
     plot_grid_trajs_multivariate,
+    plot_model_prediction,
     plot_trajs_multivariate,
     plot_univariate_trajs,
 )

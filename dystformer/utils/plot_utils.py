@@ -5,11 +5,158 @@ import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
+from matplotlib.patches import FancyArrowPatch
 from matplotlib.ticker import FormatStrFormatter
+from mpl_toolkits.mplot3d.proj3d import proj_transform
+from omegaconf import OmegaConf
 
 from dystformer.utils import safe_standardize
 
 COLORS = list(TABLEAU_COLORS.values())
+
+
+def apply_custom_style(config_path: str):
+    """
+    Apply custom matplotlib style from config file with rcparams
+    """
+    if os.path.exists(config_path):
+        cfg = OmegaConf.load(config_path)
+        plt.style.use(cfg.base_style)
+
+        # Apply custom settings from config
+        custom_rcparams = OmegaConf.to_container(cfg.matplotlib_style, resolve=True)
+        for category, settings in custom_rcparams.items():
+            if isinstance(settings, dict):
+                for param, value in settings.items():
+                    if isinstance(value, dict):
+                        for subparam, subvalue in value.items():
+                            plt.rcParams[f"{category}.{param}.{subparam}"] = subvalue
+                    else:
+                        plt.rcParams[f"{category}.{param}"] = value
+    else:
+        print(f"Warning: Plotting config not found at {config_path}")
+
+
+class Arrow3D(FancyArrowPatch):
+    def __init__(self, xs, ys, zs, *args, **kwargs):
+        super().__init__((0, 0), (0, 0), *args, **kwargs)
+        self._verts3d = xs, ys, zs
+
+    def draw(self, renderer):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, _ = proj_transform(xs3d, ys3d, zs3d, self.axes.get_proj())
+        self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
+        super().draw(renderer)
+
+    def do_3d_projection(self):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, zs = proj_transform(xs3d, ys3d, zs3d, self.axes.get_proj())
+        self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
+        return np.min(zs)
+
+
+def make_clean_projection(ax_3d):
+    ax_3d.grid(False)
+    ax_3d.set_facecolor("white")
+    ax_3d.set_xticks([])
+    ax_3d.set_yticks([])
+    ax_3d.set_zticks([])
+    ax_3d.axis("off")
+
+
+def make_arrow_axes(ax_3d):
+    ax_3d.grid(False)
+    ax_3d.set_facecolor("white")
+    ax_3d.set_xticks([])
+    ax_3d.set_yticks([])
+    ax_3d.set_zticks([])
+    ax_3d.axis("off")
+
+    # Get axis limits
+    x0, x1 = ax_3d.get_xlim3d()
+    y0, y1 = ax_3d.get_ylim3d()
+    z0, z1 = ax_3d.get_zlim3d()
+
+    ax_3d.set_box_aspect((x1 - x0, y1 - y0, z1 - z0))
+    # Define arrows along the three frame edges
+    edges = [
+        ((x0, y0, z0), (x1, y0, z0), "X"),
+        ((x0, y0, z0), (x0, y1, z0), "Y"),
+        ((x0, y0, z0), (x0, y0, z1), "Z"),
+    ]
+
+    for (xs, ys, zs), (xe, ye, ze), label in edges:
+        arr = Arrow3D(
+            [xs, xe],
+            [ys, ye],
+            [zs, ze],
+            mutation_scale=20,
+            lw=1.5,
+            arrowstyle="-|>",
+            color="black",
+        )
+        ax_3d.add_artist(arr)
+        ax_3d.text(xe * 1.03, ye * 1.03, ze * 1.03, label, fontsize=12)
+
+    # Hide the default frame and ticks
+    for pane in (ax_3d.xaxis.pane, ax_3d.yaxis.pane, ax_3d.zaxis.pane):
+        pane.set_visible(False)
+    ax_3d.view_init(elev=30, azim=30)
+
+
+def plot_model_prediction(
+    pred: np.ndarray,
+    context: np.ndarray,
+    groundtruth: np.ndarray,
+    title: str | None = None,
+    save_path: str | None = None,
+    show_plot: bool = True,
+    use_arrow_axes: bool = False,
+    figsize: tuple[int, int] = (6, 8),
+):
+    prediction_length = pred.shape[1]
+    total_length = context.shape[1] + prediction_length
+    context_ts = np.arange(context.shape[1]) / total_length
+    pred_ts = np.arange(context.shape[1], total_length) / total_length
+
+    # Create figure with gridspec layout
+    fig = plt.figure(figsize=figsize)
+
+    # Create main grid with padding for colorbar
+    outer_grid = fig.add_gridspec(2, 1, height_ratios=[0.65, 0.35], hspace=-0.1)
+
+    # Create sub-grid for the plots
+    gs = outer_grid[1].subgridspec(3, 1, height_ratios=[0.2] * 3, wspace=0, hspace=0)
+    ax_3d = fig.add_subplot(outer_grid[0], projection="3d")
+
+    ax_3d.plot(*context[:3], alpha=0.5, color="black", label="Context")
+    ax_3d.plot(*groundtruth[:3], linestyle="-", color="black", label="Groundtruth")
+    ax_3d.plot(*pred[:3], color="red", label="Prediction")
+    if use_arrow_axes:
+        make_arrow_axes(ax_3d)
+    else:
+        make_clean_projection(ax_3d)
+
+    if title is not None:
+        title_name = title.replace("_", " ")
+        ax_3d.set_title(title_name, fontweight="bold")
+
+    axes_1d = [fig.add_subplot(gs[i, 0]) for i in range(3)]
+    for i, ax in enumerate(axes_1d):
+        ax.plot(context_ts, context[i], alpha=0.5, color="black")
+        ax.plot(pred_ts, groundtruth[i], linestyle="-", color="black")
+        ax.plot(pred_ts, pred[:, i], color="red")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_aspect("auto")
+
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        print(f"saving fig to: {save_path}")
+        plt.savefig(save_path, bbox_inches="tight")
+    if show_plot:
+        plt.show()
+    plt.close()
 
 
 def plot_forecast_3d(

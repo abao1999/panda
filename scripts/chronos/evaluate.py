@@ -27,19 +27,18 @@ log = partial(log_on_main, logger=logger)
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
-    checkpoint_path = cfg.eval.checkpoint_path
-    log(f"Using checkpoint: {checkpoint_path}")
-    training_info_path = os.path.join(checkpoint_path, "training_info.json")
-    if os.path.exists(training_info_path):
-        log(f"Training info file found at: {training_info_path}")
-        with open(training_info_path, "r") as f:
-            training_info = json.load(f)
-            train_config = training_info.get("train_config", None)
-            if train_config is None:  # for backwards compatibility
-                train_config = training_info.get("training_config", None)
-    else:
-        log(f"No training info file found at: {training_info_path}")
-        train_config = None
+    train_config = None
+    if not cfg.eval.chronos.zero_shot:
+        checkpoint_path = cfg.eval.checkpoint_path
+        log(f"Using checkpoint: {checkpoint_path}")
+        training_info_path = os.path.join(checkpoint_path, "training_info.json")
+        if os.path.exists(training_info_path):
+            log(f"Training info file found at: {training_info_path}")
+            with open(training_info_path, "r") as f:
+                training_info = json.load(f)
+                train_config = training_info.get("train_config") or training_info.get(
+                    "training_config"
+                )
 
     # init model for inference
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
@@ -51,6 +50,7 @@ def main(cfg):
         device_map=cfg.eval.device,
         torch_dtype=torch_dtype,
     )
+    logger.info(f"pipeline: {pipeline}")
     pipeline.model.eval()
 
     model_config = dict(vars(pipeline.model.config))

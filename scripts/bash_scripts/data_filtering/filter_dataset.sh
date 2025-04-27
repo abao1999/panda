@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Filter a dataset based on a JSON file that contains a list of subdirectories to reject.
+
 # Check if the correct number of arguments is provided
 if [ "$#" -ne 3 ]; then
     echo "Usage: $0 <data_directory> <json_file> <target_directory>"

@@ -6,6 +6,7 @@ defaults:
   - dataset
   - dysts
   - analysis
+  - plotting
   # - override hydra/job_logging: disabled 
   - override hydra/hydra_logging: disabled 
 
@@ -29,5 +30,6 @@ wandb:
   project_name: dystformer
   entity: gilpinlab
   group_name: fine-tuning
-  resume: False
+  resume: False # allow
+  resume_run_id: null
   tags: null
