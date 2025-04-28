@@ -11,12 +11,6 @@ run_names_lst=(
 split=final_skew40/test_zeroshot
 
 model_dirname=patchtst
-use_sliding_context=true
-
-if [ "$use_sliding_context" = true ]; then
-    model_dirname=patchtst_sliding
-    echo "Using sliding context"
-fi
 
 for run_name in "${run_names_lst[@]}"; do
     eval_data_dir=$WORK/data/eval/${model_dirname}/${run_name}/${split}

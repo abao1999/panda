@@ -5,11 +5,14 @@ checkpoint_dir=$WORK/checkpoints
 
 ulimit -n 99999
 
-# scaling law runs
-run_names=(
-    pft_chattn_mlm_sys164_ic128-0
-    pft_chattn_mlm_sys5245_ic4-0
-)
+# # scaling law runs
+# run_names=(
+#     pft_chattn_mlm_sys10490_ic2-0
+#     pft_chattn_mlm_sys656_ic32-0
+#     pft_chattn_mlm_sys164_ic128-0
+#     pft_chattn_mlm_sys5245_ic4-0
+# )
+
 # # univariate with old dynamics embedding
 # run_names=(
 #     pft_emb_equal_param_univariate_from_scratch-0
@@ -29,35 +32,28 @@ run_names=(
 #     pft_fullyfeat_from_scratch-0 # this is actually just rff from scratch
 # )
 
-# multivariate either without dynamics embedding or with the new poly one
+# # multivariate either without dynamics embedding or with the new poly one
 # run_names=(
-    # pft_chattn_noembed_pretrained_correct-0 
-    # pft_stand_chattn_noemb-0 
-    # pft_chattn_fullemb_quartic_enc-0
-    # pft_chattn_emb_w_poly-0
-    # pft_chattn_fullemb_pretrained-0
+#     # pft_chattn_noembed_pretrained_correct-0 
+#     pft_stand_chattn_noemb-0 
+#     pft_chattn_fullemb_quartic_enc-0
+#     pft_chattn_emb_w_poly-0
+#     pft_chattn_fullemb_pretrained-0
 # )
 
 # split_dir=final_skew40/train
 split_dir=final_skew40/test_zeroshot
-
-use_sliding_context=true
 model_dirname=patchtst
-if [ "$use_sliding_context" = true ]; then
-    model_dirname=patchtst_sliding
-    echo "Using sliding context"
-fi
 
 for run_name in ${run_names[@]}; do
     echo "Evaluating $run_name"
     python scripts/patchtst/evaluate.py \
         eval.mode=predict \
-        eval.sliding_context=$use_sliding_context \
         eval.checkpoint_path=$checkpoint_dir/$run_name/checkpoint-final \
         eval.data_path=$WORK/data/improved/$split_dir \
         eval.num_systems=null \
         eval.num_samples_per_subdir=null \
-        eval.num_test_instances=5 \
+        eval.num_test_instances=6 \
         eval.window_style=sampled \
         eval.batch_size=64 \
         eval.context_length=512 \
@@ -66,7 +62,7 @@ for run_name in ${run_names[@]}; do
         eval.metrics_save_dir=$WORK/eval_results/$model_dirname/$run_name/$split_dir \
         eval.metrics_fname=metrics \
         eval.overwrite=true \
-        eval.device=cuda:2 \
+        eval.device=cuda:3 \
         eval.save_predictions=false \
         eval.save_labels=false \
         eval.forecast_save_dir=$WORK/data/eval/$model_dirname/$run_name/$split_dir/forecasts \

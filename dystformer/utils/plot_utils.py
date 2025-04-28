@@ -8,10 +8,33 @@ from matplotlib.colors import TABLEAU_COLORS
 from matplotlib.patches import FancyArrowPatch
 from matplotlib.ticker import FormatStrFormatter
 from mpl_toolkits.mplot3d.proj3d import proj_transform
+from omegaconf import OmegaConf
 
 from dystformer.utils import safe_standardize
 
 COLORS = list(TABLEAU_COLORS.values())
+
+
+def apply_custom_style(config_path: str):
+    """
+    Apply custom matplotlib style from config file with rcparams
+    """
+    if os.path.exists(config_path):
+        cfg = OmegaConf.load(config_path)
+        plt.style.use(cfg.base_style)
+
+        # Apply custom settings from config
+        custom_rcparams = OmegaConf.to_container(cfg.matplotlib_style, resolve=True)
+        for category, settings in custom_rcparams.items():
+            if isinstance(settings, dict):
+                for param, value in settings.items():
+                    if isinstance(value, dict):
+                        for subparam, subvalue in value.items():
+                            plt.rcParams[f"{category}.{param}.{subparam}"] = subvalue
+                    else:
+                        plt.rcParams[f"{category}.{param}"] = value
+    else:
+        print(f"Warning: Plotting config not found at {config_path}")
 
 
 class Arrow3D(FancyArrowPatch):

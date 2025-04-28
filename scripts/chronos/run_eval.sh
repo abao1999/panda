@@ -7,14 +7,7 @@ ulimit -n 99999
 
 split_dir=final_skew40/test_zeroshot
 
-# Require run_name argument
-if [ -z "$1" ]; then
-    echo "Error: run_name argument is required"
-    echo "Usage: $0 <run_name>"
-    exit 1
-fi
-
-run_name=$1
+run_name=chronos_zeroshot
 
 # Set zero_shot flag based on whether "zeroshot" appears in run_name
 if [[ "$run_name" == *"zeroshot"* ]]; then
@@ -27,7 +20,7 @@ python scripts/chronos/evaluate.py \
         eval.checkpoint_path=$checkpoint_dir/${run_name}/checkpoint-final \
         eval.data_path=$WORK/data/improved/${split_dir} \
         eval.num_systems=null \
-        eval.num_test_instances=1 \
+        eval.num_test_instances=6 \
         eval.window_style=sampled \
         eval.batch_size=64 \
         eval.prediction_length=512 \
@@ -35,7 +28,9 @@ python scripts/chronos/evaluate.py \
         eval.metrics_save_dir=$WORK/eval_results/chronos/${run_name}/${split_dir} \
         eval.metrics_fname=metrics \
         eval.overwrite=true \
-        eval.device=cuda:2 \
+        eval.device=cuda:3 \
+        eval.save_predictions=false \
+        eval.save_labels=false \
         eval.forecast_save_dir=$WORK/data/eval/chronos/${run_name}/${split_dir}/forecasts \
         eval.labels_save_dir=$WORK/data/eval/chronos/${run_name}/${split_dir}/labels \
         eval.chronos.zero_shot=$zero_shot_flag \
