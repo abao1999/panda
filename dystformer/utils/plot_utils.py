@@ -1,9 +1,12 @@
 import os
 import warnings
+from typing import Any
 
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from matplotlib import patches as mpatches
 from matplotlib.colors import TABLEAU_COLORS
 from matplotlib.patches import FancyArrowPatch
 from matplotlib.ticker import FormatStrFormatter
@@ -803,3 +806,276 @@ def plot_forecast_evaluation(
     if show_plot:
         plt.show()
     plt.close()
+
+
+def make_box_plot(
+    unrolled_metrics: dict[str, dict[int, dict[str, list[float]]]],
+    prediction_length: int,
+    metric_to_plot: str = "smape",  # Default to smape
+    selected_run_names: list[str] | None = None,
+    ylim: tuple[float, float] | None = None,  # Changed to None as default
+    verbose: bool = False,
+    run_names_to_exclude: list[str] = [],
+    use_inv_spearman: bool = False,
+    title: str | None = None,
+    fig_kwargs: dict[str, Any] = {},
+    title_kwargs: dict[str, Any] = {},
+    colors: list[str] | None = None,
+    sort_runs: bool = False,
+    save_path: str | None = None,
+    order_by_metric: str | None = None,
+    ylabel_fontsize: int = 8,
+    show_xlabel: bool = True,
+    show_legend: bool = False,
+    legend_kwargs: dict[str, Any] = {},
+    alpha_val: float = 0.8,
+    box_percentile_range: tuple[int, int] = (25, 75),
+    whisker_percentile_range: tuple[float, float] = (0, 90),
+    box_width: float = 0.6,
+) -> list[mpatches.Patch] | None:
+    # Set default figure size if not provided
+    if fig_kwargs == {}:
+        fig_kwargs = {"figsize": (3, 5)}  # Wider figure to accommodate run names
+
+    if colors is None:
+        colors = plt.cm.tab10.colors  # type: ignore
+
+    # Extract metrics data for the given prediction_length and run_names
+    if selected_run_names is None:
+        selected_run_names = list(unrolled_metrics.keys())
+
+    # Filter out excluded run names
+    run_names = [
+        name for name in selected_run_names if name not in run_names_to_exclude
+    ]
+
+    if len(run_names) == 0:
+        print("No run names to plot after exclusions!")
+        return
+
+    plt.figure(**fig_kwargs)
+    # Collect data for plotting
+    plot_data = []
+
+    # Add a dictionary to store ordering metric values if needed
+    ordering_metric_data = {}
+
+    for run_name in run_names:
+        try:
+            # Check if this run has data for the specified prediction length
+            if prediction_length not in unrolled_metrics[run_name]:
+                print(
+                    f"Warning: prediction_length {prediction_length} not found for {run_name}"
+                )
+                continue
+
+            # Check if this run has the specified metric
+            if metric_to_plot not in unrolled_metrics[run_name][prediction_length]:
+                print(f"Warning: metric '{metric_to_plot}' not found for {run_name}")
+                continue
+
+            values = unrolled_metrics[run_name][prediction_length][metric_to_plot]
+
+            # Process values based on metric type
+            if metric_to_plot == "spearman" and use_inv_spearman:
+                values = [1 - x for x in values]
+
+            # Filter out NaN values
+            values = [v for v in values if not np.isnan(v)]
+
+            if len(values) == 0:
+                print(f"Warning: All values for {run_name} are NaN")
+                continue
+
+            median_value = np.median(values)
+            plot_data.extend([(run_name, v) for v in values])
+
+            # If we need to order by a different metric, collect that data too
+            if order_by_metric is not None and order_by_metric != metric_to_plot:
+                if order_by_metric in unrolled_metrics[run_name][prediction_length]:
+                    order_values = unrolled_metrics[run_name][prediction_length][
+                        order_by_metric
+                    ]
+
+                    # Apply same processing as we would for the plotting metric
+                    if order_by_metric == "spearman" and use_inv_spearman:
+                        order_values = [1 - x for x in order_values]
+
+                    # Filter out NaN values
+                    order_values = [v for v in order_values if not np.isnan(v)]
+
+                    if order_values:
+                        ordering_metric_data[run_name] = np.median(order_values)
+
+            if verbose:
+                print(f"{run_name} median {metric_to_plot}: {median_value}")
+
+        except Exception as e:
+            print(f"Error processing {run_name}: {e}")
+
+    df = pd.DataFrame(plot_data, columns=["Run", "Value"])
+
+    # Determine run order based on specified criteria
+    if order_by_metric is not None and ordering_metric_data:
+        # Sort runs based on the ordering metric's median values
+        run_order = [
+            run for run, _ in sorted(ordering_metric_data.items(), key=lambda x: x[1])
+        ]
+        # Only include runs that are in our dataframe
+        run_order = [run for run in run_order if run in df["Run"].unique()]
+        # Set categorical order for Run column
+        df["Run"] = pd.Categorical(df["Run"], categories=run_order, ordered=True)
+    elif sort_runs:
+        # Use the existing sort_runs logic if order_by_metric isn't specified
+        median_by_run = df.groupby("Run")["Value"].median().sort_values()
+        run_order = median_by_run.index.tolist()
+        df["Run"] = pd.Categorical(df["Run"], categories=run_order, ordered=True)
+
+    metric_title = metric_to_plot
+    if metric_to_plot in ["mse", "mae", "rmse", "mape"]:
+        metric_title = metric_to_plot.upper()
+    elif metric_to_plot == "smape":
+        metric_title = "sMAPE"
+    elif metric_to_plot == "spearman":
+        metric_title = "1 - Spearman" if use_inv_spearman else "Spearman"
+    else:
+        metric_title = metric_to_plot.capitalize()
+
+    # Create a custom boxplot with the specified percentile ranges
+    ax = plt.gca()
+
+    unique_runs = (
+        df["Run"].unique()
+        if not isinstance(df["Run"].dtype, pd.CategoricalDtype)
+        else df["Run"].cat.categories
+    )
+
+    for i, run in enumerate(unique_runs):
+        run_data = df[df["Run"] == run]["Value"].to_numpy()
+        if len(run_data) == 0:
+            continue
+
+        # Calculate the percentiles
+        lower_box, upper_box = np.percentile(run_data, box_percentile_range)
+        lower_whisker, upper_whisker = np.percentile(run_data, whisker_percentile_range)
+        median_val = np.median(run_data)
+
+        # Plot the custom boxplot
+        color = colors[i % len(colors)]  # type: ignore
+
+        # Box width and spacing parameters
+        box_half_width = box_width / 2
+        whisker_cap_width = box_half_width * 0.5
+
+        # Box
+        box = plt.Rectangle(
+            (i - box_half_width, lower_box),
+            box_width,
+            upper_box - lower_box,
+            fill=True,
+            facecolor=color,
+            alpha=alpha_val,
+            linewidth=1,
+            edgecolor="black",
+            zorder=5,
+        )
+        ax.add_patch(box)
+
+        # Median line
+        ax.hlines(
+            median_val,
+            i - box_half_width,
+            i + box_half_width,
+            colors="black",
+            linewidth=2.5,
+            zorder=10,
+        )
+
+        # Whiskers
+        ax.vlines(
+            i,
+            lower_box,
+            lower_whisker,
+            colors="black",
+            linestyle="-",
+            linewidth=1,
+            zorder=5,
+        )
+        ax.vlines(
+            i,
+            upper_box,
+            upper_whisker,
+            colors="black",
+            linestyle="-",
+            linewidth=1,
+            zorder=5,
+        )
+
+        # Caps on whiskers
+        ax.hlines(
+            lower_whisker,
+            i - whisker_cap_width,
+            i + whisker_cap_width,
+            colors="black",
+            linewidth=1,
+            zorder=5,
+        )
+        ax.hlines(
+            upper_whisker,
+            i - whisker_cap_width,
+            i + whisker_cap_width,
+            colors="black",
+            linewidth=1,
+            zorder=5,
+        )
+
+    # Set y-limits if provided
+    if ylim:
+        plt.ylim(ylim)
+
+    # Format the plot
+    plt.ylabel(metric_title, fontweight="bold", fontsize=ylabel_fontsize)
+    plt.xlabel("")
+    if show_xlabel:
+        # Format x-axis labels
+        plt.xticks(
+            range(len(unique_runs)),
+            unique_runs,
+            rotation=45,
+            ha="right",
+            fontsize=5,
+            fontweight="bold",
+        )
+    else:
+        plt.xticks([])
+
+    # Set the title
+    if title is not None:
+        title_with_metric = f"{title}: {metric_title}" if title == "Metrics" else title
+        plt.title(title_with_metric, fontweight="bold", **title_kwargs)
+
+    # Ensure plot is properly displayed
+    plt.tight_layout()
+
+    # Get the unique run names in the correct order
+    if isinstance(df["Run"].dtype, pd.CategoricalDtype):
+        runs = df["Run"].cat.categories.tolist()
+    else:
+        runs = df["Run"].unique().tolist()
+
+    # Create custom legend handles
+    legend_handles = [
+        mpatches.Patch(color=colors[i % len(colors)], label=run, alpha=alpha_val)  # type: ignore
+        for i, run in enumerate(runs)
+    ]
+
+    if show_legend:
+        plt.legend(handles=legend_handles, **legend_kwargs)
+
+    # Save if path provided
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, bbox_inches="tight")
+
+    plt.show()
+    return legend_handles

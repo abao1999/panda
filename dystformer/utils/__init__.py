@@ -29,6 +29,7 @@ from .eval_utils import (
 )
 from .plot_utils import (
     apply_custom_style,
+    make_box_plot,
     plot_completions_evaluation,
     plot_forecast_1d,
     plot_forecast_3d,

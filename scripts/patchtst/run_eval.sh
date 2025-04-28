@@ -5,13 +5,13 @@ checkpoint_dir=$WORK/checkpoints
 
 ulimit -n 99999
 
-# # scaling law runs
-# run_names=(
-#     pft_chattn_mlm_sys10490_ic2-0
-#     pft_chattn_mlm_sys656_ic32-0
-#     pft_chattn_mlm_sys164_ic128-0
-#     pft_chattn_mlm_sys5245_ic4-0
-# )
+# scaling law runs
+run_names=(
+    pft_chattn_mlm_sys10490_ic2-0
+    pft_chattn_mlm_sys656_ic32-0
+    pft_chattn_mlm_sys164_ic128-0
+    pft_chattn_mlm_sys5245_ic4-0
+)
 
 # # univariate with old dynamics embedding
 # run_names=(
