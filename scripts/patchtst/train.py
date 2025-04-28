@@ -310,7 +310,7 @@ def main(cfg):
         )
 
     log_on_main("Training", logger)
-    trainer.train()  # Transformers trainer will save model checkpoints automatically
+    trainer.train(resume_from_checkpoint=cfg.train.resume_from_checkpoint)  # Transformers trainer will save model checkpoints automatically
 
     # save final model checkpoint and training info locally
     if is_main_process():

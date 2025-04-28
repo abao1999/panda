@@ -26,10 +26,10 @@ hydra:
 
 # wandb parameters
 wandb:
-  log: False
+  log: false
   project_name: dystformer
   entity: gilpinlab
   group_name: fine-tuning
-  resume: False # allow
+  resume: false
   resume_run_id: null
   tags: null
