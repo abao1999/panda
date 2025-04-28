@@ -100,6 +100,7 @@ def main(cfg):
         cfg.run_name if cfg.run_name else "run",
         base_dir=Path(cfg.train.output_dir),
         file_type="",
+        overwrite=cfg.train.resume_from_checkpoint is not None,
     )
 
     log_on_main(f"Logging dir: {output_dir}", logger)
@@ -263,6 +264,7 @@ def main(cfg):
         remove_unused_columns=cfg.train.remove_unused_columns,
         ddp_backend=cfg.train.ddp_backend,
         seed=cfg.train.seed,
+        resume_from_checkpoint=cfg.train.resume_from_checkpoint
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.
@@ -278,7 +280,7 @@ def main(cfg):
     )
 
     log_on_main("Training", logger)
-    trainer.train()  # Transformers trainer will save model checkpoints automatically
+    trainer.train(resume_from_checkpoint=cfg.train.resume_from_checkpoint)  # Transformers trainer will save model checkpoints automatically
 
     # save final model checkpoint and training info locally
     if is_main_process():
