@@ -275,8 +275,7 @@ def main(cfg):
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=shuffled_train_dataset,
-        callbacks=[],  # if not cfg.wandb.log else [WandbCallback()], # this duplicates our current logging. Try using custom callback instead
+        train_dataset=shuffled_train_dataset
     )
 
     log_on_main("Training", logger)
