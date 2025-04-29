@@ -18,7 +18,7 @@ scalinglaw_data_dir=$WORK/data/improved/scalinglaw
 # split_5244-10489_ic2
 
 train_data_dirs=(
-    $scalinglaw_data_dir/split_655-1311_ic16/train
+    $scalinglaw_data_dir/split_163-327_ic64/train
 )
 train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "train_data_dirs: $train_data_dirs_json"
@@ -30,8 +30,10 @@ checkpoint_dir=$WORK/checkpoints
 # chattn_mlm_sys656_ic32-1
 # chattn_mlm_sys10490_ic2-0
 # chattn_mlm_sys1312_ic16-0
+# chattn_mlm_sys2623_ic8-1
+# chattn_mlm_sys328_ic64-1
 
-checkpoint_name=chattn_mlm_sys1312_ic16-0
+checkpoint_name=chattn_mlm_sys328_ic64-1
 checkpoint_path=$checkpoint_dir/$checkpoint_name/checkpoint-final
 echo "checkpoint_path: $checkpoint_path"
 

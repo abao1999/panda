@@ -7,7 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import patches as mpatches
-from matplotlib.colors import TABLEAU_COLORS
 from matplotlib.patches import FancyArrowPatch
 from matplotlib.ticker import FormatStrFormatter
 from mpl_toolkits.mplot3d.proj3d import proj_transform
@@ -15,7 +14,9 @@ from omegaconf import OmegaConf
 
 from dystformer.utils import safe_standardize
 
-COLORS = list(TABLEAU_COLORS.values())
+# DEFAULT_COLORS = list(TABLEAU_DEFAULT_COLORS.values())
+DEFAULT_COLORS = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+DEFAULT_MARKERS = ["o", "s", "v", "D", "X", "P", "H", "h", "d", "p", "x"]
 
 
 def apply_custom_style(config_path: str):
@@ -312,7 +313,7 @@ def plot_trajs_multivariate(
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
         )
         label = f"Sample {label_sample_idx}"
-        curr_color = COLORS[sample_idx % len(COLORS)]
+        curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
 
         xyz = trajectories[sample_idx, dims_3d, :]
         ax.plot(*xyz, alpha=0.5, linewidth=linewidth, color=curr_color, label=label)
@@ -333,7 +334,7 @@ def plot_trajs_multivariate(
             label_sample_idx = (
                 samples_subset[sample_idx] if samples_subset is not None else sample_idx
             )
-            curr_color = COLORS[sample_idx % len(COLORS)]
+            curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
             xyz = trajectories[sample_idx, dims_3d, :]
             ic_pt = xyz[:, 0]
             end_pt = xyz[:, -1]
@@ -471,7 +472,7 @@ def plot_grid_trajs_multivariate(
             linewidth = 0.5
         for sample_idx in range(n_samples_plot):
             label = f"Sample {sample_idx}"
-            curr_color = COLORS[sample_idx % len(COLORS)]
+            curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
 
             xyz = trajectories[sample_idx, dims_3d, :]
             ax.plot(*xyz, alpha=0.5, linewidth=linewidth, color=curr_color, label=label)
@@ -548,7 +549,7 @@ def plot_completions_evaluation(
         label_sample_idx = (
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
         )
-        curr_color = COLORS[sample_idx % len(COLORS)]
+        curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
 
         # Plot context in 3D
         (line1,) = ax1.plot(
@@ -707,7 +708,7 @@ def plot_forecast_evaluation(
         label_sample_idx = (
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
         )
-        curr_color = COLORS[sample_idx % len(COLORS)]
+        curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
 
         # Plot context in 3D
         (line1,) = ax1.plot(
@@ -820,7 +821,7 @@ def make_box_plot(
     title: str | None = None,
     fig_kwargs: dict[str, Any] = {},
     title_kwargs: dict[str, Any] = {},
-    colors: list[str] | None = None,
+    colors: list[str] = DEFAULT_COLORS,
     sort_runs: bool = False,
     save_path: str | None = None,
     order_by_metric: str | None = None,
@@ -830,15 +831,12 @@ def make_box_plot(
     legend_kwargs: dict[str, Any] = {},
     alpha_val: float = 0.8,
     box_percentile_range: tuple[int, int] = (25, 75),
-    whisker_percentile_range: tuple[float, float] = (0, 90),
+    whisker_percentile_range: tuple[float, float] = (5, 95),
     box_width: float = 0.6,
 ) -> list[mpatches.Patch] | None:
     # Set default figure size if not provided
     if fig_kwargs == {}:
         fig_kwargs = {"figsize": (3, 5)}  # Wider figure to accommodate run names
-
-    if colors is None:
-        colors = plt.cm.tab10.colors  # type: ignore
 
     # Extract metrics data for the given prediction_length and run_names
     if selected_run_names is None:
@@ -864,14 +862,16 @@ def make_box_plot(
         try:
             # Check if this run has data for the specified prediction length
             if prediction_length not in unrolled_metrics[run_name]:
-                print(
+                warnings.warn(
                     f"Warning: prediction_length {prediction_length} not found for {run_name}"
                 )
                 continue
 
             # Check if this run has the specified metric
             if metric_to_plot not in unrolled_metrics[run_name][prediction_length]:
-                print(f"Warning: metric '{metric_to_plot}' not found for {run_name}")
+                warnings.warn(
+                    f"Warning: metric '{metric_to_plot}' not found for {run_name}"
+                )
                 continue
 
             values = unrolled_metrics[run_name][prediction_length][metric_to_plot]
@@ -884,7 +884,7 @@ def make_box_plot(
             values = [v for v in values if not np.isnan(v)]
 
             if len(values) == 0:
-                print(f"Warning: All values for {run_name} are NaN")
+                warnings.warn(f"Warning: All values for {run_name} are NaN")
                 continue
 
             median_value = np.median(values)
@@ -911,7 +911,7 @@ def make_box_plot(
                 print(f"{run_name} median {metric_to_plot}: {median_value}")
 
         except Exception as e:
-            print(f"Error processing {run_name}: {e}")
+            warnings.warn(f"Error processing {run_name}: {e}")
 
     df = pd.DataFrame(plot_data, columns=["Run", "Value"])
 
@@ -1077,5 +1077,157 @@ def make_box_plot(
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, bbox_inches="tight")
 
+    plt.show()
+    return legend_handles
+
+
+def plot_all_metrics_by_prediction_length(
+    all_metrics_dict: dict[str, dict[str, dict[str, list[float]]]],
+    metric_names: list[str],
+    metrics_to_show_std_envelope: list[str] = [],
+    n_rows: int = 2,
+    n_cols: int = 3,
+    individual_figsize: tuple[int, int] = (4, 4),
+    save_path: str | None = None,
+    ylim: tuple[float | None, float | None] = (None, None),
+    show_legend: bool = True,
+    legend_kwargs: dict = {},
+    colors: list[str] | dict[str, str] = DEFAULT_COLORS,
+    markers: list[str] = DEFAULT_MARKERS,
+    use_inv_spearman: bool = False,
+) -> list[plt.Line2D]:
+    """
+    Plot multiple metrics across different prediction lengths for various models.
+
+    Parameters:
+    -----------
+    all_metrics_dict : dict[str, dict[str, dict[str, list[float]]]]
+        A nested dictionary with the following structure:
+        - First level keys are metric names (e.g., 'mse', 'mae', 'smape', 'spearman')
+        - Second level keys are model names (e.g., 'Our Model', 'Chronos 20M', 'TimesFM 200M')
+        - Third level contains metric data with keys like:
+          - 'prediction_lengths': list of prediction lengths
+          - 'means': mean values for each prediction length
+          - 'medians': median values for each prediction length
+          - 'stds': standard deviations for each prediction length
+
+    metric_names : list[str]
+        List of metric names to plot (must be keys in all_metrics_dict)
+
+    metrics_to_show_std_envelope : list[str]
+        List of metrics for which to show standard *error* envelopes
+
+    n_rows : int, default=2
+        Number of rows in the subplot grid
+
+    n_cols : int, default=3
+        Number of columns in the subplot grid
+
+    individual_figsize : tuple[int, int], default=(4, 4)
+        Size of each individual subplot
+
+    save_path : str | None, default=None
+        Path to save the figure, if None, the figure is not saved
+
+    ylim : tuple[float | None, float | None], default=(None, None)
+        Y-axis limits for all subplots
+
+    show_legend : bool, default=True
+        Whether to show the legend
+
+    legend_kwargs : dict, default={}
+        Additional keyword arguments for the legend
+
+    colors : list[str] | dict[str, str], default=default_colors
+        List of colors to use for different models
+        Or, dict of model names to colors
+
+    markers : list[str], default=markers
+        List of markers to use for different models
+
+    use_inv_spearman : bool, default=False
+        If True, plot 1 - Spearman correlation instead of Spearman correlation
+
+    Returns:
+    --------
+    list[plt.Line2D]
+        Legend handles for the plotted lines
+    """
+    num_metrics = len(metric_names)
+    fig, axes = plt.subplots(
+        nrows=n_rows,
+        ncols=n_cols,
+        figsize=(individual_figsize[0] * n_cols, individual_figsize[1] * n_rows),
+    )
+    legend_handles = []
+    # Handle the case where axes might be a single element or already a list
+    if n_rows == 1 and n_cols == 1:
+        axes = [axes]
+    elif hasattr(axes, "flatten"):  # Check if axes has flatten method
+        axes = axes.flatten()  # Flatten the axes array for easy iteration
+
+    for i, (ax, metric_name) in enumerate(zip(axes, metric_names)):
+        metrics_dict = all_metrics_dict[metric_name]
+        for j, (model_name, metrics) in enumerate(metrics_dict.items()):
+            mean_vals = np.array(metrics["means"])
+            median_vals = np.array(metrics["medians"])
+            if metric_name == "spearman" and use_inv_spearman:
+                mean_vals = 1 - mean_vals
+                median_vals = 1 - median_vals
+            ax.plot(
+                metrics["prediction_lengths"],
+                median_vals,
+                marker=markers[j],
+                label=model_name,
+                markersize=6,
+                color=colors[j] if isinstance(colors, list) else colors[model_name],
+                # alpha=0.8,
+            )
+            # std_envelope = np.array(metrics["stds"])
+            se_envelope = np.array(metrics["stds"]) / np.sqrt(len(metrics["stds"]))
+            if metric_name in metrics_to_show_std_envelope:
+                ax.fill_between(
+                    metrics["prediction_lengths"],
+                    mean_vals - se_envelope,
+                    mean_vals + se_envelope,
+                    alpha=0.1,
+                    color=colors[j] if isinstance(colors, list) else colors[model_name],
+                )
+        if i == 0:
+            legend_handles = [
+                plt.Line2D(
+                    [0],
+                    [0],
+                    color=colors[j] if isinstance(colors, list) else colors[model_name],
+                    marker=markers[j],
+                    markersize=6,
+                    label=model_name,
+                )
+                for j, model_name in enumerate(metrics_dict.keys())
+            ]
+            if show_legend:
+                legend_handles = ax.legend(handles=legend_handles, **legend_kwargs)
+        ax.set_xlabel("Prediction Length", fontweight="bold", fontsize=12)
+        ax.set_xticks(metrics["prediction_lengths"])
+        name = metric_name.replace("_", " ")
+        if name in ["mse", "mae", "rmse", "mape"]:
+            name = name.upper()
+        elif name == "smape":
+            name = "sMAPE"
+        elif name == "spearman" and use_inv_spearman:
+            name = "1 - Spearman"
+        else:
+            name = name.capitalize()
+        ax.set_title(name, fontweight="bold", fontsize=16)
+
+    # Hide any unused subplots
+    for ax in axes[num_metrics:]:
+        ax.set_visible(False)
+    if ylim is not None:
+        for ax in axes:
+            ax.set_ylim(ylim)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight")
     plt.show()
     return legend_handles
