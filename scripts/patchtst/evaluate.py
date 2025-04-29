@@ -2,13 +2,11 @@ import json
 import logging
 import os
 from functools import partial
-from pathlib import Path
 
 import hydra
 import numpy as np
 import torch
 import transformers
-from gluonts.dataset.common import FileDataset
 
 from dystformer.patchtst.dataset import TimeSeriesDataset
 from dystformer.patchtst.evaluation import (
@@ -18,6 +16,7 @@ from dystformer.patchtst.evaluation import (
 from dystformer.patchtst.pipeline import PatchTSTPipeline
 from dystformer.utils import (
     get_dim_from_dataset,
+    get_eval_data_dict,
     log_on_main,
     process_trajs,
     save_evaluation_results,
@@ -29,6 +28,13 @@ log = partial(log_on_main, logger=logger)
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
+    test_data_dict = get_eval_data_dict(
+        cfg.eval.data_paths_lst,
+        num_subdirs=cfg.eval.num_subdirs,
+        num_samples_per_subdir=cfg.eval.num_samples_per_subdir,
+    )
+    log(f"Number of combined test data subdirectories: {len(test_data_dict)}")
+
     checkpoint_path = cfg.eval.checkpoint_path
     log(f"Using checkpoint: {checkpoint_path}")
     training_info_path = os.path.join(checkpoint_path, "training_info.json")
@@ -101,28 +107,6 @@ def main(cfg):
         log(f"dynamics embedding config: {dynamics_embedding_config}")
 
     pipeline.model.eval()
-
-    # get test data paths
-    test_data_dir = os.path.expandvars(cfg.eval.data_path)
-    test_data_dict = {}
-    system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-
-    for system_dir in system_dirs[: cfg.eval.num_systems]:
-        system_name = system_dir.name
-        system_files = list(system_dir.glob("*"))
-        # sort system_files by sample_idx where the files in system_files are named like {sample_idx}_T-4096.arrow
-        # also, take only the first cfg.eval.num_samples_per_subdir files in each subdirectory
-        # ---> This means only the first 10 parameter perturbations per skew pair, if the subdirectory names are the skew pairs
-        system_files = sorted(
-            system_files,
-            key=lambda x: int(x.stem.split("_")[0]),
-        )[: cfg.eval.num_samples_per_subdir]
-
-        test_data_dict[system_name] = [
-            FileDataset(path=Path(file_path), freq="h", one_dim_target=False)
-            for file_path in system_files
-            if file_path.is_file()
-        ]
 
     # for convenience, get system dimensions, for saving as a column in the metrics csv
     system_dims = {

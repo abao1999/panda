@@ -23,6 +23,7 @@ from .dyst_utils import (
     zero_one_test,
 )
 from .eval_utils import (
+    get_eval_data_dict,
     left_pad_and_stack_1D,
     left_pad_and_stack_multivariate,
     save_evaluation_results,

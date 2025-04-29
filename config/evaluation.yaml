@@ -1,12 +1,13 @@
 eval:
   # for evaluating saved checkpoint
   mode: predict
-  data_path: /stor/work/AMDG_Gilpin_Summer2024/data/test/
-  checkpoint_path: /stor/work/AMDG_Gilpin_Summer2024/checkpoints
+  data_paths_lst:
+    - /stor/work/AMDG_Gilpin_Summer2024/data/test/
+  checkpoint_path: null
   device: cuda:7
   torch_dtype: float32 # bfloat16?
   batch_size: 32
-  num_systems: null
+  num_subdirs: null
   num_samples_per_subdir: null
 
   # inference mode for patchtst
@@ -25,13 +26,13 @@ eval:
     - spearman
     # - hellinger_distance
 
-  forecast_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/forecasts
-  labels_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/labels
-  completions_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/completions
-  patch_input_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/patch_input
-  timestep_masks_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/timestep_masks
+  forecast_save_dir: null
+  labels_save_dir: null
+  completions_save_dir: null
+  patch_input_save_dir: null
+  timestep_masks_save_dir: null
 
-  metrics_save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/metrics
+  metrics_save_dir: null
   metrics_fname: metrics
   overwrite: false
   seed: 42
@@ -69,5 +70,5 @@ eval:
 run_metrics:
   wandb_run_id: null
   plot_dir: figures
-  save_dir: /stor/work/AMDG_Gilpin_Summer2024/data/eval/run_metrics
+  save_dir: null
   save_fname: metrics.json

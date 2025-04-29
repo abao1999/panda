@@ -21,6 +21,57 @@ class DyT(nn.Module):
         return x * self.weight + self.bias
 
 
+class PatchTSTKernelEmbedding(nn.Module):
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+        poly_degrees_lst = range(2, 2 + config.poly_degrees)
+        assert (
+            config.patch_length
+            + len(poly_degrees_lst) * config.num_poly_feats
+            + config.num_rff
+            == config.d_model
+        ), (
+            f"Sum of features must equal d_model: d_poly + d_rff + patch_length = "
+            f"{len(poly_degrees_lst) * config.num_poly_feats} + {config.num_rff}"
+            f" + {config.patch_length} != {config.d_model}"
+        )
+        self.num_poly_feats = config.num_poly_feats
+        self.patch_indices = [
+            torch.randint(
+                high=config.patch_length,
+                size=(self.num_poly_feats, d),
+                requires_grad=False,
+            )
+            for d in poly_degrees_lst
+        ]
+        self.freq_weights = nn.Parameter(
+            config.rff_scale * torch.randn(config.patch_length, config.num_rff // 2),
+            requires_grad=config.rff_trainable,
+        )
+        self.freq_biases = nn.Parameter(
+            torch.randn(1, 1, 1, config.num_rff // 2),
+            requires_grad=config.rff_trainable,
+        )
+        # NOTE: should comment this out for backwards compatibility with the checkpoints trained before polynomial features were added
+        self.projection = nn.Linear(config.d_model, config.d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Parameters:
+            x (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
+                Patch input for embedding
+        return:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
+        """
+        poly_feats = [x[..., pis].prod(dim=-1) for pis in self.patch_indices]
+        weighted_x = x @ self.freq_weights + self.freq_biases
+        rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
+        features = torch.cat([x, *poly_feats, rff_feats], dim=-1)
+        # NOTE: NEED to comment this out for backwards compatibility with the checkpoints trained before polynomial features were added
+        features = self.projection(features)
+        return features
+
+
 class PatchTSTPolynomialEmbedding(nn.Module):
     def __init__(self, config: PatchTSTConfig):
         super().__init__()

@@ -477,6 +477,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         self.gradient_checkpointing = False
         if config.use_dynamics_embedding:
             self.embedder = PatchTSTPolynomialEmbedding(config)
+            # self.embedder = PatchTSTKernelEmbedding(config)
         else:
             self.embedder = PatchTSTEmbedding(config)
 

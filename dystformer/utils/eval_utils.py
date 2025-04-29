@@ -4,12 +4,58 @@ utils for evaluation scripts
 
 import logging
 import os
+from collections import defaultdict
+from itertools import islice
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import torch
+from gluonts.dataset.common import FileDataset
 
 logger = logging.getLogger(__name__)
+
+
+def get_eval_data_dict(
+    data_paths_lst: str,
+    num_subdirs: int | None = None,
+    num_samples_per_subdir: int | None = None,
+    one_dim_target: bool = False,
+) -> dict[str, list[FileDataset]]:  # type: ignore
+    """
+    data_paths_lst: list of test data directories paths
+    num_subdirs: number of subdirectories to consider
+    num_samples_per_subdir: number of samples per subdirectory to consider
+    """
+    # get test data paths
+    test_data_dirs_dict = defaultdict(list)  # maps subdirectory name to test data path
+    for test_data_dir in data_paths_lst:
+        test_data_dir = os.path.expandvars(test_data_dir)
+        system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
+        for subdir in system_dirs:
+            # can be either name of skew pair or name of the unique system (parameter perturbation)
+            subdir_name = subdir.name
+            test_data_dirs_dict[subdir_name].append(subdir)
+
+    test_data_dict = {}
+    for subdir_name, subdirs in islice(test_data_dirs_dict.items(), num_subdirs):
+        system_files = []
+        for subdir in subdirs:
+            system_files.extend(list(subdir.glob("*")))
+        # sort system_files by sample_idx where the files in system_files are named like {sample_idx}_T-4096.arrow
+        # also, take only the first cfg.eval.num_samples_per_subdir files in each subdirectory
+        # ---> This means only the first 10 parameter perturbations per skew pair, if the subdirectory names are the skew pairs
+        system_files = sorted(
+            system_files,
+            key=lambda x: int(x.stem.split("_")[0]),
+        )[:num_samples_per_subdir]
+
+        test_data_dict[subdir_name] = [
+            FileDataset(path=Path(file_path), freq="h", one_dim_target=one_dim_target)
+            for file_path in system_files
+            if file_path.is_file()
+        ]
+    return test_data_dict
 
 
 def left_pad_and_stack_1D(tensors: list[torch.Tensor]) -> torch.Tensor:

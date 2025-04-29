@@ -1,13 +1,10 @@
 import logging
-import os
 from functools import partial
-from pathlib import Path
 
 import hydra
 import numpy as np
 import torch
 import transformers
-from gluonts.dataset.common import FileDataset
 from gluonts.transform import LastValueImputation
 from transformers import AutoModelForCausalLM
 
@@ -15,6 +12,7 @@ from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.evaluation import evaluate_chronos_forecast
 from dystformer.utils import (
     get_dim_from_dataset,
+    get_eval_data_dict,
     log_on_main,
     process_trajs,
     save_evaluation_results,
@@ -56,6 +54,13 @@ class TimeMoePipeline:
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
+    test_data_dict = get_eval_data_dict(
+        cfg.eval.data_paths_lst,
+        num_subdirs=cfg.eval.num_subdirs,
+        num_samples_per_subdir=cfg.eval.num_samples_per_subdir,
+    )
+    log(f"Number of combined test data subdirectories: {len(test_data_dict)}")
+
     # init model for inference
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
@@ -88,28 +93,6 @@ def main(cfg):
     log(f"context_length: {context_length}")
     log(f"model prediction_length: {prediction_length}")
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
-
-    # get test data paths, collect all time series for each system in a dict (system_name -> list of FileDatasets)
-    test_data_dir = os.path.expandvars(cfg.eval.data_path)
-    test_data_dict = {}
-    system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-
-    for system_dir in system_dirs[: cfg.eval.num_systems]:
-        system_name = system_dir.name
-        system_files = list(system_dir.glob("*"))
-        # sort system_files by sample_idx where the files in system_files are named like {sample_idx}_T-4096.arrow
-        # also, take only the first cfg.eval.num_samples_per_subdir files in each subdirectory
-        # ---> This means only the first 10 parameter perturbations per skew pair, if the subdirectory names are the skew pairs
-        system_files = sorted(
-            system_files,
-            key=lambda x: int(x.stem.split("_")[0]),
-        )[: cfg.eval.num_samples_per_subdir]
-
-        test_data_dict[system_name] = [
-            FileDataset(path=Path(file_path), freq="h", one_dim_target=False)
-            for file_path in system_files
-            if file_path.is_file()
-        ]
 
     # for convenience, get system dimensions
     system_dims = {
