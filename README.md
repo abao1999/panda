@@ -1,10 +1,5 @@
 # dystformer
-PatchTST trained on Dynamical Systems with channel mixing
-
-Baselines:
-+ PatchTST trained on Dynamical Systems without channel mixing
-+ Chronos fine-tuned on Dynamical Systems
-+ Zero-Shot Models
+Panda: Patched Attention for Nonlinear Dynamics
 
 ## Setup
 Install the most up-to-date version of [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`. Consider installing `numba` for faster numerical integration.
@@ -19,76 +14,17 @@ If training on AMD GPUs, install with the ROCm extras:
 $ pip install -e .[rocm] --extra-index-url https://download.pytorch.org/whl/rocm5.7
 ```
 
-## Generating Dyst Dataset
-We structure our Arrow files as multivariate trajectories saved per sample instance. Each sample instance is a specific parameter perturbation and initial condition. For example, each Arrow file `[SAMPLE_IDX]_T-1024.arrow` within `[DATA_DIR]/train/Lorenz` corresponds to a single sample instance of the Lorenz system, and contains trajectories for all coordinates (dimensions) i.e. a numpy array of shape (3, 1024) for the Lorenz system.  
+## Dataset Generation
 
-We provide several on-the-fly dataset augmentations compatible with the GluonTS framework, in [dystformer/augmentations.py](dystformer.augmentations). By default, all of these augmentations are used during training, but the choice of augmentations can be directly specified in the [dataset config](config/dataset.yaml).
+## Our Model
 
-Currently implemented data augmentations:
-- RandomAffineTransform
-- RandomConvexCombinationTransform
-- RandomProjectedSkewTransform
+## Training Our Model
 
-We provide a script [make_dyst_data.py](scripts/make_dyst_data.py) for dataset generation. By default, this randomly splits all dysts into a 0.3 test/train split. You can manually specify your desired subset. Running `python scripts/make_dyst_data.py` will save trajectories for systems in the train and test splits to their respective data sub-directories. The `num-param-perturbations` and `num_ics` arguments specify the number of system parameter perturbations and initial conditions to sample from. You can test the generated data using `tests/test_saved_data.py`. Note that the `--one_dim_target` flag is required for some of the univariate models (such as Chronos), where the coordinates must be split by dimension and then saved. The `DystData` class includes a suite of attractor tests to filter out the samples that are valid attractors, please see [dyst_data.py](dystformer/dyst_data.py). An example workflow:
-
-```
-python tests/make_dyst_data.py
-python tests/test_saved_data.py all --split train
-```
-
-We provide a script [make_skew_systems.py](scripts/make_skew_systems.py) to search for skew system pairs (driver + response system) that yield valid attractors. This gives the user the ability to search through the space of all possible skew system pairs, and the `SkewData` class inherits from the `DystData` class. Setting `num-param-perturbations` and `num_ics` currently samples for the driver and response systems independently. Standardization is a work in progress. An example:
-```
-python scripts/make_skew_systems.py all --n_combos 40 --couple_phase_space True --couple_flows False --debug-mode
-```
-
-### Testing Parameter and IC Perturbations
-We provide a script [test_attractor.py](scripts/test_attractor.py) to test parameter perturbations and check if the generated trajectories are valid attractors. An example workflow, which automatically saves failed attractors and valid attractors separately:
-
-```
-./scripts/clean_dataset.sh train all
-python tests/test_attractor.py all
-python tests/test_saved_data.py all --split debug --metadata_path tests/attractor_checks.json --samples_subset valid_samples
-python tests/test_saved_data.py all --split failed_attractors_debug --metadata_path tests/attractor_checks.json --samples_subset failed_samples
-```
-
-## Training
-Our train and eval scripts use hydra for hierarchical config, and you can log experiments to wandb. You can simply run `CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py` or `CUDA_VISIBLE_DEVICES=0 python scripts/chronos/train.py` to run with the default configs. 
-
-### PatchTST Training
-See `scripts/patchtst/run_finetune.sh` for an example script.
-
-### Chronos Training
-We are fine-tuning [Chronos](https://github.com/amazon-science/chronos-forecasting) on trajectories from dynamical systems. Chronos is itself a variation of the [T5 architecture](https://huggingface.co/docs/transformers/en/model_doc/t5) fine-tuned on various benchmark univariate timeseries datasets. Specifically, Chronos fine-tunes an deep-narrow [efficient T5](https://huggingface.co/google/t5-efficient-large).
-
-See `scripts/chronos/run_finetune.sh` for some example scripts. 
-
-### Distributed Training
-The torchrun launcher provides capability for distributed data-parallel (DDP) training. You can also try Huggingface's [accelerate](https://huggingface.co/docs/transformers/en/accelerate) launcher. For model-parallel training, see HF's [transformers model parallelism](https://huggingface.co/docs/transformers/v4.15.0/en/parallelism) guide.
-
-If you run into a weird miopen error, see: https://github.com/pytorch/pytorch/issues/60477
+## Training Baselines
 
 ## Evaluation
-Script for evaluating the forecasts: [tests/test_forecasts.py](tests/test_forecasts.py). An example:
-```
-python tests/test_forecasts.py ThomasLabyrinth_Coullet --split_forecasts eval/run-380/forecasts --split_ground_truth eval/run-380/labels --plot_save_dir figs/forecasts_run-380
-```
-Script for evaluating the completions from MLM pretraining of PatchTST: [tests/test_completions.py](tests/test_completions.py). An example:
-```
-python tests/test_completions.py ThomasLabyrinth_Coullet --split_completions eval/run-367/completions --split_context eval/run-367/patch_input --split_mask eval/run-367/timestep_masks --plot_save_dir figs/completions_run-367
-```
 
 ## Development Goals
 ---
-
-+ [HIGH | EASY] add stationarity test for sample systems
-+ [HIGH | MEDIUM] test and refine the quantization scheme (partioning phase space)
-+ [HIGH | HARD] compute periods for systems (with param perturbations) to be used to align timescales of training data (blocky trajectories no good). See random phase surrogate method, make faster.
-+ [MEDIUM | MEDIUM] utilize the `probabilities` variable (see `dystformer/scripts/patchtst/train.py`) for the dataset to equalize dysts sampling according to the distribution of phase space dimension. How to weigh the augmentations in the context of dimension distribution (dimensions can be arbitrary)?
-+ [LOW | EASY] get to the bottom of this strange miopen fix https://github.com/pytorch/pytorch/issues/60477#issuecomment-1574453494
-+ [LOW | MEDIUM] curriculum learning setup for growing the training dataset - use some notion of complexity/hardness to learn.
-+ [LOW | HARD] add flash attention support for AMD, see this warning: 
-+ [LOW | HARD] refactor data generation as a chain of iterators (imap_unordered) for lazy loading and less memory bottlenecking
-```
-[W sdp_utils.cpp:264] Warning: 1Torch was not compiled with flash attention. (function operator())
-[W sdp_utils.cpp:320] Warning: 1Torch was not compiled with memory efficient attention. (function operator())
-```
++ [HIGH | MEDIUM] MLM Evals
++ [HIGH | HARD] Attention map investigation
