@@ -25,8 +25,8 @@ from transformers.utils import ModelOutput
 
 from .modules import (
     DyT,
-    PatchTSTKernelEmbedding,
     PatchTSTPatchify,
+    PatchTSTPolynomialEmbedding,
     PatchTSTRMSNorm,
     apply_p_rope_to_qk,
 )
@@ -476,7 +476,7 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         super().__init__(config)
         self.gradient_checkpointing = False
         if config.use_dynamics_embedding:
-            self.embedder = PatchTSTKernelEmbedding(config)
+            self.embedder = PatchTSTPolynomialEmbedding(config)
         else:
             self.embedder = PatchTSTEmbedding(config)
 
@@ -522,9 +522,6 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         # Input embedding
         patch_input = self.embedder(patch_input)
         hidden_state = patch_input
-
-        # Positional encoding
-        # hidden_state = self.positional_encoder(patch_input)
 
         encoder_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
