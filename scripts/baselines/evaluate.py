@@ -1,12 +1,9 @@
 import logging
-import os
 from functools import partial
-from pathlib import Path
 
 import hydra
 import numpy as np
 import transformers
-from gluonts.dataset.common import FileDataset
 
 from dystformer.baselines.baselines import (
     FourierARIMABaseline,
@@ -17,6 +14,7 @@ from dystformer.baselines.evaluation import evaluate_forecasting_model
 from dystformer.patchtst.dataset import TimeSeriesDataset
 from dystformer.utils import (
     get_dim_from_dataset,
+    get_eval_data_dict,
     log_on_main,
     process_trajs,
     save_evaluation_results,
@@ -28,22 +26,14 @@ log = partial(log_on_main, logger=logger)
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
+    test_data_dict = get_eval_data_dict(
+        cfg.eval.data_paths_lst,
+        num_subdirs=cfg.eval.num_subdirs,
+        num_samples_per_subdir=cfg.eval.num_samples_per_subdir,
+    )
+    log(f"Number of combined test data subdirectories: {len(test_data_dict)}")
+
     transformers.set_seed(seed=cfg.eval.seed)
-
-    # get test data paths
-    test_data_dir = os.path.expandvars(cfg.eval.data_path)
-    test_data_dict = {}
-    system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-
-    for system_dir in system_dirs[: cfg.eval.num_systems]:
-        system_name = system_dir.name
-        system_files = list(system_dir.glob("*"))
-        test_data_dict[system_name] = [
-            FileDataset(path=Path(file_path), freq="h", one_dim_target=False)
-            for file_path in system_files
-            if file_path.is_file()
-        ]
-
     # for convenience, get system dimensions, for saving as a column in the metrics csv
     system_dims = {
         system_name: get_dim_from_dataset(test_data_dict[system_name][0])

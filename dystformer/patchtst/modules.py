@@ -72,6 +72,89 @@ class PatchTSTKernelEmbedding(nn.Module):
         return features
 
 
+class PatchTSTPolynomialEmbedding(nn.Module):
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+        self.poly_degrees = [2, 3, 4]
+        self.inner_dim = config.d_model
+        self.num_poly_feats = 64
+
+        self.poly_weights_q = nn.ModuleList(
+            [
+                nn.Linear(config.patch_length, self.inner_dim, bias=False)
+                for _ in self.poly_degrees
+            ]
+        )
+        self.poly_weights_k = nn.ModuleList(
+            [
+                nn.Linear(config.patch_length, self.inner_dim, bias=False)
+                for _ in self.poly_degrees
+            ]
+        )
+        self.poly_weights_v = nn.ModuleList(
+            [
+                nn.Linear(config.patch_length, self.num_poly_feats, bias=False)
+                for _ in self.poly_degrees
+            ]
+        )
+
+        self.freq_weights = nn.Parameter(
+            config.rff_scale * torch.randn(config.patch_length, config.num_rff // 2),
+            requires_grad=config.rff_trainable,
+        )
+        self.freq_biases = nn.Parameter(
+            torch.randn(1, 1, 1, config.num_rff // 2),
+            requires_grad=config.rff_trainable,
+        )
+        self.projection = nn.Linear(
+            config.patch_length
+            + config.num_rff
+            + self.num_poly_feats * len(self.poly_degrees),
+            config.d_model,
+        )
+
+    def polyattn(self, x: torch.Tensor, degree_idx: int) -> torch.Tensor:
+        """
+        Parameters:
+            x (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
+                Patch input for embedding
+            degree_idx (int, *required*):
+                Index corresponding to the degree in `self.poly_degrees` (0, 1, 2, ...)
+        return:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, num_poly_feats)`
+        """
+        degree = self.poly_degrees[degree_idx] - 2
+        # shape: (batch_size, num_patches, num_channels, patch_length)
+        x = x.transpose(1, 2)
+        p = torch.ones_like(x) if degree == 0 else x**degree
+        qproj, kproj, vproj = (
+            self.poly_weights_q[degree_idx],
+            self.poly_weights_k[degree_idx],
+            self.poly_weights_v[degree_idx],
+        )
+        Q = nn.functional.elu(qproj(p))
+        K = nn.functional.elu(kproj(x))
+        # shape: (batch_size, num_patches, num_channels, num_poly_feats)
+        polyfeats = (Q @ K.transpose(-2, -1)) @ vproj(x)
+        return polyfeats.transpose(1, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Parameters:
+            x (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
+                Patch input for embedding
+        return:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
+        """
+        polyfeats = torch.cat(
+            [self.polyattn(x, d) for d in range(len(self.poly_degrees))], dim=-1
+        )
+        weighted_x = x @ self.freq_weights + self.freq_biases
+        rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
+        features = torch.cat([x, polyfeats, rff_feats], dim=-1)
+        return self.projection(features)
+
+
 class PatchTSTRMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
         """
