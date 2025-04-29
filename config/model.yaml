@@ -64,7 +64,7 @@ chronos:
   tie_embeddings: true
 
   context_length: 512
-  prediction_length: 64
+  prediction_length: 128
   num_samples: 20
 
   # vocab (tokens)

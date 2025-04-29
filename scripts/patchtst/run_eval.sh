@@ -5,10 +5,43 @@ checkpoint_dir=$WORK/checkpoints
 
 ulimit -n 99999
 
+# scaling law runs
 run_names=(
-    pft_linattnpolyemb_from_scratch-0
+    pft_chattn_mlm_sys10490_ic2-0
+    pft_chattn_mlm_sys656_ic32-0
+    pft_chattn_mlm_sys164_ic128-0
+    pft_chattn_mlm_sys5245_ic4-0
 )
 
+# # univariate with old dynamics embedding
+# run_names=(
+#     pft_emb_equal_param_univariate_from_scratch-0
+#     pft_rff_univariate_pretrained-0
+# )
+
+# # univariate either without dynamics embedding or with the new poly one
+# run_names=(
+#     pft_noemb_equal_param_univariate_from_scratch-0
+#     pft_vanilla_pretrained_correct-0
+#     pft_equal_param_deeper_univariate_from_scratch_noemb-0
+# )
+
+# # multivariate with old dynamics embedding
+# run_names=(
+#     pft_stand_rff_only_pretrained-0 
+#     pft_fullyfeat_from_scratch-0 # this is actually just rff from scratch
+# )
+
+# # multivariate either without dynamics embedding or with the new poly one
+# run_names=(
+#     # pft_chattn_noembed_pretrained_correct-0 
+#     pft_stand_chattn_noemb-0 
+#     pft_chattn_fullemb_quartic_enc-0
+#     pft_chattn_emb_w_poly-0
+#     pft_chattn_fullemb_pretrained-0
+# )
+
+# split_dir=final_skew40/train
 split_dir=final_skew40/test_zeroshot
 model_dirname=patchtst
 
