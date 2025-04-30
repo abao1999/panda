@@ -15,8 +15,8 @@ if [ "$DEBUG" -eq 0 ]; then
         CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
 
         # CUDA_DEVICES=0,1,2
-        CUDA_DEVICES=4,5,6,7
-        NUM_DEVICES=$(tr ',' '\n' <<< "$CUDA_DEVICES" | wc -l)
+        CUDA_DEVICES=5,6,7
+        NUM_DEVICES=$(echo "$CUDA_DEVICES" | tr -d ' ' | tr ',' '\n' | wc -l)
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node $NUM_DEVICES \
