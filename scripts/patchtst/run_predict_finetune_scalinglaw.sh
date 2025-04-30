@@ -7,15 +7,45 @@ while getopts "d" flag; do
 done
 shift $((OPTIND - 1))
 
+scalinglaw_data_dir=$WORK/data/improved/scalinglaw
+
+# split_0-163_ic128
+# split_163-327_ic64
+# split_327-655_ic32
+# split_655-1311_ic16
+# split_1311-2622_ic8
+# split_2622-5244_ic4
+# split_5244-10489_ic2
+
+train_data_dirs=(
+    $scalinglaw_data_dir/split_163-327_ic64/train
+)
+train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -c .)
+echo "train_data_dirs: $train_data_dirs_json"
+
+
+checkpoint_dir=$WORK/checkpoints
+# chattn_mlm_sys5245_ic4-0
+# chattn_mlm_sys164_ic128-1
+# chattn_mlm_sys656_ic32-1
+# chattn_mlm_sys10490_ic2-0
+# chattn_mlm_sys1312_ic16-0
+# chattn_mlm_sys2623_ic8-1
+# chattn_mlm_sys328_ic64-1
+
+checkpoint_name=chattn_mlm_sys328_ic64-1
+checkpoint_path=$checkpoint_dir/$checkpoint_name/checkpoint-final
+echo "checkpoint_path: $checkpoint_path"
+
 ulimit -n 99999
 if [ "$DEBUG" -eq 0 ]; then
 
         TOTAL_CORES=$(nproc)
         CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
-        CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
+        CORES_PER_JOB=$(( $CORES_PER_GROUP / 3 ))
 
         # CUDA_DEVICES=0,1,2
-        CUDA_DEVICES=4,5,6,7
+        CUDA_DEVICES=5,6,7
         NUM_DEVICES=$(tr ',' '\n' <<< "$CUDA_DEVICES" | wc -l)
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
@@ -23,9 +53,10 @@ if [ "$DEBUG" -eq 0 ]; then
                 --master-port 29501 \
                 scripts/patchtst/train.py \
                 shuffle_buffer_length=100_000 \
+                train_data_dirs=$train_data_dirs_json \
                 patchtst.mode=predict \
-                patchtst.use_dynamics_embedding=true \
-                patchtst.pretrained_encoder_path=null \
+                patchtst.use_dynamics_embedding=false \
+                patchtst.pretrained_encoder_path=$checkpoint_path \
                 patchtst.context_length=512 \
                 patchtst.prediction_length=128 \
                 patchtst.patch_length=16 \
@@ -51,7 +82,7 @@ if [ "$DEBUG" -eq 0 ]; then
 else  # this mode allows for breakpoints inside model code
         CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py \
                 run_name=DEBUG \
-                patchtst.pretrained_encoder_path=$checkpoint_path \
+                patchtst.pretrained_encoder_path=$WORK/checkpoints/mlm40_stand-0/checkpoint-final \
                 shuffle_buffer_length=100 \
                 patchtst.mode=predict \
                 train.ddp_backend=null \

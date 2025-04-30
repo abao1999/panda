@@ -45,6 +45,8 @@ def main(cfg):
                 train_config = training_info.get("train_config") or training_info.get(
                     "training_config"
                 )
+    else:
+        log(f"Evaluating Chronos Zeroshot: {cfg.chronos.model_id}")
 
     # init model for inference
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)

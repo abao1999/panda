@@ -26,7 +26,7 @@ python scripts/timemoe/evaluate.py \
     eval.metrics_save_dir=$WORK/eval_results/timemoe/${run_name}/test_zeroshot \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
-    eval.device=cuda:2 \
+    eval.device=cuda:1 \
     eval.save_predictions=false \
     eval.save_labels=false \
     eval.seed=99 \
