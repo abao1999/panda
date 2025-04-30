@@ -132,8 +132,10 @@ class PatchTSTPolynomialEmbedding(nn.Module):
             self.poly_weights_k[degree_idx],
             self.poly_weights_v[degree_idx],
         )
-        Q = nn.functional.elu(qproj(p))
-        K = nn.functional.elu(kproj(x))
+        # Q = nn.functional.elu(qproj(p))
+        # K = nn.functional.elu(kproj(x))
+        Q = qproj(p)
+        K = kproj(x)
         # shape: (batch_size, num_patches, num_channels, num_poly_feats)
         polyfeats = (Q @ K.transpose(-2, -1)) @ vproj(x)
         return polyfeats.transpose(1, 2)
