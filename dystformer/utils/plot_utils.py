@@ -1,6 +1,6 @@
 import os
 import warnings
-from typing import Any
+from typing import Any, Literal
 
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
@@ -1084,7 +1084,9 @@ def make_box_plot(
 def plot_all_metrics_by_prediction_length(
     all_metrics_dict: dict[str, dict[str, dict[str, list[float]]]],
     metric_names: list[str],
-    metrics_to_show_std_envelope: list[str] = [],
+    stat_to_plot: Literal["mean", "median"] = "median",
+    metrics_to_show_envelope: list[str] = [],
+    percentile_range: tuple[int, int] = (25, 75),
     n_rows: int = 2,
     n_cols: int = 3,
     individual_figsize: tuple[int, int] = (4, 4),
@@ -1095,6 +1097,7 @@ def plot_all_metrics_by_prediction_length(
     colors: list[str] | dict[str, str] = DEFAULT_COLORS,
     markers: list[str] = DEFAULT_MARKERS,
     use_inv_spearman: bool = False,
+    model_names_to_exclude: list[str] = [],
 ) -> list[plt.Line2D]:
     """
     Plot multiple metrics across different prediction lengths for various models.
@@ -1110,12 +1113,25 @@ def plot_all_metrics_by_prediction_length(
           - 'means': mean values for each prediction length
           - 'medians': median values for each prediction length
           - 'stds': standard deviations for each prediction length
+          - 'stes': standard error of the mean for each prediction length
+          - 'all_vals': list of all values for each prediction length
 
     metric_names : list[str]
         List of metric names to plot (must be keys in all_metrics_dict)
 
-    metrics_to_show_std_envelope : list[str]
-        List of metrics for which to show standard *error* envelopes
+    model_names_to_exclude : list[str], default=[]
+        List of model names to exclude from the plot
+
+    stat_to_plot : Literal["mean", "median"], default="median"
+        Statistic to plot
+
+    metrics_to_show_envelope : list[str]
+        List of metrics for which to show envelopes
+        if stat_to_plot == "mean", then show standard *error* envelopes
+        if stat_to_plot == "median", then show median envelopes
+
+    percentile_range : tuple[int, int], default=(25, 75)
+        Percentile range to use for the median envelope, only used when stat_to_plot == "median"
 
     n_rows : int, default=2
         Number of rows in the subplot grid
@@ -1169,30 +1185,66 @@ def plot_all_metrics_by_prediction_length(
     for i, (ax, metric_name) in enumerate(zip(axes, metric_names)):
         metrics_dict = all_metrics_dict[metric_name]
         for j, (model_name, metrics) in enumerate(metrics_dict.items()):
+            if model_name in model_names_to_exclude:
+                continue
             mean_vals = np.array(metrics["means"])
             median_vals = np.array(metrics["medians"])
+            all_vals = metrics[
+                "all_vals"
+            ]  # Keep as list of arrays to avoid inhomogeneous shape error
             if metric_name == "spearman" and use_inv_spearman:
                 mean_vals = 1 - mean_vals
                 median_vals = 1 - median_vals
-            ax.plot(
-                metrics["prediction_lengths"],
-                median_vals,
-                marker=markers[j],
-                label=model_name,
-                markersize=6,
-                color=colors[j] if isinstance(colors, list) else colors[model_name],
-                # alpha=0.8,
-            )
-            # std_envelope = np.array(metrics["stds"])
-            se_envelope = np.array(metrics["stds"]) / np.sqrt(len(metrics["stds"]))
-            if metric_name in metrics_to_show_std_envelope:
-                ax.fill_between(
+                all_vals = [1 - val for val in all_vals]
+
+            if stat_to_plot == "mean":
+                ax.plot(
                     metrics["prediction_lengths"],
-                    mean_vals - se_envelope,
-                    mean_vals + se_envelope,
-                    alpha=0.1,
+                    mean_vals,
+                    marker=markers[j],
+                    label=model_name,
+                    markersize=6,
                     color=colors[j] if isinstance(colors, list) else colors[model_name],
                 )
+                if metric_name in metrics_to_show_envelope:
+                    se_envelope = np.array(metrics["stes"])
+                    ax.fill_between(
+                        metrics["prediction_lengths"],
+                        mean_vals - se_envelope,
+                        mean_vals + se_envelope,
+                        alpha=0.1,
+                        color=colors[j]
+                        if isinstance(colors, list)
+                        else colors[model_name],
+                    )
+            elif stat_to_plot == "median":
+                ax.plot(
+                    metrics["prediction_lengths"],
+                    median_vals,
+                    marker=markers[j],
+                    label=model_name,
+                    markersize=6,
+                    color=colors[j] if isinstance(colors, list) else colors[model_name],
+                )
+                if metric_name in metrics_to_show_envelope:
+                    # plot fill between median and the 25th and 75th percentiles
+                    percentile_range_lower = [
+                        np.percentile(all_vals[pred_len_idx], percentile_range[0])
+                        for pred_len_idx in range(len(all_vals))
+                    ]
+                    percentile_range_upper = [
+                        np.percentile(all_vals[pred_len_idx], percentile_range[1])
+                        for pred_len_idx in range(len(all_vals))
+                    ]
+                    ax.fill_between(
+                        metrics["prediction_lengths"],
+                        percentile_range_lower,
+                        percentile_range_upper,
+                        alpha=0.1,
+                        color=colors[j]
+                        if isinstance(colors, list)
+                        else colors[model_name],
+                    )
         if i == 0:
             legend_handles = [
                 plt.Line2D(
