@@ -29,12 +29,6 @@ run_names_univariate=(
     pft_equal_param_deeper_univariate_from_scratch_noemb-0
 )
 
-# multivariate with old dynamics embedding
-run_names_multivariate_kernelemb_old=(
-    pft_stand_rff_only_pretrained-0 
-    pft_fullyfeat_from_scratch-0 # this is actually just rff from scratch
-)
-
 # multivariate without dynamics embedding
 run_names_multivariate=(
     pft_chattn_noembed_pretrained_correct-0 
@@ -43,7 +37,8 @@ run_names_multivariate=(
 
 # multivariate with the kernel embedding
 run_names_multivariate_kernelemb=(
-    pft_chattn_fullemb_quartic_enc-0
+    # pft_chattn_fullemb_quartic_enc-0
+    pft_rff496_proj-0
     pft_chattn_emb_w_poly-0
     pft_chattn_fullemb_pretrained-0
 )
@@ -55,11 +50,11 @@ run_names_multivariate_linattnpolyemb=(
 
 run_names=(
     ${run_names_scalinglaw[@]}
-    # ${run_names_univariate[@]}
+    ${run_names_univariate[@]}
     # ${run_names_univariate_kernelemb_old[@]}
-    # ${run_names_multivariate[@]}
+    ${run_names_multivariate[@]}
     # ${run_names_multivariate_kernelemb_old[@]}
-    # ${run_names_multivariate_kernelemb[@]}
+    ${run_names_multivariate_kernelemb[@]}
     # ${run_names_multivariate_linattnpolyemb[@]}
 )
 
@@ -92,7 +87,5 @@ for run_name in ${run_names[@]}; do
         eval.overwrite=true \
         eval.device=cuda:3 \
         eval.save_labels=false \
-        eval.save_predictions=false \
-        fixed_dim=3 \
-        eval.seed=99
+        eval.save_predictions=false
 done

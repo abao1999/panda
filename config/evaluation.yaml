@@ -35,7 +35,7 @@ eval:
   metrics_save_dir: null
   metrics_fname: metrics
   overwrite: false
-  seed: 42
+  seed: 1
 
   # for generating forecasts and getting test split
   num_samples: 1 # NOTE: this is only used in chronos/evaluate.py

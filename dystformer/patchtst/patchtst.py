@@ -25,8 +25,8 @@ from transformers.utils import ModelOutput
 
 from .modules import (
     DyT,
+    PatchTSTKernelEmbedding,
     PatchTSTPatchify,
-    PatchTSTPolynomialEmbedding,
     PatchTSTRMSNorm,
     apply_p_rope_to_qk,
 )
@@ -476,8 +476,8 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         super().__init__(config)
         self.gradient_checkpointing = False
         if config.use_dynamics_embedding:
-            self.embedder = PatchTSTPolynomialEmbedding(config)
-            # self.embedder = PatchTSTKernelEmbedding(config)
+            # self.embedder = PatchTSTPolynomialEmbedding(config)
+            self.embedder = PatchTSTKernelEmbedding(config)
         else:
             self.embedder = PatchTSTEmbedding(config)
 
