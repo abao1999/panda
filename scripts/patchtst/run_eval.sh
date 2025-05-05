@@ -52,7 +52,7 @@ run_names_new=(
 )
 
 run_names=(
-    ${run_names_new[@]}
+    # ${run_names_new[@]}
     # ${run_names_scalinglaw[@]}
     # ${run_names_univariate[@]}
     # ${run_names_univariate_kernelemb_old[@]}
