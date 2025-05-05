@@ -29,6 +29,8 @@ from .eval_utils import (
     save_evaluation_results,
 )
 from .plot_utils import (
+    DEFAULT_COLORS,
+    DEFAULT_MARKERS,
     apply_custom_style,
     make_box_plot,
     plot_all_metrics_by_prediction_length,
