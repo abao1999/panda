@@ -15,7 +15,6 @@ if [ "$DEBUG" -eq 0 ]; then
     TOTAL_CORES=$(nproc)
     CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
     CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
-    #MEMORY_PROFILER_DISABLE=1
 
     # skew systems
     WANDB_DISABLE_GPU=true python -W ignore scripts/make_skew_systems.py \
@@ -73,8 +72,6 @@ if [ "$DEBUG" -eq 0 ]; then
     #    "$@"
 
 else
-    echo "debug mode"
-        # skew systems
     WANDB_DISABLE_GPU=true python -W ignore scripts/make_skew_systems.py \
         sampling.num_points=5120 \
         sampling.num_periods=40 \

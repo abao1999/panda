@@ -72,7 +72,6 @@ def additive_coupling_map_factory(
     randomize_driver_indices: bool = True,
     normalization_strategy: str = "flow_rms",
     random_seed: int = 0,
-    **kwargs,
 ) -> Callable[[int, int], RandomAdditiveCouplingMap]:
     """
     Initialize a random additive coupling map for a skew-product dynamical system

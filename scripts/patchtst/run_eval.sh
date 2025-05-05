@@ -37,7 +37,6 @@ run_names_multivariate=(
 
 # multivariate with the kernel embedding
 run_names_multivariate_kernelemb=(
-    # pft_chattn_fullemb_quartic_enc-0
     pft_rff496_proj-0
     pft_chattn_emb_w_poly-0
     pft_chattn_fullemb_pretrained-0
@@ -48,13 +47,18 @@ run_names_multivariate_linattnpolyemb=(
     pft_linattnpolyemb_from_scratch-0
 )
 
+run_names_new=(
+    pft_sft-0
+)
+
 run_names=(
-    ${run_names_scalinglaw[@]}
-    ${run_names_univariate[@]}
+    ${run_names_new[@]}
+    # ${run_names_scalinglaw[@]}
+    # ${run_names_univariate[@]}
     # ${run_names_univariate_kernelemb_old[@]}
-    ${run_names_multivariate[@]}
+    # ${run_names_multivariate[@]}
     # ${run_names_multivariate_kernelemb_old[@]}
-    ${run_names_multivariate_kernelemb[@]}
+    # ${run_names_multivariate_kernelemb[@]}
     # ${run_names_multivariate_linattnpolyemb[@]}
 )
 
