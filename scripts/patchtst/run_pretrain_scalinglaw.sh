@@ -7,6 +7,29 @@ while getopts "d" flag; do
 done
 shift $((OPTIND - 1))
 
+# scalinglaw_data_dir=$WORK/data/improved/scalinglaw
+
+# # split_0-163_ic128
+# # split_163-327_ic64
+# # split_327-655_ic32
+# # split_655-1311_ic16
+# # split_1311-2622_ic8
+# # split_2622-5244_ic4
+# # split_5244-10489_ic2
+
+# train_data_dirs=(
+#     $scalinglaw_data_dir/split_163-327_ic64/train
+# )
+
+train_data_dirs=(
+    $WORK/data/improved/final_skew40/train
+    $WORK/data/improved/final_skew40/train_z5_z10
+)
+
+train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -c .)
+echo "train_data_dirs: $train_data_dirs_json"
+
+
 ulimit -n 99999
 if [ "$DEBUG" -eq 0 ]; then
 
@@ -16,12 +39,13 @@ if [ "$DEBUG" -eq 0 ]; then
 
         # CUDA_DEVICES=0,1,2,3
         CUDA_DEVICES=5,6,7
-        NUM_DEVICES=$(echo "$CUDA_DEVICES" | tr -d ' ' | tr ',' '\n' | wc -l)
+        NUM_DEVICES=$(tr ',' '\n' <<< "$CUDA_DEVICES" | wc -l)
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node $NUM_DEVICES \
                 --master-port 29501 \
                 scripts/patchtst/train.py \
+                train_data_dirs=$train_data_dirs_json \
                 patchtst.mode=pretrain \
                 patchtst.context_length=512 \
                 patchtst.patch_length=16 \
