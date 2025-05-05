@@ -1,9 +1,9 @@
 # directory containing files used for training data
 train_data_dirs:
-  - /stor/work/AMDG_Gilpin_Summer2024/data/final_skew40/train
-  - /stor/work/AMDG_Gilpin_Summer2024/data/final_skew40/train_z5_z10
-  - /stor/work/AMDG_Gilpin_Summer2024/data/final_base40/train
-  - /stor/work/AMDG_Gilpin_Summer2024/data/final_base40/train_z5_z10
+    #- /stor/work/AMDG_Gilpin_Summer2024/data/final_skew40/train
+    #- /stor/work/AMDG_Gilpin_Summer2024/data/final_skew40/train_z5_z10
+    - /stor/work/AMDG_Gilpin_Summer2024/data/final_base40/train
+    - /stor/work/AMDG_Gilpin_Summer2024/data/final_base40/train_z5_z10
 
 # additional files to add to training data set
 extra_train_data_paths: null

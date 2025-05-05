@@ -14,7 +14,6 @@ from omegaconf import OmegaConf
 
 from dystformer.utils import safe_standardize
 
-# DEFAULT_COLORS = list(TABLEAU_DEFAULT_COLORS.values())
 DEFAULT_COLORS = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
 DEFAULT_MARKERS = ["o", "s", "v", "D", "X", "P", "H", "h", "d", "p", "x"]
 
@@ -27,7 +26,6 @@ def apply_custom_style(config_path: str):
         cfg = OmegaConf.load(config_path)
         plt.style.use(cfg.base_style)
 
-        # Apply custom settings from config
         custom_rcparams = OmegaConf.to_container(cfg.matplotlib_style, resolve=True)
         for category, settings in custom_rcparams.items():
             if isinstance(settings, dict):

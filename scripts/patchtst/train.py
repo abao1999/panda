@@ -240,6 +240,7 @@ def main(cfg):
         mode=cfg.patchtst.mode,
         model_config=dict(cfg.patchtst),
         pretrained_encoder_path=cfg.patchtst.pretrained_encoder_path,
+        pretained_checkpoint=cfg.patchtst.pretrained_pft_path,
     )
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -310,7 +311,9 @@ def main(cfg):
         )
 
     log_on_main("Training", logger)
-    trainer.train(resume_from_checkpoint=cfg.train.resume_from_checkpoint)  # Transformers trainer will save model checkpoints automatically
+    trainer.train(
+        resume_from_checkpoint=cfg.train.resume_from_checkpoint
+    )  # Transformers trainer will save model checkpoints automatically
 
     # save final model checkpoint and training info locally
     if is_main_process():
