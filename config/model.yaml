@@ -44,8 +44,11 @@ patchtst:
   max_wavelength: 500
   rope_percent: 0.75
 
-  # for initializing the encoder from a checkpoint
+  # for initializing the encoder from an mlm checkpoint
   pretrained_encoder_path: null
+
+  # for initializing the prediction model from an existing prediction model checkpoint
+  pretrained_pft_path: null
 
   # for the dynamical embedding
   use_dynamics_embedding: false

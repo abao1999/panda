@@ -24,10 +24,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 scripts/patchtst/train.py \
                 shuffle_buffer_length=100_000 \
                 patchtst.mode=predict \
-                patchtst.use_dynamics_embedding=true \
-                patchtst.num_poly_feats=0 \
-                patchtst.poly_degrees=2 \
-                patchtst.num_rff=496 \
+                patchtst.use_dynamics_embedding=false \
                 patchtst.pretrained_encoder_path=null \
                 patchtst.context_length=512 \
                 patchtst.prediction_length=128 \
@@ -54,7 +51,7 @@ if [ "$DEBUG" -eq 0 ]; then
 else  # this mode allows for breakpoints inside model code
         CUDA_VISIBLE_DEVICES=0 python scripts/patchtst/train.py \
                 run_name=DEBUG \
-                patchtst.pretrained_encoder_path=$checkpoint_path \
+                patchtst.pretrained_encoder_path=null \
                 shuffle_buffer_length=100 \
                 patchtst.mode=predict \
                 train.ddp_backend=null \

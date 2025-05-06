@@ -188,7 +188,7 @@ def load_patchtst_model(
     mode: str,
     model_config: dict[str, Any],
     pretrained_encoder_path: str | None = None,
-    device: str | torch.device | None = None,
+    pretained_checkpoint: str | None = None,
 ) -> PatchTSTForPretraining | PatchTSTForPrediction:
     """
     Load a PatchTST model in either pretraining or prediction mode.
@@ -211,15 +211,22 @@ def load_patchtst_model(
 
     if pretrained_encoder_path is not None and mode == "predict":
         pretrained_model = PatchTSTForPretraining.from_pretrained(
-            pretrained_encoder_path,
+            pretrained_encoder_path
         )
-        # Replace the current encoder with the pretrained encoder
+        # replace the current encoder with the pretrained encoder
         if hasattr(pretrained_model, "model"):
             pretained_trunk = getattr(pretrained_model, "model")
             assert hasattr(pretained_trunk, "encoder"), "PatchTST must have an encoder"
             model.model.encoder = pretained_trunk.encoder
         else:
             raise Exception("No model found in pretrained model")
+    elif pretained_checkpoint is not None and mode == "predict":
+        # load a pretrained prediction model for SFT
+        pretrained_model = PatchTSTForPrediction.from_pretrained(
+            pretained_checkpoint,
+            config=config,
+        )
+        return pretrained_model  # type: ignore
 
     return model
 
