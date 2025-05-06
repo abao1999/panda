@@ -14,6 +14,7 @@ run_names_scalinglaw=(
     pft_chattn_mlm_sys1312_ic16-0
     pft_chattn_mlm_sys328_ic64-0
     pft_chattn_mlm_sys2623_ic8-0
+    pft_chattn_mlm_sys20k_ic1-0
 )
 
 # univariate with old dynamics embedding
@@ -33,6 +34,7 @@ run_names_univariate=(
 run_names_multivariate=(
     pft_chattn_noembed_pretrained_correct-0 
     pft_stand_chattn_noemb-0 
+    pft_chattn_noemb_pretrained_chrope-0
 )
 
 # multivariate with the kernel embedding
@@ -58,7 +60,7 @@ run_names=(
     # ${run_names_univariate_kernelemb_old[@]}
     # ${run_names_multivariate[@]}
     # ${run_names_multivariate_kernelemb_old[@]}
-    # ${run_names_multivariate_kernelemb[@]}
+    ${run_names_multivariate_kernelemb[@]}
     # ${run_names_multivariate_linattnpolyemb[@]}
 )
 
@@ -89,7 +91,7 @@ for run_name in ${run_names[@]}; do
         eval.metrics_save_dir=$WORK/eval_results/patchtst/$run_name/test_zeroshot \
         eval.metrics_fname=metrics \
         eval.overwrite=true \
-        eval.device=cuda:3 \
+        eval.device=cuda:2 \
         eval.save_labels=false \
         eval.save_predictions=false
 done

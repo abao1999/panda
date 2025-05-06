@@ -92,7 +92,7 @@ class PatchTSTPolynomialEmbedding(nn.Module):
         super().__init__()
         self.poly_degrees = [2, 3]
         self.inner_dim = config.d_model
-        self.num_poly_feats = 64
+        self.num_poly_feats = 256
 
         self.poly_weights_q = nn.ModuleList(
             [

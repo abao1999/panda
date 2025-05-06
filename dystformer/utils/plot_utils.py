@@ -951,7 +951,10 @@ def make_box_plot(
         lower_box, upper_box = np.percentile(run_data, box_percentile_range)
         lower_whisker, upper_whisker = np.percentile(run_data, whisker_percentile_range)
         median_val = np.median(run_data)
-        color = colors[i % len(colors)]  # type: ignore
+        if isinstance(colors, dict):
+            color = colors[run]
+        else:
+            color = colors[i % len(colors)]  # type: ignore
         box_half_width = box_width / 2
         whisker_cap_width = box_half_width * 0.5
 
@@ -1040,10 +1043,16 @@ def make_box_plot(
     else:
         runs = df["Run"].unique().tolist()
 
-    legend_handles = [
-        mpatches.Patch(color=colors[i % len(colors)], label=run, alpha=alpha_val)  # type: ignore
-        for i, run in enumerate(runs)
-    ]
+    if isinstance(colors, dict):
+        legend_handles = [
+            mpatches.Patch(color=colors[run], label=run, alpha=alpha_val)  # type: ignore
+            for run in runs
+        ]
+    else:
+        legend_handles = [
+            mpatches.Patch(color=colors[i % len(colors)], label=run, alpha=alpha_val)  # type: ignore
+            for i, run in enumerate(runs)
+        ]
 
     if show_legend:
         plt.legend(handles=legend_handles, **legend_kwargs)
