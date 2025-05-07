@@ -73,7 +73,7 @@ class PatchTSTKernelEmbedding(nn.Module):
         # centered difference & polynomial features
         o1_cdiff = x[..., 1:] - x[..., :-1]
         o2_cdiff = o1_cdiff[..., 1:] - o1_cdiff[..., :-1]
-        cdiff_feats = torch.cat([o1_cdiff, o2_cdiff], dim=-1)
+        cdiff_feats = torch.cat([x, o1_cdiff, o2_cdiff], dim=-1)
         poly_feats = [cdiff_feats[..., pis].prod(dim=-1) for pis in self.patch_indices]
 
         # poly_feats = [x[..., pis].prod(dim=-1) for pis in self.patch_indices]
@@ -81,7 +81,7 @@ class PatchTSTKernelEmbedding(nn.Module):
         weighted_x = x @ self.freq_weights + self.freq_biases
         rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
 
-        features = torch.cat([x, cdiff_feats, *poly_feats, rff_feats], dim=-1)
+        features = torch.cat([cdiff_feats, *poly_feats, rff_feats], dim=-1)
         # features = torch.cat([x, *poly_feats, rff_feats], dim=-1)
         features = self.projection(features)
         return features
