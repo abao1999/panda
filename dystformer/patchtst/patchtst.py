@@ -859,12 +859,10 @@ class PatchTSTPredictionHead(nn.Module):
                 nn.Linear(config.d_model, config.d_model),
             )
             self.periodic_head = nn.Sequential(
-                self.forecaster_trunk,
                 nn.GELU(),
                 nn.Linear(config.d_model, 2 * self.num_modes),
             )
             self.correction_head = nn.Sequential(
-                self.forecaster_trunk,
                 nn.GELU(),
                 nn.Linear(config.d_model, config.prediction_length),
             )
@@ -906,14 +904,16 @@ class PatchTSTPredictionHead(nn.Module):
         pooled_embedding = self.dropout(pooled_embedding)
 
         # want to map (bs x num_channels x (d_model * num_patches)) to (bs x num_channels x 2*num_modes)
-        modes = self.periodic_head(pooled_embedding)
+        trunk_feats = self.forecaster_trunk(pooled_embedding)
+        modes = self.periodic_head(trunk_feats)
+        real = modes[..., : self.num_modes]
+        imag = modes[..., self.num_modes :]
         periodic_predictions = torch.fft.irfft(
-            modes[..., : self.num_modes] + 1j * modes[..., self.num_modes :],
+            torch.complex(real, imag),
             n=self.prediction_length,
             dim=-1,
         )
-        correction_predictions = self.correction_head(pooled_embedding)
-
+        correction_predictions = self.correction_head(trunk_feats)
         output = periodic_predictions + correction_predictions
 
         if isinstance(output, tuple):
@@ -1050,12 +1050,13 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 loss_val = nll(distribution, future_values)
                 loss_val = weighted_average(loss_val)
             else:
-                mask = self.random_tail_mask(
-                    future_values,
-                    self.config.prediction_length // 2,
-                    channel_consistent=True,
-                )
-                loss_val = self.loss(y_hat_out * mask, future_values * mask)
+#                mask = self.random_tail_mask(
+#                    future_values,
+#                    self.config.prediction_length // 2,
+#                    channel_consistent=True,
+#                )
+#                loss_val = self.loss(y_hat_out * mask, future_values * mask)
+                loss_val = self.loss(y_hat_out, future_values)
 
         loc = model_output.loc
         scale = model_output.scale
