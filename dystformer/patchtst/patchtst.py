@@ -852,19 +852,13 @@ class PatchTSTPredictionHead(nn.Module):
         # all the channels share the same head
         self.flatten = nn.Flatten(start_dim=2)
         if distribution_output is None:
-            self.num_modes = 20
-            self.forecaster_trunk = nn.Sequential(
-                nn.Linear(head_dim, config.d_model),
-                nn.GELU(),
-                nn.Linear(config.d_model, config.d_model),
+            self.num_modes = 256
+            self.forecaster_trunk = nn.Linear(head_dim, config.d_model * config.d_model)
+            self.periodic_head = nn.Linear(
+                config.d_model * config.d_model, 2 * self.num_modes
             )
-            self.periodic_head = nn.Sequential(
-                nn.GELU(),
-                nn.Linear(config.d_model, 2 * self.num_modes),
-            )
-            self.correction_head = nn.Sequential(
-                nn.GELU(),
-                nn.Linear(config.d_model, config.prediction_length),
+            self.correction_head = nn.Linear(
+                config.d_model * config.d_model, config.prediction_length
             )
         else:
             # use distribution head
@@ -1050,12 +1044,12 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
                 loss_val = nll(distribution, future_values)
                 loss_val = weighted_average(loss_val)
             else:
-#                mask = self.random_tail_mask(
-#                    future_values,
-#                    self.config.prediction_length // 2,
-#                    channel_consistent=True,
-#                )
-#                loss_val = self.loss(y_hat_out * mask, future_values * mask)
+                #                mask = self.random_tail_mask(
+                #                    future_values,
+                #                    self.config.prediction_length // 2,
+                #                    channel_consistent=True,
+                #                )
+                #                loss_val = self.loss(y_hat_out * mask, future_values * mask)
                 loss_val = self.loss(y_hat_out, future_values)
 
         loc = model_output.loc

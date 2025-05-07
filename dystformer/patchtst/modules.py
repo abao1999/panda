@@ -2,8 +2,6 @@
 Some modules for PatchTST
 """
 
-from typing import Optional, Tuple
-
 import torch
 import torch.nn as nn
 from transformers import PatchTSTConfig
@@ -25,6 +23,16 @@ class PatchTSTKernelEmbedding(nn.Module):
     def __init__(self, config: PatchTSTConfig):
         super().__init__()
         poly_degrees_lst = range(2, 2 + config.poly_degrees)
+        # assert (
+        #     config.patch_length
+        #     + len(poly_degrees_lst) * config.num_poly_feats
+        #     + config.num_rff
+        #     == config.d_model
+        # ), (
+        #     f"Sum of features must equal d_model: d_poly + d_rff + patch_length = "
+        #     f"{len(poly_degrees_lst) * config.num_poly_feats} + {config.num_rff}"
+        #     f" + {config.patch_length} != {config.d_model}"
+        # )
         self.num_poly_feats = config.num_poly_feats
         self.patch_indices = [
             torch.randint(
@@ -38,9 +46,17 @@ class PatchTSTKernelEmbedding(nn.Module):
             config.rff_scale * torch.randn(config.patch_length, config.num_rff // 2),
             requires_grad=config.rff_trainable,
         )
+        self.freq_biases = nn.Parameter(
+            torch.randn(1, 1, 1, config.num_rff // 2),
+            requires_grad=config.rff_trainable,
+        )
+        # self.projection = nn.Linear(config.d_model, config.d_model, bias=False)
         self.projection = nn.Linear(
-            config.patch_length
-            + config.poly_degrees * self.num_poly_feats
+            3
+            * (
+                config.patch_length - 1
+            )  # for x, and its 1st and 2nd order finite differences
+            + len(self.patch_indices) * config.num_poly_feats
             + config.num_rff,
             config.d_model,
             bias=False,
@@ -54,12 +70,103 @@ class PatchTSTKernelEmbedding(nn.Module):
         return:
             `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
         """
-        poly_feats = [x[..., pis].prod(dim=-1) for pis in self.patch_indices]
-        weighted_x = x @ self.freq_weights
+        # centered difference & polynomial features
+        o1_cdiff = x[..., 1:] - x[..., :-1]
+        o2_cdiff = o1_cdiff[..., 1:] - o1_cdiff[..., :-1]
+        cdiff_feats = torch.cat([x, o1_cdiff, o2_cdiff], dim=-1)
+        poly_feats = [cdiff_feats[..., pis].prod(dim=-1) for pis in self.patch_indices]
+
+        # poly_feats = [x[..., pis].prod(dim=-1) for pis in self.patch_indices]
+
+        weighted_x = x @ self.freq_weights + self.freq_biases
         rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
-        features = torch.cat([x, *poly_feats, rff_feats], dim=-1)
+
+        features = torch.cat([cdiff_feats, *poly_feats, rff_feats], dim=-1)
+        # features = torch.cat([x, *poly_feats, rff_feats], dim=-1)
         features = self.projection(features)
         return features
+
+
+class PatchTSTPolynomialEmbedding(nn.Module):
+    def __init__(self, config: PatchTSTConfig):
+        super().__init__()
+        self.poly_degrees = [2, 3]
+        self.inner_dim = config.d_model
+        self.num_poly_feats = 256
+
+        self.poly_weights_q = nn.ModuleList(
+            [
+                nn.Linear(config.patch_length, self.inner_dim, bias=False)
+                for _ in self.poly_degrees
+            ]
+        )
+        self.poly_weights_k = nn.ModuleList(
+            [
+                nn.Linear(config.patch_length, self.inner_dim, bias=False)
+                for _ in self.poly_degrees
+            ]
+        )
+        self.poly_weights_v = nn.ModuleList(
+            [
+                nn.Linear(config.patch_length, self.num_poly_feats, bias=False)
+                for _ in self.poly_degrees
+            ]
+        )
+
+        self.freq_weights = nn.Parameter(
+            config.rff_scale * torch.randn(config.patch_length, config.num_rff // 2),
+            requires_grad=config.rff_trainable,
+        )
+        self.freq_biases = nn.Parameter(
+            torch.randn(1, 1, 1, config.num_rff // 2),
+            requires_grad=config.rff_trainable,
+        )
+        self.projection = nn.Linear(
+            config.patch_length
+            + config.num_rff
+            + self.num_poly_feats * len(self.poly_degrees),
+            config.d_model,
+        )
+
+    def polyattn(self, x: torch.Tensor, degree_idx: int) -> torch.Tensor:
+        """
+        Parameters:
+            x (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
+                Patch input for embedding
+            degree_idx (int, *required*):
+                Index corresponding to the degree in `self.poly_degrees` (0, 1, 2, ...)
+        return:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, num_poly_feats)`
+        """
+        degree = self.poly_degrees[degree_idx] - 2
+        # shape: (batch_size, num_patches, num_channels, patch_length)
+        x = x.transpose(1, 2)
+        qproj, kproj, vproj = (
+            self.poly_weights_q[degree_idx],
+            self.poly_weights_k[degree_idx],
+            self.poly_weights_v[degree_idx],
+        )
+        Q = qproj(x**degree)
+        K = kproj(x)
+        # shape: (batch_size, num_patches, num_channels, num_poly_feats)
+        polyfeats = (Q @ K.transpose(-2, -1)) @ vproj(x)
+        return polyfeats.transpose(1, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Parameters:
+            x (`torch.Tensor` of shape `(batch_size, num_channels, num_patches, patch_length)`, *required*):
+                Patch input for embedding
+        return:
+            `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
+        """
+        polyfeats = torch.cat(
+            [self.polyattn(x, d) for d in range(len(self.poly_degrees))], dim=-1
+        )
+        weighted_x = x @ self.freq_weights + self.freq_biases
+        rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
+        features = torch.cat([x, polyfeats, rff_feats], dim=-1)
+        return self.projection(features)
 
 
 class PatchTSTRMSNorm(nn.Module):
@@ -177,90 +284,6 @@ def apply_p_rope_to_qk(
     key_states = torch.cat([key_first_part, key_second_part], dim=-1)
 
     return query_states, key_states
-
-
-class LowRankLinear(nn.Module):
-    def __init__(
-        self,
-        embed_dim: int,
-        num_heads: int,
-        dropout: float = 0.0,
-        is_decoder: bool = False,
-        bias: bool = True,
-        is_causal: bool = False,
-        use_rope: bool = True,
-        max_wavelength: int = 10000,
-        rope_percent: float = 0.5,
-        rank: int = 15,
-        config: Optional[PatchTSTConfig] = None,
-    ):
-        super().__init__()
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.dropout = dropout
-        self.head_dim = embed_dim // num_heads
-        self.max_wavelength = max_wavelength
-        self.rope_percent = rope_percent
-        self.use_rope = use_rope
-        self.rank = rank
-        self.config = config
-
-        if (self.head_dim * num_heads) != self.embed_dim:
-            raise ValueError(
-                f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim}"
-                f" and `num_heads`: {num_heads})."
-            )
-        self.scaling = self.head_dim**-0.5
-        self.is_decoder = is_decoder
-        self.is_causal = is_causal
-
-        self.v_proj = nn.Linear(self.head_dim, self.head_dim, bias=bias)
-        self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
-
-    def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
-        return (
-            tensor.view(bsz, seq_len, self.num_heads, self.head_dim)
-            .transpose(1, 2)
-            .contiguous()
-        )
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        key_value_states: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        layer_head_mask: Optional[torch.Tensor] = None,
-        output_attentions: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        """
-        Parameters:
-            hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, embed_dim)`, *required*):
-                Patch input for embedding
-        """
-        bsz, seq_len, dim = hidden_states.shape
-        proj_shape = (bsz * self.num_heads, -1, self.head_dim)
-
-        hidden_heads = self._shape(hidden_states, -1, bsz).reshape(proj_shape)
-        U, S, V = torch.linalg.svd(hidden_heads, full_matrices=False)
-        V = V[:, : self.rank, :].detach()
-        U = U[:, :, : self.rank].detach()
-        S = S[:, : self.rank].detach()
-
-        V = S[..., None] * self.v_proj(V)
-        lowrank_output = torch.bmm(U, V)
-        lowrank_output = lowrank_output.view(
-            bsz, self.num_heads, seq_len, self.head_dim
-        )
-        lowrank_output = lowrank_output.transpose(1, 2)
-
-        # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
-        # partitioned across GPUs when using tensor-parallelism.
-        lowrank_output = lowrank_output.reshape(bsz, seq_len, self.embed_dim)
-
-        lowrank_output = self.out_proj(lowrank_output)
-
-        return lowrank_output, None, None
 
 
 class PatchTSTFourierApproximator(nn.Module):

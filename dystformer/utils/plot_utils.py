@@ -1,15 +1,164 @@
 import os
 import warnings
+from typing import Any, Literal
 
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import TABLEAU_COLORS
+import pandas as pd
+from matplotlib import patches as mpatches
+from matplotlib.patches import FancyArrowPatch
 from matplotlib.ticker import FormatStrFormatter
+from mpl_toolkits.mplot3d.proj3d import proj_transform
+from omegaconf import OmegaConf
 
 from dystformer.utils import safe_standardize
 
-COLORS = list(TABLEAU_COLORS.values())
+DEFAULT_COLORS = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+DEFAULT_MARKERS = ["o", "s", "v", "D", "X", "P", "H", "h", "d", "p", "x"]
+
+
+def apply_custom_style(config_path: str):
+    """
+    Apply custom matplotlib style from config file with rcparams
+    """
+    if os.path.exists(config_path):
+        cfg = OmegaConf.load(config_path)
+        plt.style.use(cfg.base_style)
+
+        custom_rcparams = OmegaConf.to_container(cfg.matplotlib_style, resolve=True)
+        for category, settings in custom_rcparams.items():
+            if isinstance(settings, dict):
+                for param, value in settings.items():
+                    if isinstance(value, dict):
+                        for subparam, subvalue in value.items():
+                            plt.rcParams[f"{category}.{param}.{subparam}"] = subvalue
+                    else:
+                        plt.rcParams[f"{category}.{param}"] = value
+    else:
+        print(f"Warning: Plotting config not found at {config_path}")
+
+
+class Arrow3D(FancyArrowPatch):
+    def __init__(self, xs, ys, zs, *args, **kwargs):
+        super().__init__((0, 0), (0, 0), *args, **kwargs)
+        self._verts3d = xs, ys, zs
+
+    def draw(self, renderer):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, _ = proj_transform(xs3d, ys3d, zs3d, self.axes.get_proj())
+        self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
+        super().draw(renderer)
+
+    def do_3d_projection(self):
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, zs = proj_transform(xs3d, ys3d, zs3d, self.axes.get_proj())
+        self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
+        return np.min(zs)
+
+
+def make_clean_projection(ax_3d):
+    ax_3d.grid(False)
+    ax_3d.set_facecolor("white")
+    ax_3d.set_xticks([])
+    ax_3d.set_yticks([])
+    ax_3d.set_zticks([])
+    ax_3d.axis("off")
+
+
+def make_arrow_axes(ax_3d):
+    ax_3d.grid(False)
+    ax_3d.set_facecolor("white")
+    ax_3d.set_xticks([])
+    ax_3d.set_yticks([])
+    ax_3d.set_zticks([])
+    ax_3d.axis("off")
+
+    # Get axis limits
+    x0, x1 = ax_3d.get_xlim3d()
+    y0, y1 = ax_3d.get_ylim3d()
+    z0, z1 = ax_3d.get_zlim3d()
+
+    ax_3d.set_box_aspect((x1 - x0, y1 - y0, z1 - z0))
+    # Define arrows along the three frame edges
+    edges = [
+        ((x0, y0, z0), (x1, y0, z0), "X"),
+        ((x0, y0, z0), (x0, y1, z0), "Y"),
+        ((x0, y0, z0), (x0, y0, z1), "Z"),
+    ]
+
+    for (xs, ys, zs), (xe, ye, ze), label in edges:
+        arr = Arrow3D(
+            [xs, xe],
+            [ys, ye],
+            [zs, ze],
+            mutation_scale=20,
+            lw=1.5,
+            arrowstyle="-|>",
+            color="black",
+        )
+        ax_3d.add_artist(arr)
+        ax_3d.text(xe * 1.03, ye * 1.03, ze * 1.03, label, fontsize=12)
+
+    # Hide the default frame and ticks
+    for pane in (ax_3d.xaxis.pane, ax_3d.yaxis.pane, ax_3d.zaxis.pane):
+        pane.set_visible(False)
+    ax_3d.view_init(elev=30, azim=30)
+
+
+def plot_model_prediction(
+    pred: np.ndarray,
+    context: np.ndarray,
+    groundtruth: np.ndarray,
+    title: str | None = None,
+    save_path: str | None = None,
+    show_plot: bool = True,
+    use_arrow_axes: bool = False,
+    figsize: tuple[int, int] = (6, 8),
+):
+    prediction_length = pred.shape[1]
+    total_length = context.shape[1] + prediction_length
+    context_ts = np.arange(context.shape[1]) / total_length
+    pred_ts = np.arange(context.shape[1], total_length) / total_length
+
+    # Create figure with gridspec layout
+    fig = plt.figure(figsize=figsize)
+
+    # Create main grid with padding for colorbar
+    outer_grid = fig.add_gridspec(2, 1, height_ratios=[0.65, 0.35], hspace=-0.1)
+
+    # Create sub-grid for the plots
+    gs = outer_grid[1].subgridspec(3, 1, height_ratios=[0.2] * 3, wspace=0, hspace=0)
+    ax_3d = fig.add_subplot(outer_grid[0], projection="3d")
+
+    ax_3d.plot(*context[:3], alpha=0.5, color="black", label="Context")
+    ax_3d.plot(*groundtruth[:3], linestyle="-", color="black", label="Groundtruth")
+    ax_3d.plot(*pred[:3], color="red", label="Prediction")
+    if use_arrow_axes:
+        make_arrow_axes(ax_3d)
+    else:
+        make_clean_projection(ax_3d)
+
+    if title is not None:
+        title_name = title.replace("_", " ")
+        ax_3d.set_title(title_name, fontweight="bold")
+
+    axes_1d = [fig.add_subplot(gs[i, 0]) for i in range(3)]
+    for i, ax in enumerate(axes_1d):
+        ax.plot(context_ts, context[i], alpha=0.5, color="black")
+        ax.plot(pred_ts, groundtruth[i], linestyle="-", color="black")
+        ax.plot(pred_ts, pred[:, i], color="red")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_aspect("auto")
+
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        print(f"saving fig to: {save_path}")
+        plt.savefig(save_path, bbox_inches="tight")
+    if show_plot:
+        plt.show()
+    plt.close()
 
 
 def plot_forecast_3d(
@@ -162,7 +311,7 @@ def plot_trajs_multivariate(
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
         )
         label = f"Sample {label_sample_idx}"
-        curr_color = COLORS[sample_idx % len(COLORS)]
+        curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
 
         xyz = trajectories[sample_idx, dims_3d, :]
         ax.plot(*xyz, alpha=0.5, linewidth=linewidth, color=curr_color, label=label)
@@ -183,7 +332,7 @@ def plot_trajs_multivariate(
             label_sample_idx = (
                 samples_subset[sample_idx] if samples_subset is not None else sample_idx
             )
-            curr_color = COLORS[sample_idx % len(COLORS)]
+            curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
             xyz = trajectories[sample_idx, dims_3d, :]
             ic_pt = xyz[:, 0]
             end_pt = xyz[:, -1]
@@ -321,7 +470,7 @@ def plot_grid_trajs_multivariate(
             linewidth = 0.5
         for sample_idx in range(n_samples_plot):
             label = f"Sample {sample_idx}"
-            curr_color = COLORS[sample_idx % len(COLORS)]
+            curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
 
             xyz = trajectories[sample_idx, dims_3d, :]
             ax.plot(*xyz, alpha=0.5, linewidth=linewidth, color=curr_color, label=label)
@@ -398,7 +547,7 @@ def plot_completions_evaluation(
         label_sample_idx = (
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
         )
-        curr_color = COLORS[sample_idx % len(COLORS)]
+        curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
 
         # Plot context in 3D
         (line1,) = ax1.plot(
@@ -557,7 +706,7 @@ def plot_forecast_evaluation(
         label_sample_idx = (
             samples_subset[sample_idx] if samples_subset is not None else sample_idx
         )
-        curr_color = COLORS[sample_idx % len(COLORS)]
+        curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
 
         # Plot context in 3D
         (line1,) = ax1.plot(
@@ -656,3 +805,465 @@ def plot_forecast_evaluation(
     if show_plot:
         plt.show()
     plt.close()
+
+
+def make_box_plot(
+    unrolled_metrics: dict[str, dict[int, dict[str, list[float]]]],
+    prediction_length: int,
+    metric_to_plot: str = "smape",  # Default to smape
+    selected_run_names: list[str] | None = None,
+    ylim: tuple[float, float] | None = None,  # Changed to None as default
+    verbose: bool = False,
+    run_names_to_exclude: list[str] = [],
+    use_inv_spearman: bool = False,
+    title: str | None = None,
+    fig_kwargs: dict[str, Any] = {},
+    title_kwargs: dict[str, Any] = {},
+    colors: list[str] = DEFAULT_COLORS,
+    sort_runs: bool = False,
+    save_path: str | None = None,
+    order_by_metric: str | None = None,
+    ylabel_fontsize: int = 8,
+    show_xlabel: bool = True,
+    show_legend: bool = False,
+    legend_kwargs: dict[str, Any] = {},
+    alpha_val: float = 0.8,
+    box_percentile_range: tuple[int, int] = (25, 75),
+    whisker_percentile_range: tuple[float, float] = (5, 95),
+    box_width: float = 0.6,
+) -> list[mpatches.Patch] | None:
+    # Set default figure size if not provided
+    if fig_kwargs == {}:
+        fig_kwargs = {"figsize": (3, 5)}  # Wider figure to accommodate run names
+
+    # Extract metrics data for the given prediction_length and run_names
+    if selected_run_names is None:
+        selected_run_names = list(unrolled_metrics.keys())
+
+    # Filter out excluded run names
+    run_names = [
+        name for name in selected_run_names if name not in run_names_to_exclude
+    ]
+
+    if len(run_names) == 0:
+        print("No run names to plot after exclusions!")
+        return
+
+    plt.figure(**fig_kwargs)
+    plot_data = []
+
+    # Add a dictionary to store ordering metric values if needed
+    ordering_metric_data = {}
+
+    for run_name in run_names:
+        try:
+            # Check if this run has data for the specified prediction length
+            if prediction_length not in unrolled_metrics[run_name]:
+                warnings.warn(
+                    f"Warning: prediction_length {prediction_length} not found for {run_name}"
+                )
+                continue
+
+            # Check if this run has the specified metric
+            if metric_to_plot not in unrolled_metrics[run_name][prediction_length]:
+                warnings.warn(
+                    f"Warning: metric '{metric_to_plot}' not found for {run_name}"
+                )
+                continue
+
+            values = unrolled_metrics[run_name][prediction_length][metric_to_plot]
+
+            # Process values based on metric type
+            if metric_to_plot == "spearman" and use_inv_spearman:
+                values = [1 - x for x in values]
+
+            # Filter out NaN values
+            values = [v for v in values if not np.isnan(v)]
+
+            if len(values) == 0:
+                warnings.warn(f"Warning: All values for {run_name} are NaN")
+                continue
+
+            median_value = np.median(values)
+            plot_data.extend([(run_name, v) for v in values])
+
+            # If we need to order by a different metric, collect that data too
+            if order_by_metric is not None and order_by_metric != metric_to_plot:
+                if order_by_metric in unrolled_metrics[run_name][prediction_length]:
+                    order_values = unrolled_metrics[run_name][prediction_length][
+                        order_by_metric
+                    ]
+
+                    # Apply same processing as we would for the plotting metric
+                    if order_by_metric == "spearman" and use_inv_spearman:
+                        order_values = [1 - x for x in order_values]
+
+                    # Filter out NaN values
+                    order_values = [v for v in order_values if not np.isnan(v)]
+
+                    if order_values:
+                        ordering_metric_data[run_name] = np.median(order_values)
+
+            if verbose:
+                print(f"{run_name} median {metric_to_plot}: {median_value}")
+
+        except Exception as e:
+            warnings.warn(f"Error processing {run_name}: {e}")
+
+    df = pd.DataFrame(plot_data, columns=["Run", "Value"])
+
+    # Determine run order based on specified criteria
+    if order_by_metric is not None and ordering_metric_data:
+        run_order = [
+            run for run, _ in sorted(ordering_metric_data.items(), key=lambda x: x[1])
+        ]
+        run_order = [run for run in run_order if run in df["Run"].unique()]
+        df["Run"] = pd.Categorical(df["Run"], categories=run_order, ordered=True)
+    elif sort_runs:
+        # Use the existing sort_runs logic if order_by_metric isn't specified
+        median_by_run = df.groupby("Run")["Value"].median().sort_values()
+        run_order = median_by_run.index.tolist()
+        df["Run"] = pd.Categorical(df["Run"], categories=run_order, ordered=True)
+
+    metric_title = metric_to_plot
+    if metric_to_plot in ["mse", "mae", "rmse", "mape"]:
+        metric_title = metric_to_plot.upper()
+    elif metric_to_plot == "smape":
+        metric_title = "sMAPE"
+    elif metric_to_plot == "spearman":
+        metric_title = "1 - Spearman" if use_inv_spearman else "Spearman"
+    else:
+        metric_title = metric_to_plot.capitalize()
+
+    ax = plt.gca()
+    unique_runs = (
+        df["Run"].unique()
+        if not isinstance(df["Run"].dtype, pd.CategoricalDtype)
+        else df["Run"].cat.categories
+    )
+
+    for i, run in enumerate(unique_runs):
+        run_data = df[df["Run"] == run]["Value"].to_numpy()
+        if len(run_data) == 0:
+            continue
+
+        # Calculate the percentiles
+        lower_box, upper_box = np.percentile(run_data, box_percentile_range)
+        lower_whisker, upper_whisker = np.percentile(run_data, whisker_percentile_range)
+        median_val = np.median(run_data)
+        if isinstance(colors, dict):
+            color = colors[run]
+        else:
+            color = colors[i % len(colors)]  # type: ignore
+        box_half_width = box_width / 2
+        whisker_cap_width = box_half_width * 0.5
+
+        box = plt.Rectangle(
+            (i - box_half_width, lower_box),
+            box_width,
+            upper_box - lower_box,
+            fill=True,
+            facecolor=color,
+            alpha=alpha_val,
+            linewidth=1,
+            edgecolor="black",
+            zorder=5,
+        )
+        ax.add_patch(box)
+
+        ax.hlines(
+            median_val,
+            i - box_half_width,
+            i + box_half_width,
+            colors="black",
+            linewidth=2.5,
+            zorder=10,
+        )
+
+        ax.vlines(
+            i,
+            lower_box,
+            lower_whisker,
+            colors="black",
+            linestyle="-",
+            linewidth=1,
+            zorder=5,
+        )
+        ax.vlines(
+            i,
+            upper_box,
+            upper_whisker,
+            colors="black",
+            linestyle="-",
+            linewidth=1,
+            zorder=5,
+        )
+
+        ax.hlines(
+            lower_whisker,
+            i - whisker_cap_width,
+            i + whisker_cap_width,
+            colors="black",
+            linewidth=1,
+            zorder=5,
+        )
+        ax.hlines(
+            upper_whisker,
+            i - whisker_cap_width,
+            i + whisker_cap_width,
+            colors="black",
+            linewidth=1,
+            zorder=5,
+        )
+
+    if ylim:
+        plt.ylim(ylim)
+
+    plt.ylabel(metric_title, fontweight="bold", fontsize=ylabel_fontsize)
+    plt.xlabel("")
+    if show_xlabel:
+        plt.xticks(
+            range(len(unique_runs)),
+            unique_runs,
+            rotation=45,
+            ha="right",
+            fontsize=5,
+            fontweight="bold",
+        )
+    else:
+        plt.xticks([])
+
+    if title is not None:
+        title_with_metric = f"{title}: {metric_title}" if title == "Metrics" else title
+        plt.title(title_with_metric, fontweight="bold", **title_kwargs)
+
+    plt.tight_layout()
+    if isinstance(df["Run"].dtype, pd.CategoricalDtype):
+        runs = df["Run"].cat.categories.tolist()
+    else:
+        runs = df["Run"].unique().tolist()
+
+    if isinstance(colors, dict):
+        legend_handles = [
+            mpatches.Patch(color=colors[run], label=run, alpha=alpha_val)  # type: ignore
+            for run in runs
+        ]
+    else:
+        legend_handles = [
+            mpatches.Patch(color=colors[i % len(colors)], label=run, alpha=alpha_val)  # type: ignore
+            for i, run in enumerate(runs)
+        ]
+
+    if show_legend:
+        plt.legend(handles=legend_handles, **legend_kwargs)
+
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, bbox_inches="tight")
+
+    plt.show()
+    return legend_handles
+
+
+def plot_all_metrics_by_prediction_length(
+    all_metrics_dict: dict[str, dict[str, dict[str, list[float]]]],
+    metric_names: list[str],
+    stat_to_plot: Literal["mean", "median"] = "median",
+    metrics_to_show_envelope: list[str] = [],
+    percentile_range: tuple[int, int] = (25, 75),
+    n_rows: int = 2,
+    n_cols: int = 3,
+    individual_figsize: tuple[int, int] = (4, 4),
+    save_path: str | None = None,
+    ylim: tuple[float | None, float | None] = (None, None),
+    show_legend: bool = True,
+    legend_kwargs: dict = {},
+    colors: list[str] | dict[str, str] = DEFAULT_COLORS,
+    markers: list[str] = DEFAULT_MARKERS,
+    use_inv_spearman: bool = False,
+    model_names_to_exclude: list[str] = [],
+) -> list[plt.Line2D]:
+    """
+    Plot multiple metrics across different prediction lengths for various models.
+
+    Parameters:
+    -----------
+    all_metrics_dict : dict[str, dict[str, dict[str, list[float]]]]
+        A nested dictionary with the following structure:
+        - First level keys are metric names (e.g., 'mse', 'mae', 'smape', 'spearman')
+        - Second level keys are model names (e.g., 'Our Model', 'Chronos 20M', 'TimesFM 200M')
+        - Third level contains metric data with keys like:
+          - 'prediction_lengths': list of prediction lengths
+          - 'means': mean values for each prediction length
+          - 'medians': median values for each prediction length
+          - 'stds': standard deviations for each prediction length
+          - 'stes': standard error of the mean for each prediction length
+          - 'all_vals': list of all values for each prediction length
+
+    metric_names : list[str]
+        List of metric names to plot (must be keys in all_metrics_dict)
+
+    model_names_to_exclude : list[str], default=[]
+        List of model names to exclude from the plot
+
+    stat_to_plot : Literal["mean", "median"], default="median"
+        Statistic to plot
+
+    metrics_to_show_envelope : list[str]
+        List of metrics for which to show envelopes
+        if stat_to_plot == "mean", then show standard *error* envelopes
+        if stat_to_plot == "median", then show median envelopes
+
+    percentile_range : tuple[int, int], default=(25, 75)
+        Percentile range to use for the median envelope, only used when stat_to_plot == "median"
+
+    n_rows : int, default=2
+        Number of rows in the subplot grid
+
+    n_cols : int, default=3
+        Number of columns in the subplot grid
+
+    individual_figsize : tuple[int, int], default=(4, 4)
+        Size of each individual subplot
+
+    save_path : str | None, default=None
+        Path to save the figure, if None, the figure is not saved
+
+    ylim : tuple[float | None, float | None], default=(None, None)
+        Y-axis limits for all subplots
+
+    show_legend : bool, default=True
+        Whether to show the legend
+
+    legend_kwargs : dict, default={}
+        Additional keyword arguments for the legend
+
+    colors : list[str] | dict[str, str], default=default_colors
+        List of colors to use for different models
+        Or, dict of model names to colors
+
+    markers : list[str], default=markers
+        List of markers to use for different models
+
+    use_inv_spearman : bool, default=False
+        If True, plot 1 - Spearman correlation instead of Spearman correlation
+
+    Returns:
+    --------
+    list[plt.Line2D]
+        Legend handles for the plotted lines
+    """
+    num_metrics = len(metric_names)
+    fig, axes = plt.subplots(
+        nrows=n_rows,
+        ncols=n_cols,
+        figsize=(individual_figsize[0] * n_cols, individual_figsize[1] * n_rows),
+    )
+    legend_handles = []
+    # Handle the case where axes might be a single element or already a list
+    if n_rows == 1 and n_cols == 1:
+        axes = [axes]
+    elif hasattr(axes, "flatten"):  # Check if axes has flatten method
+        axes = axes.flatten()  # Flatten the axes array for easy iteration
+
+    for i, (ax, metric_name) in enumerate(zip(axes, metric_names)):
+        metrics_dict = all_metrics_dict[metric_name]
+        for j, (model_name, metrics) in enumerate(metrics_dict.items()):
+            if model_name in model_names_to_exclude:
+                continue
+            mean_vals = np.array(metrics["means"])
+            median_vals = np.array(metrics["medians"])
+            all_vals = metrics[
+                "all_vals"
+            ]  # Keep as list of arrays to avoid inhomogeneous shape error
+            if metric_name == "spearman" and use_inv_spearman:
+                mean_vals = 1 - mean_vals
+                median_vals = 1 - median_vals
+                all_vals = [1 - val for val in all_vals]
+
+            if stat_to_plot == "mean":
+                ax.plot(
+                    metrics["prediction_lengths"],
+                    mean_vals,
+                    marker=markers[j],
+                    label=model_name,
+                    markersize=6,
+                    color=colors[j] if isinstance(colors, list) else colors[model_name],
+                )
+                if metric_name in metrics_to_show_envelope:
+                    se_envelope = np.array(metrics["stes"])
+                    ax.fill_between(
+                        metrics["prediction_lengths"],
+                        mean_vals - se_envelope,
+                        mean_vals + se_envelope,
+                        alpha=0.1,
+                        color=colors[j]
+                        if isinstance(colors, list)
+                        else colors[model_name],
+                    )
+            elif stat_to_plot == "median":
+                ax.plot(
+                    metrics["prediction_lengths"],
+                    median_vals,
+                    marker=markers[j],
+                    label=model_name,
+                    markersize=6,
+                    color=colors[j] if isinstance(colors, list) else colors[model_name],
+                )
+                if metric_name in metrics_to_show_envelope:
+                    # plot fill between median and the 25th and 75th percentiles
+                    percentile_range_lower = [
+                        np.percentile(all_vals[pred_len_idx], percentile_range[0])
+                        for pred_len_idx in range(len(all_vals))
+                    ]
+                    percentile_range_upper = [
+                        np.percentile(all_vals[pred_len_idx], percentile_range[1])
+                        for pred_len_idx in range(len(all_vals))
+                    ]
+                    ax.fill_between(
+                        metrics["prediction_lengths"],
+                        percentile_range_lower,
+                        percentile_range_upper,
+                        alpha=0.1,
+                        color=colors[j]
+                        if isinstance(colors, list)
+                        else colors[model_name],
+                    )
+        if i == 0:
+            legend_handles = [
+                plt.Line2D(
+                    [0],
+                    [0],
+                    color=colors[j] if isinstance(colors, list) else colors[model_name],
+                    marker=markers[j],
+                    markersize=6,
+                    label=model_name,
+                )
+                for j, model_name in enumerate(metrics_dict.keys())
+            ]
+            if show_legend:
+                legend_handles = ax.legend(handles=legend_handles, **legend_kwargs)
+        ax.set_xlabel("Prediction Length", fontweight="bold", fontsize=12)
+        ax.set_xticks(metrics["prediction_lengths"])
+        name = metric_name.replace("_", " ")
+        if name in ["mse", "mae", "rmse", "mape"]:
+            name = name.upper()
+        elif name == "smape":
+            name = "sMAPE"
+        elif name == "spearman" and use_inv_spearman:
+            name = "1 - Spearman"
+        else:
+            name = name.capitalize()
+        ax.set_title(name, fontweight="bold", fontsize=16)
+
+    # Hide any unused subplots
+    for ax in axes[num_metrics:]:
+        ax.set_visible(False)
+    if ylim is not None:
+        for ax in axes:
+            ax.set_ylim(ylim)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight")
+    plt.show()
+    return legend_handles

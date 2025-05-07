@@ -104,6 +104,7 @@ class ChronosPipeline:
         top_p: Optional[float] = None,
         limit_prediction_length: bool = True,
         verbose: bool = True,
+        deterministic: bool = False,
     ) -> torch.Tensor:
         """
         Get forecasts for the given time series.
@@ -135,6 +136,9 @@ class ChronosPipeline:
             built-in prediction length from the model. True by
             default. When true, fail loudly if longer predictions
             are requested, otherwise longer predictions are allowed.
+        deterministic: bool = False
+            If True, use deterministic sampling. If False, use
+            stochastic sampling. Defaults to False.
 
         Returns
         -------
@@ -156,6 +160,10 @@ class ChronosPipeline:
                 msg += "You can turn off this check by setting `limit_prediction_length=False`."
                 raise ValueError(msg)
             warnings.warn(msg)
+
+        temperature = 1.0 if deterministic else temperature
+        top_k = 1 if deterministic else top_k
+        top_p = 1.0 if deterministic else top_p
 
         predictions = []
         remaining = prediction_length

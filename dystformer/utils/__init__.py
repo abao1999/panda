@@ -28,11 +28,17 @@ from .eval_utils import (
     save_evaluation_results,
 )
 from .plot_utils import (
+    DEFAULT_COLORS,
+    DEFAULT_MARKERS,
+    apply_custom_style,
+    make_box_plot,
+    plot_all_metrics_by_prediction_length,
     plot_completions_evaluation,
     plot_forecast_1d,
     plot_forecast_3d,
     plot_forecast_evaluation,
     plot_grid_trajs_multivariate,
+    plot_model_prediction,
     plot_trajs_multivariate,
     plot_univariate_trajs,
 )
