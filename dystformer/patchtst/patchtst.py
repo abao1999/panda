@@ -880,8 +880,11 @@ class PatchTSTPredictionHead(nn.Module):
             `torch.Tensor` of shape `(bs, forecast_len, num_channels)`
 
         """
-        embedding = self.final_attn(embedding)
-        pooled_embedding = embedding[:, :, -1, :]
+        bsz, num_channels, num_patches, d_model = embedding.shape
+        embedding, _, _ = self.final_attn(
+            embedding.view(bsz * num_channels, num_patches, d_model)
+        )
+        pooled_embedding = embedding[:, -1, :].view(bsz, num_channels, d_model)
 
         # pooled_embedding: [bs x num_channels x (d_model * num_patches)] or [bs x num_channels x d_model)]
         pooled_embedding = self.dropout(pooled_embedding)
