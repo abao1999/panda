@@ -859,13 +859,8 @@ class PatchTSTPredictionHead(nn.Module):
         )
         if distribution_output is None:
             self.num_modes = 256
-            self.forecaster_trunk = nn.Linear(head_dim, config.d_model * config.d_model)
-            self.periodic_head = nn.Linear(
-                config.d_model * config.d_model, 2 * self.num_modes
-            )
-            self.correction_head = nn.Linear(
-                config.d_model * config.d_model, config.prediction_length
-            )
+            self.periodic_head = nn.Linear(config.d_model, 2 * self.num_modes)
+            self.correction_head = nn.Linear(config.d_model, config.prediction_length)
         else:
             # use distribution head
             self.projection = distribution_output.get_parameter_projection(head_dim)
@@ -892,7 +887,7 @@ class PatchTSTPredictionHead(nn.Module):
         pooled_embedding = self.dropout(pooled_embedding)
 
         # want to map (bs x num_channels x (d_model * num_patches)) to (bs x num_channels x 2*num_modes)
-        trunk_feats = torch.tanh(self.forecaster_trunk(pooled_embedding))
+        trunk_feats = torch.tanh(pooled_embedding)
         modes = self.periodic_head(trunk_feats)
         real = modes[..., : self.num_modes]
         imag = modes[..., self.num_modes :]
