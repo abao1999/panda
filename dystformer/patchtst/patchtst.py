@@ -850,7 +850,13 @@ class PatchTSTPredictionHead(nn.Module):
         self.prediction_length = config.prediction_length
 
         # all the channels share the same head
-        self.flatten = nn.Flatten(start_dim=2)
+        self.final_attn = PatchTSTRopeAttention(
+            embed_dim=config.d_model,
+            num_heads=config.num_attention_heads,
+            dropout=config.attention_dropout,
+            use_rope=False,
+            linear_attn=True,
+        )
         if distribution_output is None:
             self.num_modes = 256
             self.forecaster_trunk = nn.Linear(head_dim, config.d_model * config.d_model)
@@ -879,26 +885,14 @@ class PatchTSTPredictionHead(nn.Module):
             `torch.Tensor` of shape `(bs, forecast_len, num_channels)`
 
         """
-        if self.use_cls_token:
-            # pooled_embedding: [bs x num_channels x d_model]
-            pooled_embedding = embedding[:, :, 0, :]
-        else:
-            if self.pooling_type == "mean":
-                # pooled_embedding: [bs x num_channels x d_model]
-                pooled_embedding = embedding.mean(dim=2)
-            elif self.pooling_type == "max":
-                # pooled_embedding: [bs x num_channels x d_model]
-                pooled_embedding = embedding.max(dim=2).values
-            else:
-                # pooled_embedding: [bs x num_channels x num_patches x d_model]
-                pooled_embedding = embedding
+        embedding = self.final_attn(embedding)
+        pooled_embedding = embedding[:, :, -1, :]
 
         # pooled_embedding: [bs x num_channels x (d_model * num_patches)] or [bs x num_channels x d_model)]
-        pooled_embedding = self.flatten(pooled_embedding)
         pooled_embedding = self.dropout(pooled_embedding)
 
         # want to map (bs x num_channels x (d_model * num_patches)) to (bs x num_channels x 2*num_modes)
-        trunk_feats = self.forecaster_trunk(pooled_embedding)
+        trunk_feats = torch.tanh(self.forecaster_trunk(pooled_embedding))
         modes = self.periodic_head(trunk_feats)
         real = modes[..., : self.num_modes]
         imag = modes[..., self.num_modes :]
