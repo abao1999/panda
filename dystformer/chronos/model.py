@@ -147,8 +147,10 @@ class ChronosBoltModelForForecasting(T5PreTrainedModel):
 
         super().__init__(config)
         self.model_dim = config.d_model
-
+        self.config = config
         self.chronos_config = ChronosBoltConfig(**config.chronos_config)
+        self.config.context_length = self.chronos_config.context_length
+        self.config.prediction_length = self.chronos_config.prediction_length
 
         # Only decoder_start_id (and optionally REG token)
         if self.chronos_config.use_reg_token:
@@ -157,7 +159,7 @@ class ChronosBoltModelForForecasting(T5PreTrainedModel):
         config.vocab_size = 2 if self.chronos_config.use_reg_token else 1
         self.shared = nn.Embedding(config.vocab_size, config.d_model)
 
-        # Input patch embedding layer
+        # Input layer
         self.input_patch_embedding = ResidualBlock(
             in_dim=self.chronos_config.input_patch_size * 2,
             h_dim=config.d_ff,

@@ -25,7 +25,7 @@ from gluonts.transform import (
 )
 from torch.utils.data import IterableDataset, get_worker_info
 
-from dystformer.chronos.tokenizer import ChronosTokenizer
+from dystformer.chronos.model import ChronosTokenizer
 
 # used for prediction length in test mode when window style is single
 # if you're predicting for more timepoints than this at a time...what are you doing??
@@ -182,7 +182,8 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
 
     datasets: list
     probabilities: list[float]
-    tokenizer: ChronosTokenizer
+    tokenizer: ChronosTokenizer | None = None
+    patch_size: int | None = None
     context_length: int = 512
     prediction_length: int = 64
     drop_prob: float = 0.2
@@ -223,7 +224,6 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
 
     def preprocess_iter(self, entry: Filter, mode: str) -> Generator[dict, None, None]:
         for item in entry:
-            # TODO: can access system dimension here
             target = np.asarray(item["target"], dtype=self.np_dtype)
 
             if mode == "train" and self.augmentations is not None:
@@ -320,68 +320,65 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         return data
 
     def to_hf_format(self, entry: dict) -> dict:
-        # shape (1, contex_length)
+        if self.tokenizer is None and self.patch_size is not None:
+            return self.to_hf_format_bolt(entry)
+        else:
+            return self.to_hf_format_chronos(entry)
+
+    def to_hf_format_chronos(self, entry: dict) -> dict:
+        # Original Chronos tokenization logic
         past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
-        # shapes (1, contex_length+1), (1, contex_length+1), (1)
-        input_ids, attention_mask, scale = self.tokenizer.context_input_transform(
+        input_ids, attention_mask, scale = self.tokenizer.context_input_transform(  # type: ignore
             past_target
         )
-        # shape (1, prediction_length)
         future_target = torch.tensor(entry["future_target"]).unsqueeze(0)
-        labels, labels_mask = self.tokenizer.label_input_transform(future_target, scale)
+        labels, labels_mask = self.tokenizer.label_input_transform(future_target, scale)  # type: ignore
         labels[labels_mask == 0] = -100
 
         if self.model_type == "causal":
-            # The InstanceSplitter pads time series on the left to be equal to the
-            # context_length. However, certain models (e.g., GPT2) with absolute
-            # position embeddings should not be trained with left padding.
-            # The following piece of code moves padding from left to right.
-
-            assert input_ids.shape[-1] == entry["past_is_pad"].shape[0]
-
-            # Find the index where padding starts
-
             pad_start_idx = np.searchsorted(1 - entry["past_is_pad"], 1)
-            # padded_input_ids, obs_input_ids = torch.tensor_split(
-            #     input_ids_tensor, [pad_start_idx], dim=-1
-            # )
-            # padded_attention_mask, obs_attention_mask = torch.tensor_split(
-            #     attention_mask, [pad_start_idx], dim=-1
-            # )
             input_ids_tensor = torch.tensor(input_ids)
             padded_input_ids = input_ids_tensor[:pad_start_idx]
             obs_input_ids = input_ids_tensor[pad_start_idx:]
             padded_attention_mask = attention_mask[:, :pad_start_idx]
             obs_attention_mask = attention_mask[:, pad_start_idx:]
 
-            # Move padding to the right
-            input_ids = torch.cat(
-                [
-                    obs_input_ids,
-                    labels,
-                    padded_input_ids,
-                ],
-                dim=-1,  # Changed 'axis' to 'dim'
-            )
+            input_ids = torch.cat([obs_input_ids, labels, padded_input_ids], dim=-1)
             attention_mask = torch.cat(
-                [
-                    obs_attention_mask,
-                    labels_mask,
-                    padded_attention_mask,
-                ],
-                dim=-1,  # Changed 'axis' to 'dim'
+                [obs_attention_mask, labels_mask, padded_attention_mask], dim=-1
             )
-
-            # labels for causal models are same as the input_ids.
-            # Internally transformers shifts the labels by one during training.
             labels = input_ids.clone()
-            input_ids[~attention_mask] = self.tokenizer.config.pad_token_id
+            input_ids[~attention_mask] = self.tokenizer.config.pad_token_id  # type: ignore
             labels[~attention_mask] = -100
 
         return {
             "input_ids": input_ids.squeeze(0),
             "attention_mask": attention_mask.squeeze(0),
             "labels": labels.squeeze(0),
+        }
+
+    def to_hf_format_bolt(self, entry: dict) -> dict:
+        past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
+        future_target = torch.tensor(entry["future_target"]).unsqueeze(0)
+
+        # Create masks for both past and future values (1 where not NaN)
+        past_mask = ~torch.isnan(past_target)
+        future_mask = ~torch.isnan(future_target)
+
+        if self.model_type == "causal":
+            pad_start_idx = np.searchsorted(1 - entry["past_is_pad"], 1)
+            past_target = torch.cat(
+                [past_target[:, pad_start_idx:], past_target[:, :pad_start_idx]], dim=-1
+            )
+            past_mask = torch.cat(
+                [past_mask[:, pad_start_idx:], past_mask[:, :pad_start_idx]], dim=-1
+            )
+
+        return {
+            "context": past_target.squeeze(0),
+            "mask": past_mask.squeeze(0),
+            "target": future_target.squeeze(0),
+            "target_mask": future_mask.squeeze(0),
         }
 
     def to_hf_format_eval(self, entry: dict) -> dict:

@@ -351,7 +351,6 @@ class ChronosPipeline:
             context_tensor = torch.cat(
                 [context_tensor, prediction.median(dim=1).values], dim=-1
             )
-
         return torch.cat(predictions, dim=-1)
 
     @classmethod
@@ -386,6 +385,10 @@ class ChronosBoltPipeline(BaseChronosPipeline):
     def __init__(self, model: ChronosBoltModelForForecasting):
         super().__init__(inner_model=model)  # type: ignore
         self.model = model
+
+    @property
+    def device(self):
+        return self.model.device
 
     @property
     def quantiles(self) -> List[float]:
@@ -517,10 +520,9 @@ class ChronosBoltPipeline(BaseChronosPipeline):
         preds = torch.cat(predictions, dim=-1)[..., :pred_length].to(
             dtype=torch.float32, device="cpu"
         )
-
         if deterministic:
             median_idx = torch.abs(torch.tensor(self.quantiles) - 0.5).argmin()
-            median_predictions = preds[:, median_idx, :]
+            median_predictions = preds[:, median_idx : median_idx + 1, :]
             return median_predictions
         else:
             return preds
