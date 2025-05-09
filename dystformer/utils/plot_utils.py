@@ -810,9 +810,9 @@ def plot_forecast_evaluation(
 def make_box_plot(
     unrolled_metrics: dict[str, dict[int, dict[str, list[float]]]],
     prediction_length: int,
-    metric_to_plot: str = "smape",  # Default to smape
+    metric_to_plot: str = "smape",
     selected_run_names: list[str] | None = None,
-    ylim: tuple[float, float] | None = None,  # Changed to None as default
+    ylim: tuple[float, float] | None = None,
     verbose: bool = False,
     run_names_to_exclude: list[str] = [],
     use_inv_spearman: bool = False,
@@ -831,19 +831,18 @@ def make_box_plot(
     box_percentile_range: tuple[int, int] = (25, 75),
     whisker_percentile_range: tuple[float, float] = (5, 95),
     box_width: float = 0.6,
+    has_nans: dict[str, bool] | None = None,
 ) -> list[mpatches.Patch] | None:
-    # Set default figure size if not provided
     if fig_kwargs == {}:
-        fig_kwargs = {"figsize": (3, 5)}  # Wider figure to accommodate run names
+        fig_kwargs = {"figsize": (3, 5)}
 
-    # Extract metrics data for the given prediction_length and run_names
     if selected_run_names is None:
         selected_run_names = list(unrolled_metrics.keys())
 
-    # Filter out excluded run names
     run_names = [
         name for name in selected_run_names if name not in run_names_to_exclude
     ]
+    has_nans = has_nans or {}
 
     if len(run_names) == 0:
         print("No run names to plot after exclusions!")
@@ -852,12 +851,10 @@ def make_box_plot(
     plt.figure(**fig_kwargs)
     plot_data = []
 
-    # Add a dictionary to store ordering metric values if needed
     ordering_metric_data = {}
 
     for run_name in run_names:
         try:
-            # Check if this run has data for the specified prediction length
             if prediction_length not in unrolled_metrics[run_name]:
                 warnings.warn(
                     f"Warning: prediction_length {prediction_length} not found for {run_name}"
@@ -872,6 +869,9 @@ def make_box_plot(
                 continue
 
             values = unrolled_metrics[run_name][prediction_length][metric_to_plot]
+            has_nans[run_name] = bool(np.isnan(values).any()) or has_nans.get(
+                run_name, False
+            )
 
             # Process values based on metric type
             if metric_to_plot == "spearman" and use_inv_spearman:
@@ -912,7 +912,6 @@ def make_box_plot(
 
     df = pd.DataFrame(plot_data, columns=["Run", "Value"])
 
-    # Determine run order based on specified criteria
     if order_by_metric is not None and ordering_metric_data:
         run_order = [
             run for run, _ in sorted(ordering_metric_data.items(), key=lambda x: x[1])
@@ -1024,7 +1023,7 @@ def make_box_plot(
     if show_xlabel:
         plt.xticks(
             range(len(unique_runs)),
-            unique_runs,
+            unique_runs.tolist(),
             rotation=45,
             ha="right",
             fontsize=5,
@@ -1042,6 +1041,9 @@ def make_box_plot(
         runs = df["Run"].cat.categories.tolist()
     else:
         runs = df["Run"].unique().tolist()
+
+    # Add a dagger to the run name if it has NaNs
+    runs = [f"{run}$^\dagger$" if has_nans[run] else run for run in runs]
 
     if isinstance(colors, dict):
         legend_handles = [
@@ -1082,6 +1084,7 @@ def plot_all_metrics_by_prediction_length(
     markers: list[str] = DEFAULT_MARKERS,
     use_inv_spearman: bool = False,
     model_names_to_exclude: list[str] = [],
+    has_nans: dict[str, dict[str, bool]] | None = None,
 ) -> list[plt.Line2D]:
     """
     Plot multiple metrics across different prediction lengths for various models.
@@ -1153,6 +1156,7 @@ def plot_all_metrics_by_prediction_length(
     list[plt.Line2D]
         Legend handles for the plotted lines
     """
+    has_nans = has_nans or {}
     num_metrics = len(metric_names)
     fig, axes = plt.subplots(
         nrows=n_rows,
@@ -1168,7 +1172,9 @@ def plot_all_metrics_by_prediction_length(
 
     for i, (ax, metric_name) in enumerate(zip(axes, metric_names)):
         metrics_dict = all_metrics_dict[metric_name]
+        nan_models = has_nans.get(metric_name, {})
         for j, (model_name, metrics) in enumerate(metrics_dict.items()):
+            has_nan = nan_models.get(model_name, False)
             if model_name in model_names_to_exclude:
                 continue
             mean_vals = np.array(metrics["means"])
@@ -1181,6 +1187,7 @@ def plot_all_metrics_by_prediction_length(
                 median_vals = 1 - median_vals
                 all_vals = [1 - val for val in all_vals]
 
+            color = colors[j] if isinstance(colors, list) else colors[model_name]
             if stat_to_plot == "mean":
                 ax.plot(
                     metrics["prediction_lengths"],
@@ -1188,7 +1195,9 @@ def plot_all_metrics_by_prediction_length(
                     marker=markers[j],
                     label=model_name,
                     markersize=6,
-                    color=colors[j] if isinstance(colors, list) else colors[model_name],
+                    color=color,
+                    markerfacecolor="none" if has_nan else color,
+                    linestyle="-." if has_nan else "-",
                 )
                 if metric_name in metrics_to_show_envelope:
                     se_envelope = np.array(metrics["stes"])
@@ -1197,9 +1206,7 @@ def plot_all_metrics_by_prediction_length(
                         mean_vals - se_envelope,
                         mean_vals + se_envelope,
                         alpha=0.1,
-                        color=colors[j]
-                        if isinstance(colors, list)
-                        else colors[model_name],
+                        color=color,
                     )
             elif stat_to_plot == "median":
                 ax.plot(
@@ -1208,7 +1215,9 @@ def plot_all_metrics_by_prediction_length(
                     marker=markers[j],
                     label=model_name,
                     markersize=6,
-                    color=colors[j] if isinstance(colors, list) else colors[model_name],
+                    color=color,
+                    markerfacecolor="none" if has_nan else color,
+                    linestyle="-." if has_nan else "-",
                 )
                 if metric_name in metrics_to_show_envelope:
                     # plot fill between median and the 25th and 75th percentiles
@@ -1225,10 +1234,9 @@ def plot_all_metrics_by_prediction_length(
                         percentile_range_lower,
                         percentile_range_upper,
                         alpha=0.1,
-                        color=colors[j]
-                        if isinstance(colors, list)
-                        else colors[model_name],
+                        color=color,
                     )
+
         if i == 0:
             legend_handles = [
                 plt.Line2D(
@@ -1238,6 +1246,12 @@ def plot_all_metrics_by_prediction_length(
                     marker=markers[j],
                     markersize=6,
                     label=model_name,
+                    linestyle="-." if nan_models.get(model_name, False) else "-",
+                    markerfacecolor="none"
+                    if nan_models.get(model_name, False)
+                    else colors[j]
+                    if isinstance(colors, list)
+                    else colors[model_name],
                 )
                 for j, model_name in enumerate(metrics_dict.keys())
             ]
@@ -1262,8 +1276,11 @@ def plot_all_metrics_by_prediction_length(
     if ylim is not None:
         for ax in axes:
             ax.set_ylim(ylim)
+
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, bbox_inches="tight")
-    plt.show()
+    else:
+        plt.show()
+
     return legend_handles

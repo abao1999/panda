@@ -25,7 +25,10 @@ from dystformer.augmentations import (
     StandardizeTransform,
 )
 from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.tokenizer import ChronosConfig
+from dystformer.chronos.model import (
+    ChronosBoltConfig,
+    ChronosConfig,
+)
 from dystformer.utils import (
     ensure_contiguous,
     get_next_path,
@@ -137,7 +140,37 @@ def main(cfg):
         )
         dataloader_num_workers = len(train_datasets)
 
-    log_on_main("Initializing model", logger)
+    use_bolt = "bolt" in cfg.chronos.model_id
+    if use_bolt:
+        chronos_config = ChronosBoltConfig(
+            context_length=cfg.chronos.context_length,
+            prediction_length=cfg.chronos.prediction_length,
+            input_patch_size=cfg.chronos.input_patch_size,
+            input_patch_stride=cfg.chronos.input_patch_stride,
+            quantiles=list(cfg.chronos.quantiles),
+            use_reg_token=cfg.chronos.use_reg_token,
+        )
+        tokenizer = None
+    else:
+        chronos_config = ChronosConfig(
+            tokenizer_class=cfg.chronos.tokenizer_class,
+            tokenizer_kwargs=dict(cfg.chronos.tokenizer_kwargs),
+            n_tokens=cfg.chronos.n_tokens,
+            n_special_tokens=cfg.chronos.n_special_tokens,
+            pad_token_id=cfg.chronos.pad_token_id,
+            eos_token_id=cfg.chronos.eos_token_id,
+            use_eos_token=cfg.chronos.use_eos_token,
+            model_type=cfg.chronos.model_type,
+            context_length=cfg.chronos.context_length,
+            prediction_length=cfg.chronos.prediction_length,
+            num_samples=cfg.chronos.num_samples,
+            temperature=cfg.chronos.temperature,
+            top_k=cfg.chronos.top_k,
+            top_p=cfg.chronos.top_p,
+        )
+        tokenizer = chronos_config.create_tokenizer()
+
+    log_on_main(f"Initializing model: {cfg.chronos.model_id}", logger)
     model = load_chronos_model(
         model_id=cfg.chronos.model_id,
         model_type=cfg.chronos.model_type,
@@ -146,31 +179,11 @@ def main(cfg):
         tie_embeddings=cfg.chronos.tie_embeddings,
         pad_token_id=cfg.chronos.pad_token_id,
         eos_token_id=cfg.chronos.eos_token_id,
+        chronos_config=chronos_config,
     )
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     log_on_main(f"Total trainable parameters: {trainable_params:,}", logger)
-
-    log_on_main("Initializing tokenizer", logger)
-    chronos_config = ChronosConfig(
-        tokenizer_class=cfg.chronos.tokenizer_class,
-        tokenizer_kwargs=dict(cfg.chronos.tokenizer_kwargs),
-        n_tokens=cfg.chronos.n_tokens,
-        n_special_tokens=cfg.chronos.n_special_tokens,
-        pad_token_id=cfg.chronos.pad_token_id,
-        eos_token_id=cfg.chronos.eos_token_id,
-        use_eos_token=cfg.chronos.use_eos_token,
-        model_type=cfg.chronos.model_type,
-        context_length=cfg.chronos.context_length,
-        prediction_length=cfg.chronos.prediction_length,
-        num_samples=cfg.chronos.num_samples,
-        temperature=cfg.chronos.temperature,
-        top_k=cfg.chronos.top_k,
-        top_p=cfg.chronos.top_p,
-    )
-
-    # Add extra items to model config so that it's saved in the ckpt
-    model.config.chronos_config = chronos_config.__dict__
 
     # Note: these augmentations are applied to the multivariate target traj
     augmentations = [
@@ -219,7 +232,8 @@ def main(cfg):
     shuffled_train_dataset = ChronosDataset(
         datasets=train_datasets,
         probabilities=probability,
-        tokenizer=chronos_config.create_tokenizer(),
+        tokenizer=tokenizer,
+        patch_size=cfg.chronos.input_patch_size if use_bolt else None,
         context_length=cfg.chronos.context_length,
         prediction_length=cfg.chronos.prediction_length,
         min_past=cfg.min_past,
@@ -234,7 +248,6 @@ def main(cfg):
         transforms=transforms,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    # Define training args
     training_args = TrainingArguments(
         run_name=cfg.run_name,
         output_dir=str(output_dir),
@@ -264,22 +277,21 @@ def main(cfg):
         remove_unused_columns=cfg.train.remove_unused_columns,
         ddp_backend=cfg.train.ddp_backend,
         seed=cfg.train.seed,
-        resume_from_checkpoint=cfg.train.resume_from_checkpoint
+        resume_from_checkpoint=cfg.train.resume_from_checkpoint,
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    # Create Trainer instance and start training
     trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=shuffled_train_dataset
+        model=model, args=training_args, train_dataset=shuffled_train_dataset
     )
 
     log_on_main("Training", logger)
-    trainer.train(resume_from_checkpoint=cfg.train.resume_from_checkpoint)  # Transformers trainer will save model checkpoints automatically
+    trainer.train(
+        resume_from_checkpoint=cfg.train.resume_from_checkpoint
+    )  # Transformers trainer will save model checkpoints automatically
 
     # save final model checkpoint and training info locally
     if is_main_process():

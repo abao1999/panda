@@ -11,7 +11,7 @@ from gluonts.transform import LastValueImputation
 
 from dystformer.chronos.dataset import ChronosDataset
 from dystformer.chronos.evaluation import evaluate_chronos_forecast
-from dystformer.chronos.pipeline import ChronosPipeline
+from dystformer.chronos.pipeline import ChronosBoltPipeline, ChronosPipeline
 from dystformer.utils import (
     get_dim_from_dataset,
     get_eval_data_dict,
@@ -51,7 +51,12 @@ def main(cfg):
     # init model for inference
     torch_dtype = getattr(torch, cfg.eval.torch_dtype)
     assert isinstance(torch_dtype, torch.dtype)
-    pipeline = ChronosPipeline.from_pretrained(
+    model_id = (
+        cfg.chronos.model_id if cfg.eval.chronos.zero_shot else cfg.eval.checkpoint_path
+    )
+    use_bolt = "bolt" in model_id
+    pipeline_class = ChronosBoltPipeline if use_bolt else ChronosPipeline
+    pipeline = pipeline_class.from_pretrained(
         cfg.chronos.model_id
         if cfg.eval.chronos.zero_shot
         else cfg.eval.checkpoint_path,
@@ -98,12 +103,17 @@ def main(cfg):
 
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
+    tokenizer = None
+    if not use_bolt and isinstance(pipeline, ChronosPipeline):
+        tokenizer = pipeline.tokenizer
+
     test_datasets = {
         system_name: ChronosDataset(
             datasets=test_data_dict[system_name],
             probabilities=[1.0 / len(test_data_dict[system_name])]
             * len(test_data_dict[system_name]),
-            tokenizer=pipeline.tokenizer,
+            tokenizer=tokenizer,
+            patch_size=cfg.chronos.input_patch_size if use_bolt else None,
             context_length=cfg.chronos.context_length,
             prediction_length=cfg.eval.prediction_length,  # NOTE: should match the forecast prediction length
             min_past=cfg.min_past,
@@ -142,6 +152,14 @@ def main(cfg):
         "median": lambda x: np.median(x, axis=0),
     }[cfg.eval.parallel_sample_reduction]
 
+    prediction_kwargs = {
+        "limit_prediction_length": cfg.eval.limit_prediction_length,
+        "deterministic": True,
+        "verbose": cfg.eval.verbose,
+    }
+    if not use_bolt:
+        prediction_kwargs["num_samples"] = 1
+
     predictions, contexts, labels, metrics = evaluate_chronos_forecast(
         pipeline,
         test_datasets,
@@ -155,13 +173,7 @@ def main(cfg):
         num_samples=cfg.eval.num_samples,
         parallel_sample_reduction_fn=parallel_sample_reduction_fn,
         redo_normalization=True,
-        prediction_kwargs=dict(
-            limit_prediction_length=cfg.eval.limit_prediction_length,
-            temperature=model_config["temperature"],
-            top_k=model_config["top_k"],
-            top_p=model_config["top_p"],
-            verbose=cfg.eval.verbose,
-        ),
+        prediction_kwargs=prediction_kwargs,
         eval_subintervals=[
             (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
         ],
