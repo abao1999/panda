@@ -23,16 +23,16 @@ class PatchTSTKernelEmbedding(nn.Module):
     def __init__(self, config: PatchTSTConfig):
         super().__init__()
         poly_degrees_lst = range(2, 2 + config.poly_degrees)
-        # assert (
-        #     config.patch_length
-        #     + len(poly_degrees_lst) * config.num_poly_feats
-        #     + config.num_rff
-        #     == config.d_model
-        # ), (
-        #     f"Sum of features must equal d_model: d_poly + d_rff + patch_length = "
-        #     f"{len(poly_degrees_lst) * config.num_poly_feats} + {config.num_rff}"
-        #     f" + {config.patch_length} != {config.d_model}"
-        # )
+        assert (
+            config.patch_length
+            + len(poly_degrees_lst) * config.num_poly_feats
+            + config.num_rff
+            == config.d_model
+        ), (
+            f"Sum of features must equal d_model: d_poly + d_rff + patch_length = "
+            f"{len(poly_degrees_lst) * config.num_poly_feats} + {config.num_rff}"
+            f" + {config.patch_length} != {config.d_model}"
+        )
         self.num_poly_feats = config.num_poly_feats
         self.patch_indices = [
             torch.randint(
@@ -50,17 +50,17 @@ class PatchTSTKernelEmbedding(nn.Module):
             torch.randn(1, 1, 1, config.num_rff // 2),
             requires_grad=config.rff_trainable,
         )
-        # self.projection = nn.Linear(config.d_model, config.d_model, bias=False)
-        self.projection = nn.Linear(
-            3
-            * (
-                config.patch_length - 1
-            )  # for x, and its 1st and 2nd order finite differences
-            + len(self.patch_indices) * config.num_poly_feats
-            + config.num_rff,
-            config.d_model,
-            bias=False,
-        )
+        self.projection = nn.Linear(config.d_model, config.d_model, bias=False)
+        # self.projection = nn.Linear(
+        #     3
+        #     * (
+        #         config.patch_length - 1
+        #     )  # for x, and its 1st and 2nd order finite differences
+        #     + len(self.patch_indices) * config.num_poly_feats
+        #     + config.num_rff,
+        #     config.d_model,
+        #     bias=False,
+        # )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -71,18 +71,18 @@ class PatchTSTKernelEmbedding(nn.Module):
             `torch.Tensor` of shape `(batch_size, num_channels, num_patches, d_model)`
         """
         # centered difference & polynomial features
-        o1_cdiff = x[..., 1:] - x[..., :-1]
-        o2_cdiff = o1_cdiff[..., 1:] - o1_cdiff[..., :-1]
-        cdiff_feats = torch.cat([x, o1_cdiff, o2_cdiff], dim=-1)
-        poly_feats = [cdiff_feats[..., pis].prod(dim=-1) for pis in self.patch_indices]
+        # o1_cdiff = x[..., 1:] - x[..., :-1]
+        # o2_cdiff = o1_cdiff[..., 1:] - o1_cdiff[..., :-1]
+        # cdiff_feats = torch.cat([x, o1_cdiff, o2_cdiff], dim=-1)
+        # poly_feats = [cdiff_feats[..., pis].prod(dim=-1) for pis in self.patch_indices]
 
-        # poly_feats = [x[..., pis].prod(dim=-1) for pis in self.patch_indices]
+        poly_feats = [x[..., pis].prod(dim=-1) for pis in self.patch_indices]
 
         weighted_x = x @ self.freq_weights + self.freq_biases
         rff_feats = torch.cat([torch.sin(weighted_x), torch.cos(weighted_x)], dim=-1)
 
-        features = torch.cat([cdiff_feats, *poly_feats, rff_feats], dim=-1)
-        # features = torch.cat([x, *poly_feats, rff_feats], dim=-1)
+        # features = torch.cat([cdiff_feats, *poly_feats, rff_feats], dim=-1)
+        features = torch.cat([x, *poly_feats, rff_feats], dim=-1)
         features = self.projection(features)
         return features
 

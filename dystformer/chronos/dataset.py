@@ -242,6 +242,7 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
                 if self.model_type == "causal":
                     univariate_target = self.imputation_method(univariate_target)  # type: ignore
 
+                # only drop nans for og chronos
                 if mode == "train" and self.drop_prob > 0:
                     mask = np.random.choice(
                         [True, False],

@@ -14,15 +14,13 @@ if [ "$DEBUG" -eq 0 ]; then
         CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
         CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
 
-        # CUDA_DEVICES=0
-        CUDA_DEVICES=0,1,2
+        CUDA_DEVICES=0,1,2,3
         # CUDA_DEVICES=4,5,6,7
         NUM_DEVICES=$(echo "$CUDA_DEVICES" | tr -d ' ' | tr ',' '\n' | wc -l)
-        
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node $NUM_DEVICES \
-                --master-port 29504 \
+                --master-port 29500 \
                 scripts/chronos/train.py \
                 chronos.model_id="amazon/chronos-bolt-mini" \
                 chronos.model_type=seq2seq \
@@ -43,10 +41,10 @@ if [ "$DEBUG" -eq 0 ]; then
                 chronos.top_k=50 \
                 chronos.top_p=1.0 \
                 train.max_steps=300_000 \
-                train.save_steps=100_000 \
+                train.save_steps=30_000 \
                 train.log_steps=1000 \
                 shuffle_buffer_length=100_000 \
-                train.per_device_train_batch_size=128 \
+                train.per_device_train_batch_size=1024 \
                 train.warmup_ratio=0.1 \
                 train.torch_compile=true \
                 train.weight_decay=0.0 \
