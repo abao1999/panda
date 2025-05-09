@@ -14,9 +14,9 @@ test_data_dirs=(
 test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "test_data_dirs: $test_data_dirs_json"
 
-# run_name=chronos_mini_zeroshot
+run_name=chronos_bolt_mini_zeroshot
 # run_name=chronos_bolt_mini_test-0
-run_name=chronos_mini_ft-0
+# run_name=chronos_bolt_mini_100k_default_params-0
 
 # Set zero_shot flag based on whether "zeroshot" appears in run_name
 if [[ "$run_name" == *"zeroshot"* ]]; then
@@ -37,9 +37,9 @@ python scripts/chronos/evaluate.py \
     eval.metrics_save_dir=$WORK/eval_results/chronos/${run_name}/test_zeroshot \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
-    eval.device=cuda:3 \
+    eval.device=cuda:2 \
     eval.save_predictions=false \
     eval.save_labels=false \
     eval.chronos.zero_shot=$zero_shot_flag \
     eval.seed=99 \
-    "${@:2}"  # Pass remaining arguments after run_name
+    "$@"
