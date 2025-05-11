@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import warnings
 from functools import partial
 
 import hydra
@@ -152,13 +153,19 @@ def main(cfg):
         "median": lambda x: np.median(x, axis=0),
     }[cfg.eval.parallel_sample_reduction]
 
+    # for ChronosPipeline.predict() method
     prediction_kwargs = {
         "limit_prediction_length": cfg.eval.limit_prediction_length,
         "deterministic": cfg.eval.chronos.deterministic,
         "verbose": cfg.eval.verbose,
-    }
-    if not use_bolt:
-        prediction_kwargs["num_samples"] = 1
+        "top_k": cfg.chronos.top_k,
+        "top_p": cfg.chronos.top_p,
+        "temperature": cfg.chronos.temperature,
+    }  # NOTE: keep num_samples separate from prediction_kwargs to accomodate bolt config
+    if use_bolt and cfg.eval.num_samples is None:
+        warnings.warn(
+            "num_samples config parameter will not be used, defaulting to num_samples=1"
+        )
 
     predictions, contexts, labels, metrics = evaluate_chronos_forecast(
         pipeline,

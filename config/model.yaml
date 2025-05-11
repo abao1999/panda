@@ -4,7 +4,7 @@ patchtst:
 
   context_length: 512
   prediction_length: 128
-  distribution_output: "student_t"
+  distribution_output: null #"student_t"
   loss: "mse"
   huber_delta: 1.0 # NOTE: only used if loss is Huber loss
 
@@ -37,7 +37,7 @@ patchtst:
   mask_value: 0
   pooling_type: "max"
   head_dropout: 0.0
-  num_parallel_samples: 100
+  num_parallel_samples: 100 # NOTE: only used in predict mode if distribution_output is not None
 
   # rope positional embeddings
   channel_rope: false  # use rope in channel attention

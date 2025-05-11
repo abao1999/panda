@@ -87,22 +87,20 @@ def evaluate_chronos_forecast(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
 
-            # num_samples = number of arrow files in this system's subdirectory
             # shape: (batch_size, context_length)
             past_batch = torch.cat(past_values, dim=0).to(pipeline.model.device).cpu()
             context = past_batch.numpy()
 
             # shape: (num_parallel_samples, batch_size, prediction_length)
-            preds = (
-                pipeline.predict(
-                    past_batch,
-                    prediction_length=prediction_length,
-                    **prediction_kwargs,
-                )
-                .transpose(0, 1)
-                .cpu()
-                .numpy()
-            )
+            predict_args = {
+                "context": past_batch,
+                "prediction_length": prediction_length,
+                **prediction_kwargs,
+            }
+            if isinstance(pipeline, ChronosPipeline):
+                predict_args["num_samples"] = num_samples
+
+            preds = pipeline.predict(**predict_args).transpose(0, 1).cpu().numpy()
 
             # shape: (batch_size, sampler_prediction_length)
             future_batch = torch.cat(future_values, dim=0).cpu().numpy()
