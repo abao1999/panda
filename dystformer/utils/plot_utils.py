@@ -1085,6 +1085,7 @@ def plot_all_metrics_by_prediction_length(
     use_inv_spearman: bool = False,
     model_names_to_exclude: list[str] = [],
     has_nans: dict[str, dict[str, bool]] | None = None,
+    ignore_nans: bool = False,
 ) -> list[plt.Line2D]:
     """
     Plot multiple metrics across different prediction lengths for various models.
@@ -1182,6 +1183,11 @@ def plot_all_metrics_by_prediction_length(
             all_vals = metrics[
                 "all_vals"
             ]  # Keep as list of arrays to avoid inhomogeneous shape error
+            if ignore_nans:
+                # Filter NaN values from each array in all_vals
+                all_vals = [
+                    np.array([v for v in val if not np.isnan(v)]) for val in all_vals
+                ]
             if metric_name == "spearman" and use_inv_spearman:
                 mean_vals = 1 - mean_vals
                 median_vals = 1 - median_vals
@@ -1220,7 +1226,6 @@ def plot_all_metrics_by_prediction_length(
                     linestyle="-." if has_nan else "-",
                 )
                 if metric_name in metrics_to_show_envelope:
-                    # plot fill between median and the 25th and 75th percentiles
                     percentile_range_lower = [
                         np.percentile(all_vals[pred_len_idx], percentile_range[0])
                         for pred_len_idx in range(len(all_vals))
@@ -1229,6 +1234,7 @@ def plot_all_metrics_by_prediction_length(
                         np.percentile(all_vals[pred_len_idx], percentile_range[1])
                         for pred_len_idx in range(len(all_vals))
                     ]
+
                     ax.fill_between(
                         metrics["prediction_lengths"],
                         percentile_range_lower,

@@ -65,6 +65,7 @@ eval:
 
   chronos:
     zero_shot: false
+    deterministic: true
 
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:

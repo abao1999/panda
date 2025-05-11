@@ -114,7 +114,7 @@ def main(cfg):
             * len(test_data_dict[system_name]),
             tokenizer=tokenizer,
             patch_size=cfg.chronos.input_patch_size if use_bolt else None,
-            context_length=cfg.chronos.context_length,
+            context_length=context_length,
             prediction_length=cfg.eval.prediction_length,  # NOTE: should match the forecast prediction length
             min_past=cfg.min_past,
             num_test_instances=cfg.eval.num_test_instances,
@@ -154,7 +154,7 @@ def main(cfg):
 
     prediction_kwargs = {
         "limit_prediction_length": cfg.eval.limit_prediction_length,
-        "deterministic": True,
+        "deterministic": cfg.eval.chronos.deterministic,
         "verbose": cfg.eval.verbose,
     }
     if not use_bolt:

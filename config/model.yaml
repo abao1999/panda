@@ -59,15 +59,15 @@ patchtst:
   num_rff: 256
 
 chronos:
-  model_id: amazon/chronos-bolt-mini
+  model_id: amazon/chronos-t5-mini
   model_type: seq2seq
 
   # model params
   random_init: false # NOTE: set to false for fine-tuning, very important!
   tie_embeddings: true
 
-  context_length: 2048
-  prediction_length: 64
+  context_length: 512
+  prediction_length: 128
   num_samples: 20
 
   # vocab (tokens)
