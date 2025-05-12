@@ -1171,11 +1171,15 @@ def plot_all_metrics_by_prediction_length(
     elif hasattr(axes, "flatten"):  # Check if axes has flatten method
         axes = axes.flatten()  # Flatten the axes array for easy iteration
 
+    model_names_with_nans = {}
     for i, (ax, metric_name) in enumerate(zip(axes, metric_names)):
         metrics_dict = all_metrics_dict[metric_name]
         nan_models = has_nans.get(metric_name, {})
         for j, (model_name, metrics) in enumerate(metrics_dict.items()):
             has_nan = nan_models.get(model_name, False)
+            if has_nan:
+                print(f"{model_name} has NaNs for {metric_name}")
+                model_names_with_nans[model_name] = True
             if model_name in model_names_to_exclude:
                 continue
             mean_vals = np.array(metrics["means"])
@@ -1251,7 +1255,9 @@ def plot_all_metrics_by_prediction_length(
                     color=colors[j] if isinstance(colors, list) else colors[model_name],
                     marker=markers[j],
                     markersize=6,
-                    label=model_name,
+                    label=model_name
+                    if not model_names_with_nans.get(model_name, False)
+                    else f"{model_name}$^\dagger$",
                     linestyle="-." if nan_models.get(model_name, False) else "-",
                     markerfacecolor="none"
                     if nan_models.get(model_name, False)
