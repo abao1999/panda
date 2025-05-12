@@ -90,6 +90,5 @@ chronos:
   input_patch_size: 16
   input_patch_stride: 16
   quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-  # quantiles: [0.1, 0.25, 0.5, 0.75, 0.9]
   use_reg_token: true
 

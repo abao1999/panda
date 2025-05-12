@@ -18,7 +18,6 @@ def evaluate_chronos_forecast(
     batch_size: int,
     prediction_length: int,
     system_dims: dict[str, int],
-    num_samples: int = 1,
     metric_names: list[str] | None = None,
     eval_subintervals: list[tuple[int, int]] | None = None,
     parallel_sample_reduction_fn: Callable | None = None,
@@ -71,7 +70,8 @@ def evaluate_chronos_forecast(
     if parallel_sample_reduction_fn is None:
         parallel_sample_reduction_fn = lambda x: x
 
-    for system in tqdm(systems, desc="Forecasting..."):
+    pbar = tqdm(systems, desc="Forecasting...")
+    for system in pbar:
         dataset = systems[system]
         num_sys = len(dataset.datasets)
         dim = system_dims[system]
@@ -97,10 +97,8 @@ def evaluate_chronos_forecast(
                 "prediction_length": prediction_length,
                 **prediction_kwargs,
             }
-            if isinstance(pipeline, ChronosPipeline):
-                predict_args["num_samples"] = num_samples
-
             preds = pipeline.predict(**predict_args).transpose(0, 1).cpu().numpy()
+            num_samples = preds.shape[0]
 
             # shape: (batch_size, sampler_prediction_length)
             future_batch = torch.cat(future_values, dim=0).cpu().numpy()
@@ -162,6 +160,8 @@ def evaluate_chronos_forecast(
             system_contexts[system] = contexts.transpose(0, 2, 1)
         if return_labels:
             system_labels[system] = labels.transpose(0, 2, 1)
+
+        pbar.set_postfix({"system": system, "num systems": num_sys})
 
     return (
         system_predictions if return_predictions else None,
