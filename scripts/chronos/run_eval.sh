@@ -14,9 +14,8 @@ test_data_dirs=(
 test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "test_data_dirs: $test_data_dirs_json"
 
-run_name=chronos_bolt_mini_zeroshot
-# run_name=chronos_bolt_mini_test-0
-# run_name=chronos_bolt_mini_100k_default_params-0
+# run_name=chronos_mini_zeroshot # chronos mini zeroshot
+run_name=chronos_t5_mini_ft-0 # newest chronos sft 300k iterations
 
 # Set zero_shot flag based on whether "zeroshot" appears in run_name
 if [[ "$run_name" == *"zeroshot"* ]]; then
@@ -25,19 +24,30 @@ else
     zero_shot_flag="false"
 fi
 
+use_deterministic=false
+model_dirname="chronos"
+if [ "$use_deterministic" = false ]; then
+    model_dirname="chronos_nondeterministic"
+fi
+echo "model_dirname: $model_dirname"
+
 python scripts/chronos/evaluate.py \
     eval.checkpoint_path=$checkpoint_dir/${run_name}/checkpoint-final \
     eval.data_paths_lst=$test_data_dirs_json \
     eval.num_subdirs=null \
     eval.num_test_instances=6 \
+    eval.num_samples=10 \
+    eval.parallel_sample_reduction=mean \
     eval.window_style=sampled \
     eval.batch_size=64 \
+    eval.chronos.deterministic=$use_deterministic \
+    chronos.context_length=512 \
     eval.prediction_length=512 \
     eval.limit_prediction_length=false \
-    eval.metrics_save_dir=$WORK/eval_results/chronos/${run_name}/test_zeroshot \
+    eval.metrics_save_dir=$WORK/eval_results/${model_dirname}/${run_name}/test_zeroshot \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
-    eval.device=cuda:2 \
+    eval.device=cuda:4 \
     eval.save_predictions=false \
     eval.save_labels=false \
     eval.chronos.zero_shot=$zero_shot_flag \

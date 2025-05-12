@@ -4,7 +4,7 @@ patchtst:
 
   context_length: 512
   prediction_length: 128
-  distribution_output: "student_t"
+  distribution_output: null #"student_t"
   loss: "mse"
   huber_delta: 1.0 # NOTE: only used if loss is Huber loss
 
@@ -37,7 +37,7 @@ patchtst:
   mask_value: 0
   pooling_type: "max"
   head_dropout: 0.0
-  num_parallel_samples: 100
+  num_parallel_samples: 100 # NOTE: only used in predict mode if distribution_output is not None
 
   # rope positional embeddings
   channel_rope: false  # use rope in channel attention
@@ -59,15 +59,15 @@ patchtst:
   num_rff: 256
 
 chronos:
-  model_id: amazon/chronos-bolt-mini
+  model_id: amazon/chronos-t5-mini
   model_type: seq2seq
 
   # model params
   random_init: false # NOTE: set to false for fine-tuning, very important!
   tie_embeddings: true
 
-  context_length: 2048
-  prediction_length: 64
+  context_length: 512
+  prediction_length: 128
   num_samples: 20
 
   # vocab (tokens)

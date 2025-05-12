@@ -9,9 +9,11 @@ from itertools import islice
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import torch
 from gluonts.dataset.common import FileDataset
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -133,3 +135,53 @@ def save_evaluation_results(
                 existing_df = pd.read_csv(metrics_save_path)
                 results_df = pd.concat([existing_df, results_df], ignore_index=True)
             results_df.to_csv(metrics_save_path, index=False)
+
+
+# For processing the saved metrics csv files
+def get_summary_metrics_dict(
+    unrolled_metrics: dict, metric_name: str
+) -> tuple[dict[str, dict[str, list[float]]], dict[str, bool]]:
+    """
+    Get the summary metrics for a given metric name.
+
+    Returns a tuple of the summary metrics dictionary and a boolean indicating whether there are NaNs in the metrics.
+    """
+    summary_metrics_dict = defaultdict(dict)
+    has_nans = defaultdict(bool)
+    for model_name, metrics_dict in unrolled_metrics.items():
+        prediction_lengths = list(metrics_dict.keys())
+        summary_metrics_dict[model_name]["prediction_lengths"] = prediction_lengths
+        num_vals = len(metrics_dict[prediction_lengths[0]][metric_name])
+        summary_metrics_dict[model_name]["num_vals"] = num_vals
+        means = []
+        medians = []
+        stds = []
+        stes = []
+        all_vals = []
+        for prediction_length in tqdm(
+            prediction_lengths, desc=f"Computing {metric_name} for {model_name}"
+        ):
+            metric_vals = np.array(metrics_dict[prediction_length][metric_name])
+            if np.isnan(metric_vals).any():
+                has_nans[model_name] = True
+            mean = np.nanmean(metric_vals)
+            median = np.nanmedian(metric_vals)
+            std = np.nanstd(metric_vals)
+            ste = std / np.sqrt(len(metric_vals))
+
+            means.append(mean)
+            medians.append(median)
+            stds.append(std)
+            stes.append(ste)
+            all_vals.append(metric_vals)
+
+        if has_nans:
+            print(f"NaNs in {model_name} for {metric_name}")
+
+        summary_metrics_dict[model_name]["means"] = means
+        summary_metrics_dict[model_name]["medians"] = medians
+        summary_metrics_dict[model_name]["stds"] = stds
+        summary_metrics_dict[model_name]["stes"] = stes
+        summary_metrics_dict[model_name]["all_vals"] = all_vals
+
+    return summary_metrics_dict, has_nans
