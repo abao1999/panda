@@ -39,7 +39,7 @@ python scripts/chronos/evaluate.py \
     eval.num_samples=10 \
     eval.parallel_sample_reduction=mean \
     eval.window_style=sampled \
-    eval.batch_size=64 \
+    eval.batch_size=128 \
     eval.chronos.deterministic=$use_deterministic \
     chronos.context_length=512 \
     eval.prediction_length=512 \
