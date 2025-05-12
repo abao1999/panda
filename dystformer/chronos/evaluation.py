@@ -18,7 +18,6 @@ def evaluate_chronos_forecast(
     batch_size: int,
     prediction_length: int,
     system_dims: dict[str, int],
-    num_samples: int = 1,
     metric_names: list[str] | None = None,
     eval_subintervals: list[tuple[int, int]] | None = None,
     parallel_sample_reduction_fn: Callable | None = None,
@@ -97,10 +96,8 @@ def evaluate_chronos_forecast(
                 "prediction_length": prediction_length,
                 **prediction_kwargs,
             }
-            if isinstance(pipeline, ChronosPipeline):
-                predict_args["num_samples"] = num_samples
-
             preds = pipeline.predict(**predict_args).transpose(0, 1).cpu().numpy()
+            num_samples = preds.shape[0]
 
             # shape: (batch_size, sampler_prediction_length)
             future_batch = torch.cat(future_values, dim=0).cpu().numpy()
