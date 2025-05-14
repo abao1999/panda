@@ -14,8 +14,8 @@ if [ "$DEBUG" -eq 0 ]; then
         CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
         CORES_PER_JOB=$(( $CORES_PER_GROUP / 3 ))
 
-        # CUDA_DEVICES=0,1,2,3
-        CUDA_DEVICES=5,6,7
+        CUDA_DEVICES=0,1,2,3
+        # CUDA_DEVICES=5,6,7
         NUM_DEVICES=$(echo "$CUDA_DEVICES" | tr -d ' ' | tr ',' '\n' | wc -l)
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
@@ -23,7 +23,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 --master-port 29501 \
                 scripts/patchtst/train.py \
                 patchtst.mode=pretrain \
-                patchtst.context_length=512 \
+                patchtst.context_length=1024 \
                 patchtst.patch_length=16 \
                 patchtst.patch_stride=16 \
                 patchtst.num_hidden_layers=8 \
