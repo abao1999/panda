@@ -8,12 +8,12 @@ from gluonts.itertools import batcher
 from tqdm.auto import tqdm
 
 from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.pipeline import ChronosBoltPipeline, ChronosPipeline
+from dystformer.chronos.pipeline import ChronosPipeline
 from dystformer.utils import safe_standardize
 
 
 def evaluate_chronos_forecast(
-    pipeline: ChronosPipeline | ChronosBoltPipeline,
+    pipeline: ChronosPipeline,
     systems: dict[str, ChronosDataset],
     batch_size: int,
     prediction_length: int,

@@ -51,13 +51,13 @@ class PatchTSTKernelEmbedding(nn.Module):
             requires_grad=config.rff_trainable,
         )
         # self.projection = nn.Linear(config.d_model, config.d_model, bias=False)
-        self.projection = nn.Linear(
-            config.patch_length
-            + config.num_rff
-            + len(self.patch_indices) * config.num_poly_feats,
-            config.d_model,
-            bias=False,
-        )
+        # self.projection = nn.Linear(
+        #     config.patch_length
+        #     + config.num_rff
+        #     + len(self.patch_indices) * config.num_poly_feats,
+        #     config.d_model,
+        #     bias=False,
+        # )
         # self.projection = nn.Linear(
         #     3
         #     * (
@@ -90,7 +90,7 @@ class PatchTSTKernelEmbedding(nn.Module):
 
         # features = torch.cat([cdiff_feats, *poly_feats, rff_feats], dim=-1)
         features = torch.cat([x, *poly_feats, rff_feats], dim=-1)
-        features = self.projection(features)
+        # features = self.projection(features)
         return features
 
 
