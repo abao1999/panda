@@ -14,8 +14,8 @@ test_data_dirs=(
 test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "test_data_dirs: $test_data_dirs_json"
 
-# run_name=chronos_mini_zeroshot # chronos mini zeroshot
-run_name=chronos_t5_mini_ft-0 # newest chronos sft 300k iterations
+run_name=chronos_mini_zeroshot # chronos mini zeroshot
+# run_name=chronos_t5_mini_ft-0 # newest chronos sft 300k iterations
 
 # Set zero_shot flag based on whether "zeroshot" appears in run_name
 if [[ "$run_name" == *"zeroshot"* ]]; then

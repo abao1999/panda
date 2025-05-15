@@ -231,6 +231,7 @@ def compute_gp_dimension(
     points: np.ndarray,
     num_r: int = 50,
     scaling_range_idx: tuple[int, int] | slice | None = None,
+    verbose: bool = False,
 ) -> float:
     """
     Parameters:
@@ -247,11 +248,11 @@ def compute_gp_dimension(
     # We use the min and max distance from the data to set our range.
     distances = pdist(points, metric="euclidean")
     N_pairs = len(distances)
-    print(distances.shape)
 
     r_min = np.min(distances)
     r_max = np.max(distances)
-    print(f"r_min: {r_min}, r_max: {r_max}")
+    if verbose:
+        print(f"r_min: {r_min}, r_max: {r_max}")
     r_min = max(r_min, 1e-10)
     # Generate logarithmically spaced r values
     r_vals = np.logspace(np.log10(r_min), np.log10(r_max), num_r)
@@ -261,9 +262,13 @@ def compute_gp_dimension(
     # For each r value, count the number of pairs with distance < r
     C = np.array([np.sum(distances < r) / N_pairs for r in r_vals])
 
-    # Compute logarithms
-    log_r = np.log10(r_vals)
-    log_C = np.log10(C)
+    # Compute logarithms (safely to avoid log(0))
+    log_r = np.log10(
+        r_vals
+    )  # r_vals are already guaranteed to be > 0 from r_min = max(r_min, 1e-10)
+    # Ensure C values are positive before taking log
+    C_safe = np.maximum(C, 1e-10)  # Add small epsilon to avoid log(0)
+    log_C = np.log10(C_safe)
 
     # Select a scaling region for the linear fit
     # Here, if not provided, we choose the middle 50% of the r-range.
