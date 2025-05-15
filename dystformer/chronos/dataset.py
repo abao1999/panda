@@ -321,13 +321,6 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
         return data
 
     def to_hf_format(self, entry: dict) -> dict:
-        if self.tokenizer is None and self.patch_size is not None:
-            return self.to_hf_format_bolt(entry)
-        else:
-            return self.to_hf_format_chronos(entry)
-
-    def to_hf_format_chronos(self, entry: dict) -> dict:
-        # Original Chronos tokenization logic
         past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
         input_ids, attention_mask, scale = self.tokenizer.context_input_transform(  # type: ignore
             past_target
@@ -356,30 +349,6 @@ class ChronosDataset(IterableDataset, ShuffleMixin):
             "input_ids": input_ids.squeeze(0),
             "attention_mask": attention_mask.squeeze(0),
             "labels": labels.squeeze(0),
-        }
-
-    def to_hf_format_bolt(self, entry: dict) -> dict:
-        past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
-        future_target = torch.tensor(entry["future_target"]).unsqueeze(0)
-
-        # Create masks for both past and future values (1 where not NaN)
-        past_mask = ~torch.isnan(past_target)
-        future_mask = ~torch.isnan(future_target)
-
-        if self.model_type == "causal":
-            pad_start_idx = np.searchsorted(1 - entry["past_is_pad"], 1)
-            past_target = torch.cat(
-                [past_target[:, pad_start_idx:], past_target[:, :pad_start_idx]], dim=-1
-            )
-            past_mask = torch.cat(
-                [past_mask[:, pad_start_idx:], past_mask[:, :pad_start_idx]], dim=-1
-            )
-
-        return {
-            "context": past_target.squeeze(0),
-            "mask": past_mask.squeeze(0),
-            "target": future_target.squeeze(0),
-            "target_mask": future_mask.squeeze(0),
         }
 
     def to_hf_format_eval(self, entry: dict) -> dict:

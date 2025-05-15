@@ -25,10 +25,7 @@ from dystformer.augmentations import (
     StandardizeTransform,
 )
 from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.model import (
-    ChronosBoltConfig,
-    ChronosConfig,
-)
+from dystformer.chronos.model import ChronosConfig
 from dystformer.utils import (
     ensure_contiguous,
     get_next_path,
@@ -140,35 +137,23 @@ def main(cfg):
         )
         dataloader_num_workers = len(train_datasets)
 
-    use_bolt = "bolt" in cfg.chronos.model_id
-    if use_bolt:
-        chronos_config = ChronosBoltConfig(
-            context_length=cfg.chronos.context_length,
-            prediction_length=cfg.chronos.prediction_length,
-            input_patch_size=cfg.chronos.input_patch_size,
-            input_patch_stride=cfg.chronos.input_patch_stride,
-            quantiles=list(cfg.chronos.quantiles),
-            use_reg_token=cfg.chronos.use_reg_token,
-        )
-        tokenizer = None
-    else:
-        chronos_config = ChronosConfig(
-            tokenizer_class=cfg.chronos.tokenizer_class,
-            tokenizer_kwargs=dict(cfg.chronos.tokenizer_kwargs),
-            n_tokens=cfg.chronos.n_tokens,
-            n_special_tokens=cfg.chronos.n_special_tokens,
-            pad_token_id=cfg.chronos.pad_token_id,
-            eos_token_id=cfg.chronos.eos_token_id,
-            use_eos_token=cfg.chronos.use_eos_token,
-            model_type=cfg.chronos.model_type,
-            context_length=cfg.chronos.context_length,
-            prediction_length=cfg.chronos.prediction_length,
-            num_samples=cfg.chronos.num_samples,
-            temperature=cfg.chronos.temperature,
-            top_k=cfg.chronos.top_k,
-            top_p=cfg.chronos.top_p,
-        )
-        tokenizer = chronos_config.create_tokenizer()
+    chronos_config = ChronosConfig(
+        tokenizer_class=cfg.chronos.tokenizer_class,
+        tokenizer_kwargs=dict(cfg.chronos.tokenizer_kwargs),
+        n_tokens=cfg.chronos.n_tokens,
+        n_special_tokens=cfg.chronos.n_special_tokens,
+        pad_token_id=cfg.chronos.pad_token_id,
+        eos_token_id=cfg.chronos.eos_token_id,
+        use_eos_token=cfg.chronos.use_eos_token,
+        model_type=cfg.chronos.model_type,
+        context_length=cfg.chronos.context_length,
+        prediction_length=cfg.chronos.prediction_length,
+        num_samples=cfg.chronos.num_samples,
+        temperature=cfg.chronos.temperature,
+        top_k=cfg.chronos.top_k,
+        top_p=cfg.chronos.top_p,
+    )
+    tokenizer = chronos_config.create_tokenizer()
 
     log_on_main(f"Initializing model: {cfg.chronos.model_id}", logger)
     model = load_chronos_model(
@@ -233,7 +218,6 @@ def main(cfg):
         datasets=train_datasets,
         probabilities=probability,
         tokenizer=tokenizer,
-        patch_size=cfg.chronos.input_patch_size if use_bolt else None,
         context_length=cfg.chronos.context_length,
         prediction_length=cfg.chronos.prediction_length,
         min_past=cfg.min_past,

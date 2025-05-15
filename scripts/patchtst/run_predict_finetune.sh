@@ -14,7 +14,7 @@ if [ "$DEBUG" -eq 0 ]; then
         CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
         CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
 
-        # CUDA_DEVICES=0,1,2
+        # CUDA_DEVICES=0,1,2,3
         CUDA_DEVICES=4,5,6,7
         NUM_DEVICES=$(echo "$CUDA_DEVICES" | tr -d ' ' | tr ',' '\n' | wc -l)
 
@@ -33,7 +33,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 patchtst.num_hidden_layers=8 \
                 patchtst.num_attention_heads=8 \
                 patchtst.d_model=512 \
-                patchtst.norm_type=rmsnorm \
+                patchtst.norm_type=layernorm \
                 patchtst.channel_attention=true \
                 patchtst.max_wavelength=500 \
                 patchtst.rope_percent=0.75 \

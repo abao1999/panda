@@ -23,8 +23,6 @@ from transformers import (
 )
 
 from dystformer.chronos.model import (
-    ChronosBoltConfig,
-    ChronosBoltModelForForecasting,
     ChronosConfig,
     ChronosModel,
 )
@@ -154,9 +152,9 @@ def load_chronos_model(
     tie_embeddings=False,
     pad_token_id=0,
     eos_token_id=1,
-    chronos_config: ChronosConfig | ChronosBoltConfig | None = None,
+    chronos_config: ChronosConfig | None = None,
     logger: logging.Logger | None = None,
-) -> ChronosBoltModelForForecasting | ChronosModel:
+) -> ChronosModel:
     """
     Load the specified HuggingFace model, adjusting the vocabulary
     size, special token IDs, and initialization options.
@@ -168,7 +166,6 @@ def load_chronos_model(
     AutoModelClass = (
         AutoModelForSeq2SeqLM if model_type == "seq2seq" else AutoModelForCausalLM
     )
-    use_bolt = "bolt" in model_id
     config = AutoConfig.from_pretrained(model_id)
     if chronos_config is not None:
         config.chronos_config = chronos_config.__dict__  # type: ignore
@@ -176,27 +173,18 @@ def load_chronos_model(
     if random_init:
         if logger is not None:
             log_on_main("Using random initialization", logger)
-        if use_bolt:
-            model = ChronosBoltModelForForecasting(config)
-        else:  # og chronos model
-            # The default initializer_factor (1.0) in transformers is too large
-            config.initializer_factor = 0.05
-            config.tie_word_embeddings = tie_embeddings
-            model = AutoModelClass.from_config(config)
+        # The default initializer_factor (1.0) in transformers is too large
+        config.initializer_factor = 0.05
+        config.tie_word_embeddings = tie_embeddings
+        model = AutoModelClass.from_config(config)
     else:
         if logger is not None:
             log_on_main(f"Using pretrained initialization from {model_id}", logger)
-        if use_bolt:
-            model = ChronosBoltModelForForecasting.from_pretrained(
-                model_id, config=config, ignore_mismatched_sizes=True
-            )
-        else:  # og chronos model
-            model = AutoModelClass.from_pretrained(model_id, config=config)
+        model = AutoModelClass.from_pretrained(model_id, config=config)
 
-    if not isinstance(model, ChronosBoltModelForForecasting):
-        model.resize_token_embeddings(vocab_size)  # type: ignore
-        model.config.pad_token_id = model.generation_config.pad_token_id = pad_token_id  # type: ignore
-        model.config.eos_token_id = model.generation_config.eos_token_id = eos_token_id  # type: ignore
+    model.resize_token_embeddings(vocab_size)  # type: ignore
+    model.config.pad_token_id = model.generation_config.pad_token_id = pad_token_id  # type: ignore
+    model.config.eos_token_id = model.generation_config.eos_token_id = eos_token_id  # type: ignore
 
     return model  # type: ignore
 

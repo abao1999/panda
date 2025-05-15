@@ -24,7 +24,6 @@ eval:
     - mae
     - smape
     - spearman
-    # - hellinger_distance
 
   forecast_save_dir: null
   labels_save_dir: null
