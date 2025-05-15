@@ -13,7 +13,7 @@ from typing import Callable, Dict, Tuple
 import hydra
 import matplotlib.pyplot as plt
 import numpy as np
-from dysts.analysis import max_lyapunov_exponent_rosenstein
+from dysts.analysis import max_lyapunov_exponent_rosenstein  # type: ignore
 
 import dystformer.attractor as attractor
 from dystformer.attractor import AttractorValidator

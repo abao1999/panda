@@ -1085,7 +1085,7 @@ def plot_all_metrics_by_prediction_length(
     use_inv_spearman: bool = False,
     model_names_to_exclude: list[str] = [],
     has_nans: dict[str, dict[str, bool]] | None = None,
-    ignore_nans: bool = False,
+    replace_nans_with_val: float | None = None,
 ) -> list[plt.Line2D]:
     """
     Plot multiple metrics across different prediction lengths for various models.
@@ -1171,7 +1171,6 @@ def plot_all_metrics_by_prediction_length(
     elif hasattr(axes, "flatten"):  # Check if axes has flatten method
         axes = axes.flatten()  # Flatten the axes array for easy iteration
 
-    model_names_with_nans = {}
     for i, (ax, metric_name) in enumerate(zip(axes, metric_names)):
         metrics_dict = all_metrics_dict[metric_name]
         nan_models = has_nans.get(metric_name, {})
@@ -1179,7 +1178,6 @@ def plot_all_metrics_by_prediction_length(
             has_nan = nan_models.get(model_name, False)
             if has_nan:
                 print(f"{model_name} has NaNs for {metric_name}")
-                model_names_with_nans[model_name] = True
             if model_name in model_names_to_exclude:
                 continue
             mean_vals = np.array(metrics["means"])
@@ -1187,11 +1185,21 @@ def plot_all_metrics_by_prediction_length(
             all_vals = metrics[
                 "all_vals"
             ]  # Keep as list of arrays to avoid inhomogeneous shape error
-            if ignore_nans:
+            if replace_nans_with_val is not None:
                 # Filter NaN values from each array in all_vals
                 all_vals = [
-                    np.array([v for v in val if not np.isnan(v)]) for val in all_vals
+                    np.array(
+                        [v if not np.isnan(v) else replace_nans_with_val for v in val]
+                    )
+                    for val in all_vals
                 ]
+                # recompute the mean and median and standard error
+                mean_vals = np.array([np.mean(val) for val in all_vals])
+                median_vals = np.array([np.median(val) for val in all_vals])
+                se_envelope = np.array(
+                    [np.std(val) / np.sqrt(len(val)) for val in all_vals]
+                )
+
             if metric_name == "spearman" and use_inv_spearman:
                 mean_vals = 1 - mean_vals
                 median_vals = 1 - median_vals
@@ -1256,7 +1264,7 @@ def plot_all_metrics_by_prediction_length(
                     marker=markers[j],
                     markersize=6,
                     label=model_name
-                    if not model_names_with_nans.get(model_name, False)
+                    if not nan_models.get(model_name, False)
                     else f"{model_name}$^\dagger$",
                     linestyle="-." if nan_models.get(model_name, False) else "-",
                     markerfacecolor="none"
