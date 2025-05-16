@@ -1,6 +1,6 @@
 analysis:
-  data_dir: /stor/work/AMDG_Gilpin_Summer2024/data
-  split: improved/final_skew40/train
+  data_dir: null
+  split: null
   num_samples: null
   one_dim_target: false
   save_dir: outputs

@@ -14,13 +14,13 @@ import numpy as np
 from dysts.base import BaseDyn
 from dysts.sampling import BaseSampler
 from dysts.systems import make_trajectory_ensemble
+from panda.attractor import AttractorValidator
+from panda.sampling import OnAttractorInitCondSampler
+from panda.skew_system import SkewProduct
+from panda.utils import dict_demote_from_numpy, process_trajs, timeit
 from tqdm import tqdm
 
 import wandb
-from dystformer.attractor import AttractorValidator
-from dystformer.sampling import OnAttractorInitCondSampler
-from dystformer.skew_system import SkewProduct
-from dystformer.utils import dict_demote_from_numpy, process_trajs, timeit
 
 logger = logging.getLogger(__name__)
 

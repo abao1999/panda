@@ -2,30 +2,24 @@ from collections import defaultdict
 from typing import Callable
 
 import numpy as np
-import torch
 from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.itertools import batcher
-from tqdm.auto import tqdm
-
-from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.pipeline import ChronosPipeline
-from dystformer.utils import safe_standardize
+from panda.patchtst.dataset import TimeSeriesDataset
+from panda.utils import safe_standardize
+from tqdm import tqdm
 
 
-def evaluate_chronos_forecast(
-    pipeline: ChronosPipeline,
-    systems: dict[str, ChronosDataset],
+def evaluate_forecasting_model(
+    model: Callable,
+    systems: dict[str, TimeSeriesDataset],
     batch_size: int,
     prediction_length: int,
-    system_dims: dict[str, int],
     metric_names: list[str] | None = None,
-    eval_subintervals: list[tuple[int, int]] | None = None,
-    parallel_sample_reduction_fn: Callable | None = None,
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
     redo_normalization: bool = False,
-    prediction_kwargs: dict | None = None,
+    eval_subintervals: list[tuple[int, int]] | None = None,
 ) -> tuple[
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
@@ -36,16 +30,15 @@ def evaluate_chronos_forecast(
     Evaluate the model on each test system and save metrics.
 
     Args:
-        pipeline: The Chronos Pipeline for evaluation.
-        systems: A dictionary mapping system names to their respective ChronosDataset.
+        model: The baseline model to evaluate.
+        systems: A dictionary mapping system names to their respective TimeSeriesDataset.
         batch_size: The batch size to use for evaluation.
+        prediction_length: The length of the predictions to make.
         metric_names: Optional list of metric names to compute.
-        parallel_sample_reduction: How to reduce the parallel samples over dim 0,
-            only used if return_predictions is True
         return_predictions: Whether to return the predictions.
         return_contexts: Whether to return the contexts.
         return_labels: Whether to return the future values.
-        system_dims: A dictionary mapping system names to their dimensions.
+        redo_normalization: Whether to redo the normalization of the future values.
 
     Returns:
         A tuple containing:
@@ -61,20 +54,14 @@ def evaluate_chronos_forecast(
     system_contexts = {}
     system_labels = {}
     system_metrics = defaultdict(dict)
-    prediction_kwargs = prediction_kwargs or {}
+
     if eval_subintervals is None:
         eval_subintervals = [(0, prediction_length)]
     elif (0, prediction_length) not in eval_subintervals:
         eval_subintervals.append((0, prediction_length))
 
-    if parallel_sample_reduction_fn is None:
-        parallel_sample_reduction_fn = lambda x: x
-
-    pbar = tqdm(systems, desc="Forecasting...")
-    for system in pbar:
+    for system in tqdm(systems, desc="Forecasting..."):
         dataset = systems[system]
-        num_sys = len(dataset.datasets)
-        dim = system_dims[system]
         predictions, labels, contexts, future_values = [], [], [], []
 
         # length of the dataset iterator is equal to len(dataset.datasets)*num_eval_windows
@@ -86,62 +73,40 @@ def evaluate_chronos_forecast(
             past_values, future_values = zip(
                 *[(data["past_values"], data["future_values"]) for data in batch]
             )
+            # shape: (batch_size, context_length, num_channels)
+            context_batch = np.stack(past_values, axis=0)
 
-            # shape: (batch_size, context_length)
-            past_batch = torch.cat(past_values, dim=0).to(pipeline.model.device).cpu()
-            context = past_batch.numpy()
+            # shape: (batch size, prediction_length, num_channels)
+            preds = model(context_batch)
 
-            # shape: (num_parallel_samples, batch_size, prediction_length)
-            predict_args = {
-                "context": past_batch,
-                "prediction_length": prediction_length,
-                **prediction_kwargs,
-            }
-            preds = pipeline.predict(**predict_args).transpose(0, 1).cpu().numpy()
-            num_samples = preds.shape[0]
-
-            # shape: (batch_size, sampler_prediction_length)
-            future_batch = torch.cat(future_values, dim=0).cpu().numpy()
+            # shape: (batch size, prediction_length, num_channels)
+            label_batch = np.stack(future_values, axis=0)
 
             # Truncate predictions to match future_batch length if needed
-            if preds.shape[-1] > future_batch.shape[-1]:
-                preds = preds[..., : future_batch.shape[-1]]
+            if preds.shape[2] > label_batch.shape[1]:
+                preds = preds[..., : label_batch.shape[1], :]
 
-            # standardize using the context from the past_batch
+            # standardize using stats from the past_batch
             if redo_normalization:
-                future_batch = safe_standardize(future_batch, context=context)
-                preds = safe_standardize(preds, context=context[None, :, :])
-                context = safe_standardize(context)
+                preds = safe_standardize(preds, context=context_batch, axis=1)
+                label_batch = safe_standardize(
+                    label_batch, context=context_batch, axis=1
+                )
+                context_batch = safe_standardize(context_batch, axis=1)
 
-            labels.append(future_batch)
+            labels.append(label_batch)
             predictions.append(preds)
-            contexts.append(context)
+            contexts.append(context_batch)
 
-        # if parallel_sample_reduction_fn is None, then predictions shape is:
-        # shape: (num_parallel_samples, num_systems*num_eval_windows, prediction_length, dim)
-        # otherwise, predictions shape is:
-        # shape: (num_systems*num_eval_windows, prediction_length, dim)
-        predictions = (
-            np.concatenate(predictions, axis=1)
-            .reshape(num_samples, num_sys, dim, -1, prediction_length)
-            .transpose(0, 1, 3, 4, 2)
-            .reshape(num_samples, -1, prediction_length, dim)
-        )
-        predictions = parallel_sample_reduction_fn(predictions)
-        labels = (
-            np.concatenate(labels, axis=0)
-            .reshape(num_sys, dim, -1, prediction_length)
-            .transpose(0, 2, 3, 1)
-            .reshape(-1, prediction_length, dim)
-        )
-        # shape: (num_systems*num_eval_windows, context_length, dim)
-        contexts = (
-            np.concatenate(contexts, axis=0)
-            .reshape(num_sys, dim, -1, contexts[0].shape[-1])
-            .transpose(0, 2, 3, 1)
-            .reshape(-1, contexts[0].shape[-1], dim)
-        )
+        # shape: (num_eval_windows * num_datasets, prediction_length, num_channels)
+        predictions = np.concatenate(predictions, axis=0)
+        labels = np.concatenate(labels, axis=0)
 
+        # shape: (num_eval_windows * num_datasets, context_length, num_channels)
+        contexts = np.concatenate(contexts, axis=0)
+
+        # evaluate metrics for multiple forecast lengths on user-specified subintervals
+        # as well as the full prediction length interval
         if metric_names is not None:
             assert all(start < prediction_length for start, _ in eval_subintervals), (
                 "All start indices must be less than the prediction length"
@@ -154,14 +119,13 @@ def evaluate_chronos_forecast(
                     batch_axis=0,
                 )
 
+        # NOTE: these all need to be of shape: (num_eval_windows * num_datasets, num_channels, prediction_length)
         if return_predictions:
             system_predictions[system] = predictions.transpose(0, 2, 1)
         if return_contexts:
             system_contexts[system] = contexts.transpose(0, 2, 1)
         if return_labels:
             system_labels[system] = labels.transpose(0, 2, 1)
-
-        pbar.set_postfix({"system": system, "num systems": num_sys})
 
     return (
         system_predictions if return_predictions else None,

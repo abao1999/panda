@@ -13,10 +13,7 @@ from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
 from omegaconf import OmegaConf
-from transformers import Trainer, TrainingArguments
-
-import wandb
-from dystformer.augmentations import (
+from panda.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
     RandomFourierSeries,
@@ -24,9 +21,9 @@ from dystformer.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.model import ChronosConfig
-from dystformer.utils import (
+from panda.chronos.dataset import ChronosDataset
+from panda.chronos.model import ChronosConfig
+from panda.utils import (
     ensure_contiguous,
     get_next_path,
     has_enough_observations,
@@ -35,6 +32,9 @@ from dystformer.utils import (
     log_on_main,
     save_training_info,
 )
+from transformers import Trainer, TrainingArguments
+
+import wandb
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -86,14 +86,6 @@ def main(cfg):
                     )
                 )
             )
-
-    # add any additional arrow data filepaths specified to our training set
-    if cfg.extra_train_data_paths is not None:
-        extra_paths = [
-            Path(file) for file in cfg.extra_train_data_paths if Path(file).is_file()
-        ]
-        assert isinstance(extra_paths, list), "extra paths must be a list literal"
-        train_data_paths.extend(extra_paths)
 
     # create a new output directory to save results
     output_dir = get_next_path(

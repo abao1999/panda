@@ -15,13 +15,12 @@ from gluonts.transform import (
     InstanceSplitter,
     ValidationSplitSampler,
 )
-from torch.utils.data import IterableDataset, get_worker_info
-
-from dystformer.chronos.dataset import (
+from panda.chronos.dataset import (
     NumInstanceSampler,
     RegularWindowedSampler,
     SingleContextSampler,
 )
+from torch.utils.data import IterableDataset, get_worker_info
 
 # used for prediction length in test mode when window style is single
 # if you're predicting for more timepoints than this at a time...what are you doing??

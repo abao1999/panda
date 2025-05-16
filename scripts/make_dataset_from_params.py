@@ -11,8 +11,7 @@ import dysts.flows as flows
 import hydra
 import numpy as np
 from dysts.systems import DynSys
-
-from dystformer.attractor import (
+from panda.attractor import (
     check_boundedness,
     check_lyapunov_exponent,
     check_not_fixed_point,
@@ -22,10 +21,10 @@ from dystformer.attractor import (
     check_stationarity,
     check_zero_one_test,
 )
-from dystformer.coupling_maps import RandomAdditiveCouplingMap
-from dystformer.dyst_data import DynSysSamplerRestartIC
-from dystformer.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
-from dystformer.skew_system import SkewProduct
+from panda.coupling_maps import RandomAdditiveCouplingMap
+from panda.dyst_data import DynSysSamplerRestartIC
+from panda.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
+from panda.skew_system import SkewProduct
 
 
 def default_attractor_tests(tests_to_use: list[str]) -> list[Callable]:

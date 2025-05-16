@@ -11,7 +11,7 @@ restart_sampling:
   save_first_sample: true
 
 sampling:
-  data_dir: /stor/work/AMDG_Gilpin_Summer2024/data/
+  data_dir: null
   sys_class: continuous_no_delay
   test_split: 0.3
   split_prefix: null

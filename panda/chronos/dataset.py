@@ -23,9 +23,8 @@ from gluonts.transform import (
     MissingValueImputation,
     ValidationSplitSampler,
 )
+from panda.chronos.model import ChronosTokenizer
 from torch.utils.data import IterableDataset, get_worker_info
-
-from dystformer.chronos.model import ChronosTokenizer
 
 # used for prediction length in test mode when window style is single
 # if you're predicting for more timepoints than this at a time...what are you doing??

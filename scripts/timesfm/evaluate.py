@@ -7,10 +7,9 @@ import timesfm
 import torch
 import transformers
 from gluonts.transform import LastValueImputation
-
-from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.evaluation import evaluate_chronos_forecast
-from dystformer.utils import (
+from panda.chronos.dataset import ChronosDataset
+from panda.chronos.evaluation import evaluate_chronos_forecast
+from panda.utils import (
     get_dim_from_dataset,
     get_eval_data_dict,
     log_on_main,
@@ -34,7 +33,7 @@ class TimesFMPipeline:
             ),
             checkpoint=timesfm.TimesFmCheckpoint(huggingface_repo_id=model_id),
         )
-        # for compatibility with dystformer
+        # for compatibility with panda
         self.model.device = self.model._device  # type: ignore
 
     @torch.no_grad()

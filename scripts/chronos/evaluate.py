@@ -8,11 +8,10 @@ import numpy as np
 import torch
 import transformers
 from gluonts.transform import LastValueImputation
-
-from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.evaluation import evaluate_chronos_forecast
-from dystformer.chronos.pipeline import ChronosPipeline
-from dystformer.utils import (
+from panda.chronos.dataset import ChronosDataset
+from panda.chronos.evaluation import evaluate_chronos_forecast
+from panda.chronos.pipeline import ChronosPipeline
+from panda.utils import (
     get_dim_from_dataset,
     get_eval_data_dict,
     log_on_main,

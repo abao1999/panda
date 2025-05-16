@@ -9,13 +9,7 @@ import transformers
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
-from transformers import (
-    Trainer,
-    TrainingArguments,
-)
-
-import wandb
-from dystformer.augmentations import (
+from panda.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
     RandomDimSelectionTransform,
@@ -24,13 +18,13 @@ from dystformer.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from dystformer.patchtst.dataset import TimeSeriesDataset
-from dystformer.patchtst.patchtst import (
+from panda.patchtst.dataset import TimeSeriesDataset
+from panda.patchtst.patchtst import (
     PatchTSTForPrediction,
     PatchTSTForPretraining,
 )
-from dystformer.schedulers import Scheduler, SchedulerLoggingCallback
-from dystformer.utils import (
+from panda.schedulers import Scheduler, SchedulerLoggingCallback
+from panda.utils import (
     ensure_contiguous,
     get_next_path,
     has_enough_observations,
@@ -39,6 +33,12 @@ from dystformer.utils import (
     log_on_main,
     save_training_info,
 )
+from transformers import (
+    Trainer,
+    TrainingArguments,
+)
+
+import wandb
 
 logger = logging.getLogger(__name__)
 

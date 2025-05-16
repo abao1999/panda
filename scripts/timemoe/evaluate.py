@@ -6,17 +6,16 @@ import numpy as np
 import torch
 import transformers
 from gluonts.transform import LastValueImputation
-from transformers import AutoModelForCausalLM
-
-from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.evaluation import evaluate_chronos_forecast
-from dystformer.utils import (
+from panda.chronos.dataset import ChronosDataset
+from panda.chronos.evaluation import evaluate_chronos_forecast
+from panda.utils import (
     get_dim_from_dataset,
     get_eval_data_dict,
     log_on_main,
     process_trajs,
     save_evaluation_results,
 )
+from transformers import AutoModelForCausalLM
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)

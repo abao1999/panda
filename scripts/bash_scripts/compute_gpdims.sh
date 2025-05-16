@@ -14,7 +14,7 @@ run_name=mlm_stand_chattn_noembed-0
 
 python scripts/compute_gpdims.py \
     eval.mode=pretrain \
-    eval.checkpoint_path=/stor/work/AMDG_Gilpin_Summer2024/checkpoints/$run_name/checkpoint-final \
+    eval.checkpoint_path=$WORK/checkpoints/$run_name/checkpoint-final \
     eval.device=cuda:5 \
     eval.torch_dtype=float16 \
     eval.data_paths_lst=$test_data_dirs_json \

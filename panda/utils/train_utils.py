@@ -16,20 +16,19 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import transformers
+from panda.chronos.model import (
+    ChronosConfig,
+    ChronosModel,
+)
+from panda.patchtst.patchtst import (
+    PatchTSTConfig,
+    PatchTSTForPrediction,
+    PatchTSTForPretraining,
+)
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     AutoModelForSeq2SeqLM,
-)
-
-from dystformer.chronos.model import (
-    ChronosConfig,
-    ChronosModel,
-)
-from dystformer.patchtst.patchtst import (
-    PatchTSTConfig,
-    PatchTSTForPrediction,
-    PatchTSTForPretraining,
 )
 
 

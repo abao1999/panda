@@ -1,8 +1,10 @@
 eval:
   # for evaluating saved checkpoint
   mode: predict
-  data_paths_lst:
-    - /stor/work/AMDG_Gilpin_Summer2024/data/test/
+  data_paths_lst: null
+    # - data_dir1
+    # - data_dir2
+
   checkpoint_path: null
   device: cuda:7
   torch_dtype: float32 # bfloat16?

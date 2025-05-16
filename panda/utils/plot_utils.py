@@ -11,8 +11,7 @@ from matplotlib.patches import FancyArrowPatch
 from matplotlib.ticker import FormatStrFormatter
 from mpl_toolkits.mplot3d.proj3d import proj_transform
 from omegaconf import OmegaConf
-
-from dystformer.utils import safe_standardize
+from panda.utils import safe_standardize
 
 DEFAULT_COLORS = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
 DEFAULT_MARKERS = ["o", "s", "v", "D", "X", "P", "H", "h", "d", "p", "x"]

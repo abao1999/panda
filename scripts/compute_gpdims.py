@@ -8,14 +8,13 @@ import hydra
 import numpy as np
 import torch
 from dysts.analysis import gp_dim  # type: ignore
-from tqdm import tqdm
-
-from dystformer.patchtst.pipeline import PatchTSTPipeline
-from dystformer.utils import (
+from panda.patchtst.pipeline import PatchTSTPipeline
+from panda.utils import (
     compute_gp_dimension,
     get_eval_data_dict,
     log_on_main,
 )
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)

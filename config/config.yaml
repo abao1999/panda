@@ -22,14 +22,13 @@ hydra:
     handlers:
       file:
         mode: w
-        # filename: ${hydra:run.dir}/${oc.select:run_name,${hydra:job.name}}.log
 
 # wandb parameters
 wandb:
   log: false
-  project_name: dystformer
-  entity: gilpinlab
-  group_name: fine-tuning
+  project_name: panda
+  entity: null
+  group_name: null
   resume: false
   resume_run_id: null
   tags: null

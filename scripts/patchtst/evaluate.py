@@ -7,14 +7,13 @@ import hydra
 import numpy as np
 import torch
 import transformers
-
-from dystformer.patchtst.dataset import TimeSeriesDataset
-from dystformer.patchtst.evaluation import (
+from panda.patchtst.dataset import TimeSeriesDataset
+from panda.patchtst.evaluation import (
     evaluate_forecasting_model,
     evaluate_mlm_model,
 )
-from dystformer.patchtst.pipeline import PatchTSTPipeline
-from dystformer.utils import (
+from panda.patchtst.pipeline import PatchTSTPipeline
+from panda.utils import (
     get_dim_from_dataset,
     get_eval_data_dict,
     log_on_main,

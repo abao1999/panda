@@ -21,7 +21,7 @@ train:
   lr_scheduler_type: cosine
   warmup_ratio: 0.1
   weight_decay: 0.0
-  output_dir: /stor/work/AMDG_Gilpin_Summer2024/checkpoints/
+  output_dir: null
 
   # distributed training
   ddp_backend: nccl

@@ -5,11 +5,10 @@ import numpy as np
 import torch
 from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.itertools import batcher
+from panda.patchtst.dataset import TimeSeriesDataset
+from panda.patchtst.pipeline import PatchTSTPipeline
+from panda.utils import safe_standardize
 from tqdm import tqdm
-
-from dystformer.patchtst.dataset import TimeSeriesDataset
-from dystformer.patchtst.pipeline import PatchTSTPipeline
-from dystformer.utils import safe_standardize
 
 
 # TODO: test this and compute metrics for mlms, distributional metrics
