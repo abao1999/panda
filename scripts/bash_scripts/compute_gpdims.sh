@@ -21,4 +21,6 @@ python scripts/compute_gpdims.py \
     eval.num_subdirs=null \
     eval.num_samples_per_subdir=null \
     eval.metrics_save_dir=$WORK/eval_results/patchtst/$run_name/test_zeroshot \
-    eval.metrics_fname=gpdims_run6 \
+    eval.metrics_fname=ngpdims \
+    eval.save_completions=false \
+    eval.num_processes=10

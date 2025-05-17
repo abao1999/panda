@@ -8,13 +8,14 @@ import hydra
 import numpy as np
 import torch
 from dysts.analysis import gp_dim  # type: ignore
+from tqdm import tqdm
+
 from panda.patchtst.pipeline import PatchTSTPipeline
 from panda.utils import (
     compute_gp_dimension,
     get_eval_data_dict,
     log_on_main,
 )
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
@@ -197,7 +198,7 @@ def main(cfg):
                 "timestep_mask": timestep_mask,
             }
 
-    gp_dims = get_gp_dims(completions_dict, n_jobs=10)
+    gp_dims = get_gp_dims(completions_dict, n_jobs=cfg.eval.num_processes)
 
     metrics_save_dir = cfg.eval.metrics_save_dir
     metrics_fname = f"{cfg.eval.metrics_fname}.pkl"
@@ -205,9 +206,15 @@ def main(cfg):
     with open(os.path.join(metrics_save_dir, metrics_fname), "wb") as f:
         pickle.dump(gp_dims, f)
 
-    # now save completions_dict as well
-    with open(os.path.join(metrics_save_dir, "completions_dict.pkl"), "wb") as f:
-        pickle.dump(completions_dict, f)
+    if cfg.eval.save_completions:
+        log(
+            f"Saving completions to {metrics_save_dir}"
+        )  # instead of cfg.eval.completions_save_dir
+        with open(
+            os.path.join(metrics_save_dir, f"{cfg.eval.metrics_fname}_completions.pkl"),
+            "wb",
+        ) as f:
+            pickle.dump(completions_dict, f)
 
 
 if __name__ == "__main__":

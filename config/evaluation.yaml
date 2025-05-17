@@ -21,6 +21,8 @@ eval:
   save_completions: false  # for mlm model eval
   save_masks: false  # for mlm model eval
 
+  num_processes: 10 # for multiprocessing
+
   metric_names:
     - mse
     - mae

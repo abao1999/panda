@@ -1,6 +1,8 @@
 # panda
 Panda: Patched Attention for Nonlinear Dynamics
 
+We will release trained checkpoints soon!
+
 ## Setup
 Install the most up-to-date version of [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`. Consider installing `numba` for faster numerical integration.
 
@@ -23,8 +25,3 @@ $ pip install -e .[rocm] --extra-index-url https://download.pytorch.org/whl/rocm
 ## Training Baselines
 
 ## Evaluation
-
-## Development Goals
----
-+ [HIGH | MEDIUM] MLM Evals
-+ [HIGH | HARD] Attention map investigation
