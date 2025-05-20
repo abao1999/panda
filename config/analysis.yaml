@@ -31,30 +31,3 @@ analysis:
   check_zero_one_test:
     threshold: 0.2
     strategy: score
-
-recompute_metrics:
-
-  # directories
-  eval_data_dir: null
-  forecast_split: null
-  labels_split: null
-
-  num_samples: null
-  num_systems: null
-  # need to specify context length that was used when generating the forecasts
-  context_length: 512
-
-  # save results
-  save_dir: null
-  metrics_fname: metrics
-
-  # metrics to compute
-  metric_names:
-    - mse
-    - mae
-    - smape
-    - r2_score
-    - spearman
-    - hellinger_distance
-    - corr_gpdim
-    # - kl_divergence
