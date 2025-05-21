@@ -1,6 +1,8 @@
 # panda
 Panda: Patched Attention for Nonlinear Dynamics
 
+This repository contains the code to reproduce the experiments presented in our arXiv preprint [arXiv:2505.13755](https://arxiv.org/abs/2505.13755)
+
 We will release trained checkpoints soon!
 
 ## Setup
@@ -25,3 +27,17 @@ $ pip install -e .[rocm] --extra-index-url https://download.pytorch.org/whl/rocm
 ## Training Baselines
 
 ## Evaluation
+
+## Citation
+If you use this codebase or otherwise find our work valuable, please cite us:
+```
+@misc{lai2025panda,
+      title={Panda: A pretrained forecast model for universal representation of chaotic dynamics}, 
+      author={Jeffrey Lai and Anthony Bao and William Gilpin},
+      year={2025},
+      eprint={2505.13755},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2505.13755}, 
+}
+```
