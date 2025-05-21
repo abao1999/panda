@@ -76,6 +76,7 @@ class PatchTSTRopeAttention(nn.Module):
         use_rope: bool = True,
         max_wavelength: int = 10000,
         rope_percent: float = 0.5,
+        linear_attn: bool = False
         config: Optional[PatchTSTConfig] = None,
     ):
         super().__init__()
@@ -86,6 +87,7 @@ class PatchTSTRopeAttention(nn.Module):
         self.max_wavelength = max_wavelength
         self.rope_percent = rope_percent
         self.use_rope = use_rope
+        self.linear_attn = linear_attn
         self.config = config
 
         if (self.head_dim * num_heads) != self.embed_dim:
@@ -120,7 +122,6 @@ class PatchTSTRopeAttention(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
-        linear_attn: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """Input shape: Batch x Time x Channel"""
 
@@ -207,7 +208,7 @@ class PatchTSTRopeAttention(nn.Module):
             ) + attention_mask.to(attn_weights.device)
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
-        if not linear_attn:
+        if not self.linear_attn:
             attn_weights = nn.functional.softmax(attn_weights, dim=-1)
 
         if layer_head_mask is not None:
@@ -276,6 +277,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             use_rope=True,
             max_wavelength=config.max_wavelength,
             rope_percent=config.rope_percent,
+            linear_attn=config.temporal_linattn
         )
         if self.channel_attention:
             self.channel_self_attn = PatchTSTRopeAttention(
@@ -285,6 +287,7 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
                 use_rope=config.channel_rope,  # channels are not positional
                 max_wavelength=config.max_wavelength,
                 rope_percent=config.rope_percent,
+                linear_attn=config.channel_linattn
             )
 
         # Add & Norm of the sublayer 1
@@ -350,7 +353,6 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
         hidden_state: torch.Tensor,
         output_attentions: Optional[bool] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
-        linear_attn: bool = False,
     ):
         """
         Parameters:
@@ -383,7 +385,6 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             attn_output, attn_weights, _ = self.temporal_self_attn(
                 hidden_states=hidden_state,
                 output_attentions=output_attentions,
-                linear_attn=linear_attn,
             )
             # hidden_states: [(bs*num_channels) x sequence_length x d_model]
             hidden_state = self.norm_sublayer1(
@@ -418,7 +419,6 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
                     hidden_states=hidden_state,
                     output_attentions=output_attentions,
                     attention_mask=channel_attention_mask,
-                    linear_attn=linear_attn,
                 )
                 # hidden_states: [(bs*sequence_length) x num_channels x d_model]
                 hidden_state = self.norm_sublayer2(
@@ -497,7 +497,6 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
         channel_attention_mask: Optional[torch.Tensor] = None,
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
-        linear_attn: bool = False,
     ) -> BaseModelOutput:
         """
         Parameters:
@@ -535,7 +534,6 @@ class PatchTSTEncoder(PatchTSTPreTrainedModel):
                 hidden_state=hidden_state,
                 output_attentions=output_attentions,
                 channel_attention_mask=channel_attention_mask,
-                linear_attn=linear_attn,
             )
             # get hidden state. hidden_state shape is [bs x num_channels x num_patches x d_model]
             # or [bs x num_channels x (num_patches+1) x d_model] if use cls_token
@@ -577,7 +575,6 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
-        linear_attn: bool = False,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, PatchTSTModelOutput]:
         r"""
@@ -634,7 +631,6 @@ class PatchTSTModel(PatchTSTPreTrainedModel):
             output_hidden_states=output_hidden_states,
             output_attentions=output_attentions,
             channel_attention_mask=channel_attention_mask,
-            linear_attn=linear_attn,
         )
 
         if not return_dict:
@@ -949,7 +945,6 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
         output_attentions: Optional[bool] = None,
         channel_attention_mask: Optional[torch.Tensor] = None,
         return_dict: Optional[bool] = None,
-        linear_attn: bool = False,
     ) -> Union[Tuple, PatchTSTForPredictionOutput]:
         r"""
         Parameters:
@@ -988,7 +983,6 @@ class PatchTSTForPrediction(PatchTSTPreTrainedModel):
             output_attentions=output_attentions,
             channel_attention_mask=channel_attention_mask,
             return_dict=True,
-            linear_attn=linear_attn,
         )
         y_hat = self.head(model_output.last_hidden_state)
 
