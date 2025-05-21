@@ -3,7 +3,9 @@ Panda: Patched Attention for Nonlinear Dynamics
 
 This repository contains the code to reproduce the experiments presented in our arXiv preprint [arXiv:2505.13755](https://arxiv.org/abs/2505.13755)
 
-We will release trained checkpoints soon!
+We have released model weights on HF at https://huggingface.co/GilpinLab/panda
+
+We are also in the process of scaling up our training and model size, so stay tuned!
 
 ## Setup
 Install the most up-to-date version of [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`. Consider installing `numba` for faster numerical integration.
