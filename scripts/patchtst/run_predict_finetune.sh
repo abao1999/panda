@@ -34,10 +34,7 @@ if [ "$DEBUG" -eq 0 ]; then
         echo "CORES_PER_GROUP: $CORES_PER_GROUP"
         echo "TOTAL_CORES: $TOTAL_CORES"
 
-        # NOTE: (num_rff * 2) + (num_poly_feats * poly_degrees) + 16 = 768, and the first two paranthesized quantities should be equal
-        # DIST_BACKEND=gloo 
-        NCCL_DEBUG=INFO CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB \
-        torchrun \
+        CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node $NUM_DEVICES \
                 --master-port 29500 \
                 scripts/patchtst/train.py \
@@ -45,6 +42,13 @@ if [ "$DEBUG" -eq 0 ]; then
                 train_data_dirs=$train_data_dirs_json \
                 patchtst.mode=predict \
                 patchtst.use_dynamics_embedding=true \
+                patchtst.use_dynamics_embedding=false \
+                patchtst.poly_degrees=2 \
+                patchtst.num_poly_feats=120 \
+                patchtst.poly_degrees=2 \
+                patchtst.rff_trainable=false \
+                patchtst.rff_scale=1.0 \
+                patchtst.num_rff=256 \
                 patchtst.pretrained_encoder_path=null \
                 patchtst.context_length=512 \
                 patchtst.prediction_length=128 \
@@ -59,6 +63,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 patchtst.rff_trainable=false \
                 patchtst.num_poly_feats=120 \
                 patchtst.poly_degrees=2 \
+                patchtst.norm_type=rmsnorm \
                 patchtst.channel_attention=true \
                 patchtst.max_wavelength=500 \
                 patchtst.rope_percent=0.75 \

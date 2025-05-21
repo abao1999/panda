@@ -1,7 +1,5 @@
 # directory containing files used for training data
 train_data_dirs: null
-  # - data_dir1
-  # - data_dir2
 
 probability: null
 
