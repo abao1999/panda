@@ -15,9 +15,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dysts.analysis import max_lyapunov_exponent_rosenstein
 
-import dystformer.attractor as attractor
-from dystformer.attractor import AttractorValidator
-from dystformer.utils import (
+import panda.attractor as attractor
+from panda.attractor import AttractorValidator
+from panda.utils import (
     make_ensemble_from_arrow_dir,
     plot_grid_trajs_multivariate,
     safe_standardize,

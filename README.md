@@ -1,4 +1,4 @@
-# dystformer
+# panda
 Panda: Patched Attention for Nonlinear Dynamics
 
 ## Setup

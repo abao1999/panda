@@ -27,7 +27,7 @@ hydra:
 # wandb parameters
 wandb:
   log: false
-  project_name: dystformer
+  project_name: panda
   entity: gilpinlab
   group_name: fine-tuning
   resume: false

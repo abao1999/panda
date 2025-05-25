@@ -11,7 +11,7 @@ import numpy as np
 from dysts.metrics import compute_metrics  # type: ignore
 from tqdm import tqdm
 
-from dystformer.utils import make_ensemble_from_arrow_dir, save_evaluation_results
+from panda.utils import make_ensemble_from_arrow_dir, save_evaluation_results
 
 
 def compute_metrics_from_combined_ensemble(

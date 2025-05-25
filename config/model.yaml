@@ -59,7 +59,7 @@ patchtst:
   num_rff: 256
 
 chronos:
-  model_id: amazon/chronos-t5-mini
+  model_id: amazon/chronos-bolt-mini
   model_type: seq2seq
 
   # model params

@@ -16,7 +16,7 @@ from omegaconf import OmegaConf
 from transformers import Trainer, TrainingArguments
 
 import wandb
-from dystformer.augmentations import (
+from panda.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
     RandomFourierSeries,
@@ -24,12 +24,12 @@ from dystformer.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from dystformer.chronos.dataset import ChronosDataset
-from dystformer.chronos.model import (
+from panda.chronos.dataset import ChronosDataset
+from panda.chronos.model import (
     ChronosBoltConfig,
     ChronosConfig,
 )
-from dystformer.utils import (
+from panda.utils import (
     ensure_contiguous,
     get_next_path,
     has_enough_observations,
