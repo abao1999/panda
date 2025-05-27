@@ -8,7 +8,7 @@ tests/another_playground.py
 pyrightconfig.json
 
 # data directory and files
-data/
+# data/
 *.arrow
 *.csv
 *.png

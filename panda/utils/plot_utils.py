@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 from matplotlib import patches as mpatches
 from matplotlib.patches import FancyArrowPatch
-from matplotlib.ticker import FormatStrFormatter
 from mpl_toolkits.mplot3d.proj3d import proj_transform
 from omegaconf import OmegaConf
+
 from panda.utils import safe_standardize
 
 DEFAULT_COLORS = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
@@ -419,84 +419,129 @@ def plot_univariate_trajs(
 
 def plot_grid_trajs_multivariate(
     ensemble: dict[str, np.ndarray],
-    save_path: str,
-    standardize: bool = False,
+    save_path: str | None = None,
     dims_3d: list[int] = [0, 1, 2],
+    sample_indices: list[int] | np.ndarray | None = None,
+    n_rows_cols: tuple[int, int] | None = None,
     subplot_size: tuple[int, int] = (3, 3),
-    max_samples: int = 6,
-    show_plot: bool = False,
+    row_col_padding: tuple[float, float] = (0.0, 0.0),
+    plot_kwargs: dict[str, Any] = {},
+    title_kwargs: dict[str, Any] = {},
+    custom_colors: list[str] = [],
+    show_titles: bool = True,
+    show_axes: bool = False,
+    plot_projections: bool = False,
+    projections_alpha: float = 0.1,
 ) -> None:
-    """
-    Plot a grid of multiple systems' multivariate timeseries from dyst_data
-
-    Args:
-        ensemble (dict[str, np.ndarray]): Dictionary of shape (n_samples, n_dimensions, n_timesteps) containing the multivariate time series data.
-        save_dir (str, optional): Directory to save the plots. Defaults to None.
-        standardize (bool): Whether to standardize the trajectories
-        dims_3d (list[int]): Indices of dimensions to plot in 3D visualization. Defaults to [0, 1, 2]
-        figsize (tuple[int, int]): Figure size in inches (width, height). Defaults to (6, 6)
-        max_samples (int): Maximum number of samples to plot. Defaults to 6.
-    """
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
-    print("Plotting grid of 3D trajectories and saving to ", save_path)
     n_systems = len(ensemble)
-    n_rows = int(np.ceil(np.sqrt(n_systems)))
-    n_cols = int(np.ceil(n_systems / n_rows))
+    if n_rows_cols is None:
+        n_rows = int(np.ceil(np.sqrt(n_systems)))
+        n_cols = int(np.ceil(n_systems / n_rows))
+    else:
+        n_rows, n_cols = n_rows_cols
 
-    row_padding = 0.2
-    column_padding = 0.2
+    row_padding, column_padding = row_col_padding
+    # Reduce spacing by using smaller padding multipliers
     figsize = (
         n_cols * subplot_size[0] * (1 + column_padding),
         n_rows * subplot_size[1] * (1 + row_padding),
     )
     fig = plt.figure(figsize=figsize)
+    plt.subplots_adjust(wspace=column_padding, hspace=row_padding)
 
-    for idx, (system_name, trajectories) in enumerate(ensemble.items()):
+    if sample_indices is None:
+        sample_indices = np.zeros(len(ensemble), dtype=int)
+    # Keep track of the last used color index to avoid consecutive same colors
+    last_color_idx = -1
+
+    for i, (system_name, trajectories) in enumerate(ensemble.items()):
         assert trajectories.shape[1] >= len(dims_3d), (
             f"Data has {trajectories.shape[1]} dimensions, but {len(dims_3d)} dimensions were requested for plotting"
         )
-        n_samples_plot = min(max_samples, trajectories.shape[0])
 
-        if standardize:
-            trajectories = safe_standardize(trajectories)
+        ax = fig.add_subplot(n_rows, n_cols, i + 1, projection="3d")
 
-        ax = fig.add_subplot(n_rows, n_cols, idx + 1, projection="3d")
+        sample_idx = sample_indices[i]
+        xyz = trajectories[sample_idx, dims_3d, :]
 
-        if n_samples_plot == 1:
-            linewidth = 1
+        # Select a color that's different from the last one used
+        if len(custom_colors) > 0:
+            if len(custom_colors) > 1:
+                # Get a new color index that's different from the last one
+                available_indices = [
+                    j for j in range(len(custom_colors)) if j != last_color_idx
+                ]
+                color_idx = np.random.choice(available_indices)
+                last_color_idx = color_idx
+            else:
+                # If only one color is available, use it
+                color_idx = 0
         else:
-            linewidth = 0.5
-        for sample_idx in range(n_samples_plot):
-            label = f"Sample {sample_idx}"
-            curr_color = DEFAULT_COLORS[sample_idx % len(DEFAULT_COLORS)]
+            color_idx = 0
+        ax.plot(
+            *xyz,
+            **plot_kwargs,
+            color=custom_colors[color_idx] if len(custom_colors) > 0 else None,
+            zorder=10,
+        )
 
-            xyz = trajectories[sample_idx, dims_3d, :]
-            ax.plot(*xyz, alpha=0.5, linewidth=linewidth, color=curr_color, label=label)
-
-            ic_pt = xyz[:, 0]
-            ax.scatter(*ic_pt, marker="*", s=100, alpha=0.5, color=curr_color)
-
-            end_pt = xyz[:, -1]
-            ax.scatter(*end_pt, marker="x", s=100, alpha=0.5, color=curr_color)
-
-        system_name_title = system_name.replace("_", " + ")
-        ax.set_title(f"{system_name_title}.", fontweight="bold")
+        if show_titles:
+            system_name_title = system_name.replace("_", " + ")
+            ax.set_title(f"{system_name_title}", **title_kwargs)
         fig.patch.set_facecolor("white")  # Set the figure's face color to white
         ax.set_facecolor("white")  # Set the axes' face color to white
-        ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
-        ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
-        ax.zaxis.set_major_formatter(FormatStrFormatter("%.1f"))  # type: ignore
-        ax.tick_params(pad=1)
+        # Hide tick marks
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_zticks([])  # type: ignore
+
+        if not show_axes:
+            ax.set_axis_off()
         ax.grid(False)
 
-    # Adjust the layout to add more space between rows
-    plt.tight_layout()  # Adjust 'pad' as needed
-    plt.subplots_adjust(hspace=row_padding, wspace=column_padding)
+        if plot_projections:
+            x_min, x_max = ax.get_xlim3d()  # type: ignore
+            y_min, y_max = ax.get_ylim3d()  # type: ignore
+            z_min, z_max = ax.get_zlim3d()  # type: ignore
 
-    plt.savefig(save_path, dpi=300)
-    if show_plot:
-        plt.show()
+            proj_color = "black"
+            proj_linewidth = 0.3
+
+            # XY plane projection (bottom)
+            ax.plot(
+                xyz[0],
+                xyz[1],
+                z_min,
+                alpha=projections_alpha,
+                linewidth=proj_linewidth,
+                color=proj_color,
+            )
+
+            # XZ plane projection (back)
+            ax.plot(
+                xyz[0],
+                y_max,
+                xyz[2],
+                alpha=projections_alpha,
+                linewidth=proj_linewidth,
+                color=proj_color,
+            )
+
+            # YZ plane projection (right)
+            ax.plot(
+                x_min,
+                xyz[1],
+                xyz[2],
+                alpha=projections_alpha,
+                linewidth=proj_linewidth,
+                color=proj_color,
+            )
+
+    plt.tight_layout()
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path)
+    plt.show()
     plt.close()
 
 
