@@ -9,18 +9,18 @@ We are also in the process of scaling up our training and model size, so stay tu
 
 Paper abstract:
 
->*"Chaotic systems are intrinsically sensitive to small errors, challenging efforts to construct predictive data-driven models of real-world dynamical systems such as fluid flows or neuronal activity.
+>"Chaotic systems are intrinsically sensitive to small errors, challenging efforts to construct predictive data-driven models of real-world dynamical systems such as fluid flows or neuronal activity.
 Prior efforts comprise either specialized models trained separately on individual time series, or foundation models trained on vast time series databases with little underlying dynamical structure.
-Motivated by dynamical systems theory, we present *Panda8, *P*atched *A*ttention for *N*onlinear *D*yn*A*mics.
+Motivated by dynamical systems theory, we present *Panda*, *P*atched *A*ttention for *N*onlinear *D*yn*A*mics.
 We train *Panda* on a novel synthetic, extensible dataset of $2 \times 10^4$ chaotic dynamical systems that we discover using an evolutionary algorithm.
 Trained purely on simulated data, *Panda* exhibits emergent properties: zero-shot forecasting of unseen real world chaotic systems, and nonlinear resonance patterns in cross-channel attention heads.
 Despite having been trained only on low-dimensional ordinary differential equations, *Panda* spontaneously develops the ability to predict partial differential equations without retraining.
-We demonstrate a neural scaling law for differential equations, underscoring the potential of pretrained models for probing abstract mathematical domains like nonlinear dynamics."*
+We demonstrate a neural scaling law for differential equations, underscoring the potential of pretrained models for probing abstract mathematical domains like nonlinear dynamics."
 
 ## Setup
 Install the most up-to-date version of [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`. Consider installing `numba` for faster numerical integration.
 
-*NOTE:* When cloning this repo, to avoid downloading the large commit history (~ 60 MB) we recommend a shallow clone:
+*NOTE:* When cloning this repo, to avoid downloading the large commit history (~ 60 MB) we recommend a *shallow clone*:
 
 `git clone --depth=1 git@github.com:abao1999/panda.git`
 
