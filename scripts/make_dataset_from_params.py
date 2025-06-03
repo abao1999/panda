@@ -5,12 +5,11 @@ Script to generate and save trajectory ensembles for a given set of dynamical sy
 import json
 import logging
 from functools import partial
-from typing import Any, Callable
+from typing import Callable
 
-import dysts.flows as flows
 import hydra
 import numpy as np
-from dysts.systems import DynSys
+
 from panda.attractor import (
     check_boundedness,
     check_lyapunov_exponent,
@@ -21,10 +20,9 @@ from panda.attractor import (
     check_stationarity,
     check_zero_one_test,
 )
-from panda.coupling_maps import RandomAdditiveCouplingMap
 from panda.dyst_data import DynSysSamplerRestartIC
 from panda.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
-from panda.skew_system import SkewProduct
+from panda.utils import init_skew_system_from_params
 
 
 def default_attractor_tests(tests_to_use: list[str]) -> list[Callable]:
@@ -90,38 +88,6 @@ def create_sample_idx_mapping(
         return system_names[system_indices], relative_positions
 
     return get_system_names_and_positions
-
-
-def init_skew_system_from_params(
-    driver_name: str,
-    response_name: str,
-    param_dict: dict[str, Any],
-    **kwargs,
-) -> DynSys:
-    """
-    Initialize a skew-product dynamical system from saved parameters.
-    Assumes RandomAdditiveCouplingMap.
-    """
-    system_name = f"{driver_name}_{response_name}"
-    required_keys = [
-        "driver_params",
-        "response_params",
-        "coupling_map",
-    ]
-    for key in required_keys:
-        if key not in param_dict:
-            raise ValueError(f"Key {key} not found in param_dict for {system_name}")
-
-    driver = getattr(flows, driver_name)(parameters=param_dict["driver_params"])
-    response = getattr(flows, response_name)(parameters=param_dict["response_params"])
-
-    coupling_map = RandomAdditiveCouplingMap._deserialize(param_dict["coupling_map"])
-
-    sys = SkewProduct(
-        driver=driver, response=response, coupling_map=coupling_map, **kwargs
-    )
-
-    return sys
 
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)

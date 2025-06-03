@@ -5,7 +5,9 @@ This repository contains the code to reproduce the experiments presented in our 
 
 We have released model weights on HF at https://huggingface.co/GilpinLab/panda
 
-We are also in the process of scaling up our training and model size, so stay tuned!
+We also have MLM weights up on HF at https://huggingface.co/GilpinLab/panda_mlm
+
+**We are also in the process of scaling up our training and model size, so stay tuned!**
 
 Paper abstract:
 
@@ -47,6 +49,8 @@ We provide example bash scripts to train our model, both for [forecasting](https
 In [notebooks/load_model_from_hf.ipynb](https://github.com/abao1999/panda/blob/main/notebooks/load_model_from_hf.ipynb) we provide a minimal working example of loading our trained checkpoint from HuggingFace and running inference (generating forecasts). For reproducibility, we also provide a serialized [json file](https://github.com/abao1999/panda/blob/main/data/params_test_zeroshot/filtered_params_dict.json) (~ 10 MB) containing the parameters for some of our held-out skew systems. These parameters can then be loaded and used to generate trajectories from the corresponding systems.
 
 For a more thorough evaluation, see our [evaluation script](https://github.com/abao1999/panda/blob/main/scripts/patchtst/evaluate.py), which we used to present the results in our preprint. A corresponding script exists for each of the baselines we evaluate on, within `scripts`.
+
+In [notebooks/load_mlm_from_hf.ipynb](https://github.com/abao1999/panda/blob/main/notebooks/load_mlm_from_hf.ipynb) we provide a minimal working example of loading our trained MLM checkpoint from HuggingFace and generating completions.
 
 ## Citation
 If you use this codebase or otherwise find our work valuable, please cite us:

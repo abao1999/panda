@@ -2,8 +2,48 @@
 Additional dynamical systems utils to be merged with dysts repo at a future date
 """
 
+from typing import Any
+
+import dysts.flows as flows  # type: ignore
 import numpy as np
+from dysts.systems import DynSys  # type: ignore
 from scipy.spatial.distance import pdist
+
+from panda.coupling_maps import RandomAdditiveCouplingMap
+from panda.skew_system import SkewProduct
+
+
+def init_skew_system_from_params(
+    driver_name: str,
+    response_name: str,
+    param_dict: dict[str, Any],
+    **kwargs,
+) -> DynSys:
+    """
+    Initialize a skew-product dynamical system from saved parameters.
+    Assumes RandomAdditiveCouplingMap.
+    """
+    system_name = f"{driver_name}_{response_name}"
+    required_keys = [
+        "driver_params",
+        "response_params",
+        "coupling_map",
+    ]
+    for key in required_keys:
+        if key not in param_dict:
+            raise ValueError(f"Key {key} not found in param_dict for {system_name}")
+
+    driver = getattr(flows, driver_name)(parameters=param_dict["driver_params"])
+    response = getattr(flows, response_name)(parameters=param_dict["response_params"])
+
+    coupling_map = RandomAdditiveCouplingMap._deserialize(param_dict["coupling_map"])
+
+    sys = SkewProduct(
+        driver=driver, response=response, coupling_map=coupling_map, **kwargs
+    )
+
+    return sys
+
 
 ### Utils for optimal time lag via Mutual Information ###
 
