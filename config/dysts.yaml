@@ -3,6 +3,7 @@ multiprocess_kwargs:
   maxtasksperchild: null
 
 restart_sampling:
+  split_name: null
   params_json_path: null
   systems_batch_size: 128
   batch_idx_low: null

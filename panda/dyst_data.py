@@ -9,18 +9,18 @@ from itertools import starmap
 from multiprocessing import Manager, Pool
 from typing import Callable
 
-import dysts.flows as flows
+import dysts.flows as flows  # type: ignore
 import numpy as np
-from dysts.base import BaseDyn
-from dysts.sampling import BaseSampler
-from dysts.systems import make_trajectory_ensemble
+from dysts.base import BaseDyn  # type: ignore
+from dysts.sampling import BaseSampler  # type: ignore
+from dysts.systems import make_trajectory_ensemble  # type: ignore
+from tqdm import tqdm
+
+import wandb
 from panda.attractor import AttractorValidator
 from panda.sampling import OnAttractorInitCondSampler
 from panda.skew_system import SkewProduct
 from panda.utils import dict_demote_from_numpy, process_trajs, timeit
-from tqdm import tqdm
-
-import wandb
 
 logger = logging.getLogger(__name__)
 
@@ -139,15 +139,15 @@ class DynSysSampler(BaseDynSysSampler):
         self.failed_integrations = defaultdict(list)
         self.rng = np.random.default_rng(self.rseed)
         if self.param_sampler is None:
-            assert self.num_param_perturbations == 1, (
-                "No parameter sampler provided, but num_param_perturbations > 1"
+            assert self.num_param_perturbations == 0, (
+                "No parameter sampler provided, but num_param_perturbations > 0"
             )
         if self.ic_sampler is None:
             assert self.num_ics == 1, (
                 "No initial condition sampler provided, but num_ics > 1"
             )
         self.attractor_validator = None
-        if self.attractor_tests is None and self.num_param_perturbations > 1:
+        if self.attractor_tests is None and self.num_param_perturbations > 0:
             logger.warning(
                 "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
             )
@@ -217,26 +217,11 @@ class DynSysSampler(BaseDynSysSampler):
         save_dyst_dir, failed_dyst_dir = self._prepare_save_directories(
             save_dir, split, split_failures=split_failures
         )
-        num_total_samples = self.num_param_perturbations * self.num_ics
-
-        callbacks = [
-            self._reset_events_callback,
-            self._validate_and_save_ensemble_callback(
-                num_total_samples,
-                samples_process_interval,
-                save_dyst_dir,
-                failed_dyst_dir,
-                save_params_dir,
-                save_traj_stats_dir,
-            ),
-            self.save_failed_integrations_callback,
-        ]
 
         num_periods = self.rng.choice(self.num_periods)
         logger.info(f"Generating default ensemble with {num_periods} periods")
 
         # treat the default params as the zeroth sample
-        # TODO: I want to eventually move this to _generate_ensembles since this is repeated code and also doesn't allow us to handle multiple initial conditions
         default_ensemble = make_trajectory_ensemble(
             self.num_points,
             subset=systems,
@@ -256,6 +241,22 @@ class DynSysSampler(BaseDynSysSampler):
             for key, value in default_ensemble.items()
             if key not in failed_integrations
         }
+
+        num_total_samples = self.num_param_perturbations * self.num_ics
+
+        callbacks = [
+            self._reset_events_callback,
+            self._validate_and_save_ensemble_callback(
+                num_total_samples,
+                samples_process_interval,
+                save_dyst_dir,
+                failed_dyst_dir,
+                save_params_dir,
+                save_traj_stats_dir,
+            ),
+            self.save_failed_integrations_callback,
+        ]
+
         for callback in callbacks[:-1]:  # ignore failed integrations
             callback(
                 0,

@@ -387,6 +387,7 @@ def make_box_plot(
     whisker_percentile_range: tuple[float, float] = (5, 95),
     box_width: float = 0.6,
     has_nans: dict[str, bool] | None = None,
+    ignore_nans: bool = False,
 ) -> list[mpatches.Patch] | None:
     if fig_kwargs == {}:
         fig_kwargs = {"figsize": (3, 5)}
@@ -427,6 +428,8 @@ def make_box_plot(
             has_nans[run_name] = bool(np.isnan(values).any()) or has_nans.get(
                 run_name, False
             )
+            # print number of NaNs for this run
+            print(f"{run_name} has {len(np.where(np.isnan(values))[0])} NaNs")
 
             # Process values based on metric type
             if metric_to_plot == "spearman" and use_inv_spearman:
@@ -598,7 +601,8 @@ def make_box_plot(
         runs = df["Run"].unique().tolist()
 
     # Add a dagger to the run name if it has NaNs
-    runs = [f"{run}$^\dagger$" if has_nans[run] else run for run in runs]
+    if not ignore_nans:
+        runs = [f"{run}$^\dagger$" if has_nans[run] else run for run in runs]
 
     if isinstance(colors, dict):
         legend_handles = [

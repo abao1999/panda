@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, List, Literal, Union
 
 import numpy as np
-from dysts.systems import get_attractor_list
+from dysts.systems import get_attractor_list  # type: ignore
 from gluonts.dataset.arrow import ArrowWriter
 from gluonts.dataset.common import FileDataset
 
@@ -261,8 +261,10 @@ def get_system_filepaths(
         raise Exception(f"Directory {dyst_dir} does not exist.")
 
     # NOTE: sorting by numerical order wrt sample index is very important for consistency
+    # TODO: this is a hacky way to get the sample index, but it works for now
     filepaths = sorted(
-        list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0])
+        list(Path(dyst_dir).glob("*.arrow")),
+        key=lambda x: int(x.stem.split("_")[1 if "pp" in x.stem else 0].split("_")[0]),
     )
     return filepaths
 
@@ -273,6 +275,7 @@ def load_dyst_samples(
     split: str,
     one_dim_target: bool,
     num_samples: int | None = None,
+    verbose: bool = False,
 ) -> np.ndarray:
     """
     Load a set of sample trajectories of a given dynamical system from an arrow file
@@ -288,7 +291,10 @@ def load_dyst_samples(
     """
     filepaths = get_system_filepaths(dyst_name, base_dir, split)
     dyst_coords_samples = []
-    for filepath in filepaths[:num_samples]:
+    selected_filepaths = filepaths[:num_samples]
+    if verbose:
+        print(f"loading {len(selected_filepaths)} filepaths: {selected_filepaths}")
+    for filepath in selected_filepaths:
         dyst_coords, _ = load_trajectory_from_arrow(filepath, one_dim_target)
         dyst_coords_samples.append(dyst_coords)
 

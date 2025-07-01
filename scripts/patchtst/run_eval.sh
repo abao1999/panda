@@ -54,13 +54,15 @@ run_names_new=(
 )
 
 run_names=(
+    panda_nh12_dmodel768_mixedp-4
+    # panda_nh10_dmodel640-1
     # ${run_names_new[@]}
     # ${run_names_scalinglaw[@]}
     # ${run_names_univariate[@]}
     # ${run_names_univariate_kernelemb_old[@]}
     # ${run_names_multivariate[@]}
     # ${run_names_multivariate_kernelemb_old[@]}
-    ${run_names_multivariate_kernelemb[@]}
+    # ${run_names_multivariate_kernelemb[@]}
     # ${run_names_multivariate_linattnpolyemb[@]}
 )
 

@@ -9,6 +9,7 @@ from typing import Callable
 
 import hydra
 import numpy as np
+
 from panda.attractor import (
     check_boundedness,
     check_lyapunov_exponent,
@@ -25,8 +26,13 @@ from panda.sampling import OnAttractorInitCondSampler, SignedGaussianParamSample
 from panda.utils import split_systems
 
 
-def default_attractor_tests(tests_to_use: list[str]) -> list[Callable]:
+def default_attractor_tests(
+    tests_to_use: list[str] | None = None,
+) -> list[Callable] | None:
     """Builds default attractor tests to check for each trajectory ensemble"""
+    if tests_to_use is None:
+        return None
+
     default_tests = [
         partial(check_not_linear, r2_threshold=0.99, eps=1e-10),  # pretty lenient
         partial(check_boundedness, threshold=1e4, max_zscore=15),

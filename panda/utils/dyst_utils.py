@@ -6,7 +6,7 @@ from typing import Any
 
 import dysts.flows as flows  # type: ignore
 import numpy as np
-from dysts.systems import DynSys  # type: ignore
+from dysts.base import DynSys  # type: ignore
 from scipy.spatial.distance import pdist
 
 from panda.coupling_maps import RandomAdditiveCouplingMap

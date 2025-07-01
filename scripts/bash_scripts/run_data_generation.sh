@@ -50,14 +50,14 @@ if [ "$DEBUG" -eq 0 ]; then
         "$@"
 
 
-    # base dysts
+    # # base dysts
     # WANDB_DISABLE_GPU=true python -W ignore scripts/make_dyst_data.py \
     #    sampling.sys_class=continuous \
-    #    sampling.num_points=8192 \
+    #    sampling.num_points=5120 \
     #    sampling.num_periods=40 \
-    #    sampling.num_periods_min=20 \
-    #    sampling.num_periods_max=60 \
-    #    sampling.num_param_perturbations=200 \
+    #    sampling.num_periods_min=25 \
+    #    sampling.num_periods_max=100 \
+    #    sampling.num_param_perturbations=1 \
     #    sampling.param_scale=1.0 \
     #    sampling.atol=1e-10 \
     #    sampling.rtol=1e-8 \
@@ -67,8 +67,8 @@ if [ "$DEBUG" -eq 0 ]; then
     #    sampling.verbose=false \
     #    events.verbose=false \
     #    events.max_duration=600 \
-    #    validator.transient_time_frac=0.5 \
-    #    run_name=big_base_mixedp \
+    #    validator.transient_time_frac=0.2 \
+    #    run_name=extra_base_mixedp \
     #    "$@"
 
 else

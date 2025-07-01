@@ -8,8 +8,11 @@ for dir in "$ROOT_DIR"/*/; do
     dir=${dir%/}  # remove trailing slash
     base_dir=$(basename "$dir")
 
-    # Match directories like systemA_systemB-pp12
-    if [[ "$base_dir" =~ ^([a-zA-Z0-9]+_[a-zA-Z0-9]+)-pp[0-9]+$ ]]; then
+    # Match directories like systemA_systemB-pp12 or systemA-pp12
+    # The pattern now uses an optional group (_[a-zA-Z0-9]+)? to match either:
+    # - systemA_systemB-pp12 (with the underscore and second system name)
+    # - systemA-pp12 (without the underscore and second system name)
+    if [[ "$base_dir" =~ ^([a-zA-Z0-9]+(_[a-zA-Z0-9]+)?)-pp[0-9]+$ ]]; then
         prefix=$(echo "$base_dir" | grep -o 'pp[0-9]\+')
         target_dirname="${BASH_REMATCH[1]}"
 

@@ -9,10 +9,13 @@ from itertools import permutations
 from multiprocessing import Pool
 from typing import Callable
 
-import dysts.flows as flows
+import dysts.flows as flows  # type: ignore
 import hydra
 import numpy as np
-from dysts.systems import DynSys, get_attractor_list
+from dysts.base import DynSys  # type: ignore
+from dysts.systems import get_attractor_list  # type: ignore
+
+import wandb
 from panda.attractor import (
     check_boundedness,
     check_lyapunov_exponent,
@@ -32,11 +35,14 @@ from panda.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
 from panda.sampling import OnAttractorInitCondSampler, SignedGaussianParamSampler
 from panda.skew_system import SkewProduct
 
-import wandb
 
-
-def default_attractor_tests(tests_to_use: list[str]) -> list[Callable]:
+def default_attractor_tests(
+    tests_to_use: list[str] | None = None,
+) -> list[Callable] | None:
     """Builds default attractor tests to check for each trajectory ensemble"""
+    if tests_to_use is None:
+        return None
+
     default_tests = [
         partial(check_not_linear, r2_threshold=0.99, eps=1e-10),  # pretty lenient
         partial(check_boundedness, threshold=1e4, max_zscore=15),

@@ -5,10 +5,12 @@ Script to generate and save trajectory ensembles for a given set of dynamical sy
 import json
 import logging
 from functools import partial
-from typing import Callable
+from typing import Any, Callable
 
+import dysts.flows as flows  # type: ignore
 import hydra
 import numpy as np
+from dysts.base import DynSys  # type: ignore
 
 from panda.attractor import (
     check_boundedness,
@@ -20,13 +22,19 @@ from panda.attractor import (
     check_stationarity,
     check_zero_one_test,
 )
+from panda.coupling_maps import RandomAdditiveCouplingMap
 from panda.dyst_data import DynSysSamplerRestartIC
 from panda.events import InstabilityEvent, TimeLimitEvent, TimeStepEvent
-from panda.utils import init_skew_system_from_params
+from panda.skew_system import SkewProduct
 
 
-def default_attractor_tests(tests_to_use: list[str]) -> list[Callable]:
+def default_attractor_tests(
+    tests_to_use: list[str] | None = None,
+) -> list[Callable] | None:
     """Builds default attractor tests to check for each trajectory ensemble"""
+    if tests_to_use is None:
+        return None
+
     default_tests = [
         partial(check_not_linear, r2_threshold=0.99, eps=1e-10),  # pretty lenient
         partial(check_boundedness, threshold=1e4, max_zscore=15),
@@ -88,6 +96,38 @@ def create_sample_idx_mapping(
         return system_names[system_indices], relative_positions
 
     return get_system_names_and_positions
+
+
+def init_skew_system_from_params(
+    driver_name: str,
+    response_name: str,
+    param_dict: dict[str, Any],
+    **kwargs,
+) -> DynSys:
+    """
+    Initialize a skew-product dynamical system from saved parameters.
+    Assumes RandomAdditiveCouplingMap.
+    """
+    system_name = f"{driver_name}_{response_name}"
+    required_keys = [
+        "driver_params",
+        "response_params",
+        "coupling_map",
+    ]
+    for key in required_keys:
+        if key not in param_dict:
+            raise ValueError(f"Key {key} not found in param_dict for {system_name}")
+
+    driver = getattr(flows, driver_name)(parameters=param_dict["driver_params"])
+    response = getattr(flows, response_name)(parameters=param_dict["response_params"])
+
+    coupling_map = RandomAdditiveCouplingMap._deserialize(param_dict["coupling_map"])
+
+    sys = SkewProduct(
+        driver=driver, response=response, coupling_map=coupling_map, **kwargs
+    )
+
+    return sys
 
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
@@ -155,7 +195,7 @@ def main(cfg):
     bi_low = cfg.restart_sampling.batch_idx_low
     bi_high = cfg.restart_sampling.batch_idx_high
     if bi_low is not None and bi_high is not None:
-        if bi_low < 0 or bi_high >= n_batches:
+        if bi_low < 0 or bi_high > n_batches:
             raise ValueError("invalid batch index!")
         batch_indices = np.arange(bi_low, bi_high)
     else:
@@ -163,6 +203,11 @@ def main(cfg):
 
     logger.info(f"batch indices: {batch_indices}")
     for batch_idx in batch_indices:
+        if batch_idx >= n_batches:
+            logger.warning(
+                f"batch index {batch_idx} is out of bounds for total batches {n_batches}"
+            )
+            break
         start_idx = batch_idx * systems_batch_size
         end_idx = min((batch_idx + 1) * systems_batch_size, tot_systems)
         sample_idx_lst = np.arange(start_idx, end_idx)
@@ -170,22 +215,27 @@ def main(cfg):
         # positions is list of param_pert index e.g. Lorenz-pp0, Lorenz-pp1, etc.
         system_names, positions = get_system_names_and_positions(sample_idx_lst)
 
-        # Initialize systems, assuming skew systems
         systems = []
         for name, pos in zip(system_names, positions):
-            driver_name, response_name = name.split("_")
             system_params = params_dicts[name]
             params = system_params[pos]
             pp_idx = params["sample_idx"]
             name_with_pp_idx = f"{name}-pp{pp_idx}"
-            sys = init_skew_system_from_params(driver_name, response_name, params)
+
+            # Handle both skew and base systems
+            if "_" in name:  # Skew system
+                driver_name, response_name = name.split("_")
+                sys = init_skew_system_from_params(driver_name, response_name, params)
+            else:  # Base system
+                sys = getattr(flows, name)(parameters=params["params"])
+
             sys.name = name_with_pp_idx
             systems.append(sys)
 
         sys_sampler.sample_ensembles(
             systems,
             save_dir=cfg.sampling.data_dir,
-            split="train",
+            split=cfg.restart_sampling.split_name,
             samples_process_interval=1,
             starting_sample_idx=cfg.restart_sampling.starting_sample_idx,
             save_first_sample=cfg.restart_sampling.save_first_sample,
