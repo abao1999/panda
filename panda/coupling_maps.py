@@ -1,9 +1,10 @@
 """
 Coupling maps for skew systems.
+NOTE: this functionality has been merged into the dysts repo.
 """
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Literal, Union
 
 import numpy as np
 
@@ -274,6 +275,7 @@ class RandomAdditiveCouplingMap(BaseCouplingMap):
 
 
 def _tanh(x: np.ndarray, deriv: bool = False) -> np.ndarray:
+    """Compute hyperbolic tangent or its derivative (if specified by `deriv` flag)."""
     val = np.tanh(x)
     if deriv:
         return 1 - val**2
@@ -281,73 +283,153 @@ def _tanh(x: np.ndarray, deriv: bool = False) -> np.ndarray:
 
 
 def _sin(x: np.ndarray, deriv: bool = False) -> np.ndarray:
+    """Compute sine or its derivative (if specified by `deriv` flag)."""
     if deriv:
         return np.cos(x)
     return np.sin(x)
 
 
 def _relu(x: np.ndarray, deriv: bool = False) -> np.ndarray:
+    """Compute ReLU activation or its derivative (if specified by `deriv` flag)."""
     if deriv:
         return (x > 0).astype(float)
     return np.maximum(0, x)
 
 
+def lowrank_response_matrix(
+    n: int, m: int, rng: np.random.Generator, rank: int = 1
+) -> np.ndarray:
+    """
+    Initialize a low-rank perturbed response matrix.
+
+    Args:
+        n: Number of response dimensions.
+        m: Total number of dimensions (driver + response).
+        rng: Random number generator.
+        rank: Rank of the perturbation matrix.
+
+    Returns:
+        Coupling matrix with low-rank perturbation structure.
+    """
+    v = rng.normal(0, 1, size=(n, rank))
+    v /= np.linalg.norm(v, axis=0)
+    svs = rng.random(size=rank)
+    response_matrix = v @ np.diag(svs) @ v.T
+    driving_matrix = np.eye(max(n, m - n))[:n, : m - n]
+    return np.hstack([driving_matrix, np.eye(n) + response_matrix])
+
+
+def random_response_matrix(n: int, m: int, rng: np.random.Generator) -> np.ndarray:
+    """
+    Initialize a random response matrix.
+    """
+    return rng.normal(size=(n, m)) / np.sqrt(n + m)
+
+
 @dataclass
 class RandomActivatedCouplingMap(BaseCouplingMap):
     """
-    Random linear transform with nonlinear driver activation coupling map
+    Random linear transform with nonlinear driver activation coupling map.
+
+    This coupling map applies a random linear transformation to both driver and response
+    states, followed by a nonlinear activation function on the driver component.
+    The coupling matrix is initialized randomly or with a low-rank structure.
+
+    Attributes:
+        driver_scale: Scaling factor for driver input before activation.
+        response_scale: Scaling factor for response input.
+        random_seed: Seed for random number generation.
+        matrix_init_fn_name: Method for initializing the coupling matrix.
+        driver_activation_fn_name: Nonlinear activation function to apply to driver.
     """
 
-    driver_scale: float | np.ndarray = 1.0
-    response_scale: float | np.ndarray = 1.0
+    driver_scale: Union[float, np.ndarray] = 1.0
+    response_scale: Union[float, np.ndarray] = 1.0
 
     random_seed: int = 0
-    matrix_init_fn: Callable[[int, int, np.random.Generator], np.ndarray] | None = None
-    driver_activation: Callable[[np.ndarray], np.ndarray] = _tanh
+    matrix_init_fn_name: Literal["lowrank", "random"] = "random"
+    driver_activation_fn_name: Literal["tanh", "sin", "relu"] = "tanh"
 
     def __post_init__(self) -> None:
+        """Initialize the coupling map after dataclass creation."""
         self.rng = np.random.default_rng(self.random_seed)
-        if self.matrix_init_fn is not None:
-            self.coupling_matrix = self.matrix_init_fn(
-                self.response_dim, self.driver_dim + self.response_dim, self.rng
-            )
-        else:
-            self.matrix_init_fn = lambda n, m, rng: rng.normal(size=(n, m)) / np.sqrt(
-                n + m
-            )
-            self.coupling_matrix = self.matrix_init_fn(
-                self.response_dim, self.driver_dim + self.response_dim, self.rng
-            )
+        self.matrix_init_fn = {
+            "lowrank": lowrank_response_matrix,
+            "random": random_response_matrix,
+        }[self.matrix_init_fn_name]
+        self.coupling_matrix = self.matrix_init_fn(
+            self.response_dim, self.driver_dim + self.response_dim, self.rng
+        )
 
         if isinstance(self.driver_scale, np.ndarray):
             self.driver_scale = np.pad(
                 self.driver_scale, (0, max(0, self.response_dim - self.driver_dim))
             )[: self.response_dim]
 
+        self.driver_activation = {"tanh": _tanh, "sin": _sin, "relu": _relu}[
+            self.driver_activation_fn_name
+        ]
+
     @property
     def n_params(self) -> int:
+        """Number of parameters in the coupling matrix."""
         return self.coupling_matrix.size
 
     def transform_params(self, param_transform: Callable) -> bool:
-        if self.matrix_init_fn is not None:
-            self.coupling_matrix = self.matrix_init_fn(
-                self.response_dim,
-                self.driver_dim + self.response_dim,
-                param_transform.rng,
-            )
+        """Transform parameters using the provided transform function.
+
+        Args:
+            param_transform: Transform object with an rng attribute.
+
+        Returns:
+            True if transformation was successful.
+        """
+        # recreate coupling matrix with new pseudorandom number generator state
+        self.coupling_matrix = self.matrix_init_fn(
+            self.response_dim,
+            self.driver_dim + self.response_dim,
+            param_transform.rng,
+        )
         return True
 
     def __call__(self, driver: np.ndarray, response: np.ndarray) -> np.ndarray:
+        """Apply the coupling map to driver and response states.
+
+        Args:
+            driver: Driver system state vector.
+            response: Response system state vector.
+
+        Returns:
+            Coupled response state vector.
+        """
         driver = self.coupling_matrix[:, : self.driver_dim] @ driver
         driver = self.driver_activation(self.driver_scale * driver)
         response = self.coupling_matrix[:, self.driver_dim :] @ response
         response = self.response_scale * response
         return driver + response
 
-    def jac(self, driver: np.ndarray, response: np.ndarray, wrt: str = "driver"):
+    def jac(
+        self, driver: np.ndarray, response: np.ndarray, wrt: str = "driver"
+    ) -> np.ndarray:
+        """Compute Jacobian of the coupling map.
+
+        Args:
+            driver: Driver system state vector.
+            response: Response system state vector.
+            wrt: Variable to differentiate with respect to ("driver" or "response").
+
+        Returns:
+            Jacobian matrix.
+
+        Raises:
+            ValueError: If wrt is not "driver" or "response".
+        """
         if wrt == "driver":
             D = self.coupling_matrix[:, : self.driver_dim]  # type: ignore
-            act_grad = self.driver_activation(self.driver_scale * driver, deriv=True)
+            act_grad = self.driver_activation(
+                self.driver_scale * driver,
+                deriv=True,  # type: ignore
+            )
             return self.driver_scale * act_grad[:, np.newaxis] * D
         elif wrt == "response":
             R = self.coupling_matrix[:, self.driver_dim :]  # type: ignore
@@ -356,6 +438,11 @@ class RandomActivatedCouplingMap(BaseCouplingMap):
             raise ValueError(f"Invalid wrt argument: {wrt}")
 
     def _serialize(self) -> dict:
+        """Serialize the coupling map to a dictionary.
+
+        Returns:
+            Dictionary containing serialized coupling map data.
+        """
         driver_scale = (
             self.driver_scale.tolist()
             if isinstance(self.driver_scale, np.ndarray)
@@ -370,18 +457,33 @@ class RandomActivatedCouplingMap(BaseCouplingMap):
             "preinit": {
                 "driver_dim": self.driver_dim,
                 "response_dim": self.response_dim,
-                "random_seed": self.random_seed,
-                "coupling_matrix": self.coupling_matrix.tolist(),
                 "driver_scale": driver_scale,
                 "response_scale": response_scale,
+                "random_seed": self.random_seed,
+                "driver_activation_fn_name": self.driver_activation_fn_name,
+                "matrix_init_fn_name": self.matrix_init_fn_name,
+                "coupling_matrix": self.coupling_matrix.tolist(),
             },
         }
 
     @classmethod
     def _deserialize(cls, data: dict) -> "RandomActivatedCouplingMap":
+        """Deserialize coupling map from dictionary.
+
+        Args:
+            data: Dictionary containing serialized coupling map data.
+
+        Returns:
+            Reconstructed RandomActivatedCouplingMap instance.
+        """
         preinit_data = data["preinit"]
         for key in ["driver_scale", "response_scale"]:
             if isinstance(preinit_data[key], list):
                 preinit_data[key] = np.array(preinit_data[key])
-        preinit_data["coupling_matrix"] = np.asarray(preinit_data["coupling_matrix"])
-        return cls(**preinit_data)
+        coupling_matrix = np.asarray(preinit_data["coupling_matrix"])
+        preinit_data_without_matrix = {
+            k: v for k, v in preinit_data.items() if k != "coupling_matrix"
+        }
+        obj = cls(**preinit_data_without_matrix)
+        obj.coupling_matrix = coupling_matrix
+        return obj

@@ -1,5 +1,6 @@
 """
 Suite of tests to determine if generated trajectories are valid attractors
+NOTE: this functionality has been merged into the dysts repo.
 """
 
 import functools
@@ -11,11 +12,12 @@ from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 from dysts.analysis import max_lyapunov_exponent_rosenstein
-from panda.utils import run_zero_one_sweep
 from scipy.fft import rfft
 from scipy.signal import find_peaks
 from scipy.spatial.distance import cdist
 from statsmodels.tsa.stattools import adfuller, kpss
+
+from panda.utils import run_zero_one_sweep
 
 
 @dataclass

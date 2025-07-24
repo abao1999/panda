@@ -7,7 +7,9 @@ We have released model weights on HF at https://huggingface.co/GilpinLab/panda
 
 We also have MLM weights up on HF at https://huggingface.co/GilpinLab/panda_mlm
 
-**We are also in the process of scaling up our training and model size, so stay tuned!**
+We have also released datasets on HF. Dataset for our scaled-up training (checkpoints coming soon): https://huggingface.co/datasets/GilpinLab/skew-mixedp-ic16, dataset for scaling law experiment: https://huggingface.co/datasets/GilpinLab/scalinglaw, and original training dataset https://huggingface.co/datasets/GilpinLab/skew40.
+
+**We are in the process of scaling up our training and model size. We are also working on a larger dataset with improved filtering for chaotic behavior. Stay tuned!**
 
 Paper abstract:
 
@@ -21,6 +23,8 @@ We demonstrate a neural scaling law for differential equations, underscoring the
 
 ## Setup
 Install the most up-to-date version of [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`. Consider installing `numba` for faster numerical integration.
+
+**We have merged much of our dataset generation functionality into the dysts repo. See dysts for more up-to-date development.**
 
 *NOTE:* When cloning this repo, to avoid downloading the large commit history (~ 60 MB) we recommend a *shallow clone*:
 

@@ -1,3 +1,10 @@
+"""
+Schedulers for the training process in the model forward pass.
+NOTE: this is not currently used, it's a remnant of a previous attempt to add a noise schedule during training
+        - The core idea was to start the training with highly noised trajectories, and then gradually reduce the noise
+        - Analogous to coarse-graining and inspired by diffusion models, to see if that would guide the training in a useful way
+"""
+
 from dataclasses import dataclass
 from logging import Logger
 from math import cos, exp, pi

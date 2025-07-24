@@ -1,11 +1,16 @@
+"""
+Initial condition and parameter perturbation samplers for dysts.
+NOTE: this functionality has been merged into the dysts repo.
+"""
+
 import logging
 from dataclasses import dataclass, field
 from typing import Callable
 
 import numpy as np
-from dysts.base import BaseDyn
-from dysts.sampling import BaseSampler
-from dysts.systems import _resolve_event_signature
+from dysts.base import BaseDyn  # type: ignore
+from dysts.sampling import BaseSampler  # type: ignore
+from dysts.systems import _resolve_event_signature  # type: ignore
 from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)

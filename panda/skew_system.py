@@ -1,12 +1,14 @@
 """
 Search for valid skew-product dynamical sytems and generate trajectory datasets
+NOTE: this functionality has been merged into the dysts repo.
 """
 
 import logging
 from typing import Callable
 
 import numpy as np
-from dysts.base import DynSys
+from dysts.base import DynSys  # type: ignore
+
 from panda.coupling_maps import RandomAdditiveCouplingMap
 
 logger = logging.getLogger(__name__)

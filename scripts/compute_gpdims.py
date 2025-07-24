@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
 
 
-def _compute_gp_dims_worker(args):
+def _compute_gp_dims_worker(args) -> tuple[str, dict[str, float]]:
     """Worker function to compute GP dimensions for a single system"""
     dyst_name, data, use_custom_method = args
     dimension_func = compute_gp_dimension if use_custom_method else gp_dim
@@ -40,7 +40,7 @@ def get_gp_dims(
     completions_dict: dict[str, dict[str, np.ndarray]],
     use_custom_method: bool = False,
     n_jobs: int | None = None,
-) -> dict[str, float]:
+) -> dict[str, dict[str, float]]:
     """
     Compute GP dimensions for multiple systems using multiprocessing.
 
@@ -148,8 +148,6 @@ def get_model_completion(
 
 @hydra.main(config_path="../config", config_name="config", version_base=None)
 def main(cfg):
-    start_time = 512  # to be extra sure we cut off transient
-
     test_data_dict = get_eval_data_dict(
         cfg.eval.data_paths_lst,
         num_subdirs=cfg.eval.num_subdirs,
@@ -168,6 +166,11 @@ def main(cfg):
         device_map=cfg.eval.device,
         # torch_dtype=torch_dtype,
     )
+
+    start_time = cfg.eval.completions.start_time
+    end_time = cfg.eval.completions.end_time
+
+    log(f"Using context from {start_time} to {end_time}")
 
     completions_dict = {}
     for subdir_name, datasets in tqdm(
@@ -188,7 +191,7 @@ def main(cfg):
 
             completions, processed_context, timestep_mask = get_model_completion(
                 model_pipeline,
-                coordinates[:, start_time:],  # context
+                coordinates[:, start_time:end_time],  # context
                 return_normalized_completions=False,
                 verbose=False,
             )

@@ -1,3 +1,8 @@
+"""
+General sampler for dyst trajectory ensembles.
+NOTE: this functionality has been merged into the dysts repo.
+"""
+
 import json
 import logging
 import os

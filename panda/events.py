@@ -1,9 +1,14 @@
+"""
+Integration events for dysts, which uses scipy's solve_ivp.
+NOTE: this functionality has been merged into the dysts repo.
+"""
+
 import logging
 import time
 from dataclasses import dataclass
 
 import numpy as np
-from dysts.base import BaseDyn
+from dysts.base import BaseDyn  # type: ignore
 
 logger = logging.getLogger(__name__)
 

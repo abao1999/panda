@@ -20,6 +20,7 @@ echo "train_data_dirs: $train_data_dirs_json"
 
 ulimit -n 999999
 if [ "$DEBUG" -eq 0 ]; then
+
         TOTAL_CORES=$(nproc)
         CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
         CORES_PER_JOB=$(( $CORES_PER_GROUP / 6 ))
