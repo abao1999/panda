@@ -2,7 +2,7 @@
 Additional dynamical systems utils to be merged with dysts repo at a future date
 """
 
-from typing import Any
+from typing import Any, Callable, Optional
 
 import dysts.flows as flows  # type: ignore
 import numpy as np
@@ -322,3 +322,79 @@ def compute_gp_dimension(
     D2 = slope  # The slope corresponds to the correlation dimension D2
 
     return D2
+
+
+def lyap_wolf(
+    f: Callable[[np.ndarray, float], np.ndarray],
+    x0: np.ndarray,
+    dt: float,
+    jac: Callable[[np.ndarray, float], np.ndarray] | None = None,
+    n_steps: int = 100000,
+    k: Optional[int] = None,
+) -> np.ndarray:
+    """
+    Compute the Lyapunov spectrum using the Wolf/Benettin algorithm.
+
+    Parameters
+    ----------
+    f : Callable[[np.ndarray, float], np.ndarray]
+        Function f(x, t) returning dx/dt (array of shape (n,)).
+    jac : Optional[Callable[[np.ndarray, float], np.ndarray]]
+        Function J(x, t) returning the Jacobian matrix (n, n) at state x and time t.
+        If None, a numeric finite-difference approximation is used.
+    x0 : np.ndarray
+        Initial state (array of shape (n,)).
+    dt : float
+        Time step for integration (and orthonormalization).
+    n_steps : int
+        Number of steps to integrate (total time = n_steps * dt).
+    k : Optional[int], default=None
+        Number of exponents to compute (<= n). If None, uses n = dimension.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (k,) with estimated Lyapunov exponents (from largest to smallest).
+    """
+    x = np.array(x0, dtype=float)
+    n = x.size
+    if k is None or k > n:
+        k = n
+    # Initialize orthonormal deviation vectors Q (n×k matrix)
+    Q = np.eye(n, k)
+    sum_logs = np.zeros(k)
+    eps = 1e-6  # finite-difference step for Jacobian if needed
+
+    for step in range(n_steps):
+        t = step * dt  # current time
+
+        # Integrate state x forward by dt (Euler step)
+        dx = np.array(f(x, t))
+        x = x + dt * dx
+
+        # Compute Jacobian at new x and current time t
+        if jac is not None:
+            J = jac(x, t)
+        else:
+            # Vectorized numerical Jacobian computation
+            fx = np.array(f(x, t))
+            # Create perturbation matrix: x_eps[i,j] = x[j] + eps * delta_ij
+            x_eps = x.reshape(-1, 1) + eps * np.eye(n)
+            # Compute f(x + eps * e_j) for all j simultaneously
+            fx_eps = np.array([f(x_eps[:, j], t) for j in range(n)]).T
+            # Compute Jacobian: J_ij = (f_i(x + eps*e_j) - f_i(x)) / eps
+            J = (fx_eps - fx.reshape(-1, 1)) / eps
+
+        # Evolve tangent vectors: Q = Q + dt * (J @ Q)
+        Q = Q + dt * (J @ Q)
+
+        # Orthonormalize via QR decomposition
+        Q, R = np.linalg.qr(Q)
+
+        # Accumulate logarithms of the diagonal of R
+        logs = np.log(np.abs(np.diag(R)))
+        sum_logs += logs[:k]
+
+    # Compute exponents: average log-gains over total time
+    lambdas = sum_logs / (n_steps * dt)
+    return lambdas

@@ -9,6 +9,10 @@ import transformers
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
+from transformers.trainer import Trainer
+from transformers.training_args import TrainingArguments
+
+import wandb
 from panda.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
@@ -33,12 +37,6 @@ from panda.utils import (
     log_on_main,
     save_training_info,
 )
-from transformers import (
-    Trainer,
-    TrainingArguments,
-)
-
-import wandb
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +79,8 @@ class CustomTrainer(Trainer):
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
+    # backend = os.environ.get("DIST_BACKEND", "gloo")  # default to gloo
+    # dist.init_process_group(backend=backend)
     # set up wandb project and logging if enabled
     if cfg.wandb.log and is_main_process():
         run = wandb.init(
@@ -282,6 +282,8 @@ def main(cfg):
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
+
+    # model = DistributedDataParallel(model, device_ids=None)
 
     scheduler_args = dict(cfg.scheduler)
     if scheduler_args.pop("enabled", False):

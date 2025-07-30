@@ -7,6 +7,7 @@ import hydra
 import numpy as np
 import torch
 import transformers
+
 from panda.patchtst.dataset import TimeSeriesDataset
 from panda.patchtst.evaluation import (
     evaluate_forecasting_model,
@@ -164,7 +165,7 @@ def main(cfg):
             batch_size=cfg.eval.batch_size,
             prediction_length=cfg.eval.prediction_length,
             metric_names=cfg.eval.metric_names,
-            return_predictions=cfg.eval.save_predictions,
+            return_predictions=cfg.eval.save_forecasts,
             return_contexts=cfg.eval.save_contexts,
             return_labels=cfg.eval.save_labels,
             parallel_sample_reduction_fn=parallel_sample_reduction_fn,
@@ -180,7 +181,7 @@ def main(cfg):
         )
         save_eval_results_fn(metrics)
 
-        if cfg.eval.save_predictions and cfg.eval.save_contexts:
+        if cfg.eval.save_forecasts and cfg.eval.save_contexts:
             assert predictions is not None and contexts is not None
             process_trajs_fn(
                 cfg.eval.forecast_save_dir,

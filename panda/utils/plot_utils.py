@@ -5,6 +5,7 @@ from typing import Any, Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
 from matplotlib import patches as mpatches
 from matplotlib.patches import FancyArrowPatch
 from mpl_toolkits.mplot3d.proj3d import proj_transform
@@ -863,3 +864,73 @@ def plot_all_metrics_by_prediction_length(
         plt.show()
 
     return legend_handles
+
+
+def plot_3d_and_univariate(
+    coords: np.ndarray | torch.Tensor,
+    figsize: tuple[int, int] = (6, 8),
+    custom_colors: list[str] | None = None,
+    plot_kwargs: dict[str, Any] = {},
+    plot_title: str | None = None,
+    title_kwargs: dict[str, Any] = {},
+    save_path: str | None = None,
+) -> None:
+    """
+    Create a combined 3D and univariate visualization of coordinate data.
+
+    Args:
+        coords: A 2D numpy array or torch.Tensor of shape (n_dimensions, n_time_steps) or (n_samples, n_dimensions, n_time_steps) containing
+               the coordinate data to visualize. The first three dimensions will be plotted.
+    """
+    if coords.ndim == 2:
+        coords = coords[None, :, :]
+    assert coords.ndim == 3, (
+        "coords must have shape (n_samples, n_dimensions, n_time_steps)"
+    )
+    num_samples = coords.shape[0]
+    num_dims = coords.shape[1]
+    assert num_dims >= 3, "At least 3 dimensions are required for 3D plot"
+    num_time_steps = coords.shape[2]
+
+    # 3D plot of dyst_coords with univariate subplots
+    fig, axes = plt.subplots(
+        4, 1, figsize=figsize, gridspec_kw={"height_ratios": [3, 1, 1, 1]}
+    )
+    axes[0].remove()
+    ax1 = fig.add_subplot(4, 1, 1, projection="3d")
+
+    if custom_colors is None:
+        custom_colors = DEFAULT_COLORS
+    for i in range(num_samples):
+        coord_sample = coords[i]
+        color = custom_colors[i]
+        # 3D plot
+        ax1.plot(
+            coord_sample[0],
+            coord_sample[1],
+            coord_sample[2],
+            color=color,
+            **plot_kwargs,
+        )
+        ax1.grid(False)
+        # # get rid of ticks
+        # ax1.set_xticks([])
+        # ax1.set_yticks([])
+        # ax1.set_zticks([])  # type: ignore
+
+        # Univariate plots
+        time_steps = np.arange(num_time_steps)
+        for i, ax in enumerate(axes[1:]):
+            ax.plot(time_steps, coord_sample[i, :], color=color, **plot_kwargs)
+            ax.set_ylabel(f"Dimension {i}", fontweight="bold")
+            # make yticks at most floating point 2
+            ax.grid(True, alpha=0.3)
+        axes[-1].set_xlabel("Timestep", fontweight="bold")
+
+    if plot_title is not None:
+        ax1.set_title(f"{plot_title}", **title_kwargs)
+
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path)
+    plt.show()

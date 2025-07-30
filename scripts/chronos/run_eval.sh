@@ -51,7 +51,7 @@ python scripts/chronos/evaluate.py \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
     eval.device=cuda:1 \
-    eval.save_predictions=false \
+    eval.save_forecasts=false \
     eval.save_labels=false \
     eval.chronos.zero_shot=$zero_shot_flag \
     eval.seed=99 \

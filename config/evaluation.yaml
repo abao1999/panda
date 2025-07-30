@@ -17,7 +17,7 @@ eval:
 
   save_contexts: false
   save_labels: false
-  save_predictions: false  # for forecasting model eval
+  save_forecasts: false  # for forecasting model eval
   save_completions: false  # for mlm model eval
   save_masks: false  # for mlm model eval
 
@@ -74,6 +74,12 @@ eval:
     start_time: 0
     end_time: null
 
+  # NOTE: this is separate from the previous window args, this is for the compute_distributional_metrics.py script
+  window_start_time: 0
+  model_type: panda
+  save_full_trajectory: false
+  reload_saved_forecasts: false
+  
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:
   wandb_run_id: null

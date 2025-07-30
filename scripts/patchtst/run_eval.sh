@@ -95,5 +95,5 @@ for run_name in ${run_names[@]}; do
         eval.overwrite=true \
         eval.device=cuda:2 \
         eval.save_labels=false \
-        eval.save_predictions=false
+        eval.save_forecasts=false
 done

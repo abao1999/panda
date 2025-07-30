@@ -6,6 +6,8 @@ import numpy as np
 import torch
 import transformers
 from gluonts.transform import LastValueImputation
+from transformers import AutoModelForCausalLM
+
 from panda.chronos.dataset import ChronosDataset
 from panda.chronos.evaluation import evaluate_chronos_forecast
 from panda.utils import (
@@ -15,7 +17,6 @@ from panda.utils import (
     process_trajs,
     save_evaluation_results,
 )
-from transformers import AutoModelForCausalLM
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
@@ -155,7 +156,7 @@ def main(cfg):
         prediction_length=cfg.eval.prediction_length,
         metric_names=cfg.eval.metric_names,
         system_dims=system_dims,
-        return_predictions=cfg.eval.save_predictions,
+        return_predictions=cfg.eval.save_forecasts,
         return_contexts=cfg.eval.save_contexts,
         return_labels=cfg.eval.save_labels,
         parallel_sample_reduction_fn=parallel_sample_reduction_fn,
@@ -170,7 +171,7 @@ def main(cfg):
     )
     save_eval_results_fn(metrics)
 
-    if cfg.eval.save_predictions and predictions is not None and contexts is not None:
+    if cfg.eval.save_forecasts and predictions is not None and contexts is not None:
         process_trajs_fn(
             cfg.eval.forecast_save_dir,
             {

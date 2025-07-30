@@ -4,6 +4,7 @@ from functools import partial
 import hydra
 import numpy as np
 import transformers
+
 from panda.baselines.baselines import (
     FourierARIMABaseline,
     FourierBaseline,
@@ -104,7 +105,7 @@ def main(cfg):
     )
     save_eval_results_fn(metrics)
 
-    if cfg.eval.save_predictions and predictions is not None and contexts is not None:
+    if cfg.eval.save_forecasts and predictions is not None and contexts is not None:
         process_trajs_fn(
             cfg.eval.forecast_save_dir,
             {
