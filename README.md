@@ -7,7 +7,11 @@ We have released model weights on HF at https://huggingface.co/GilpinLab/panda
 
 We also have MLM weights up on HF at https://huggingface.co/GilpinLab/panda_mlm
 
-We have also released datasets on HF. Dataset for our scaled-up training (checkpoints coming soon): https://huggingface.co/datasets/GilpinLab/skew-mixedp-ic16, dataset for scaling law experiment: https://huggingface.co/datasets/GilpinLab/scalinglaw, and original training dataset https://huggingface.co/datasets/GilpinLab/skew40.
+We have also released datasets on HF. 
+
+- Dataset for our scaled-up training (checkpoints coming soon): https://huggingface.co/datasets/GilpinLab/skew-mixedp-ic16
+- Dataset for scaling law experiment: https://huggingface.co/datasets/GilpinLab/scalinglaw
+- Original training dataset https://huggingface.co/datasets/GilpinLab/skew40.
 
 **We are in the process of scaling up our training and model size. We are also working on a larger dataset with improved filtering for chaotic behavior. Stay tuned!**
 
