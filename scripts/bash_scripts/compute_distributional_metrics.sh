@@ -46,6 +46,16 @@ else
 fi
 
 
+num_samples_chronos=5
+if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
+    model_dir="chronos_nondeterministic"
+else
+    model_dir="$model_type"
+fi
+
+echo "model_dir: $model_dir"
+
+
 # Limit threads for libraries that auto-parallelize
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
@@ -60,7 +70,7 @@ python scripts/compute_distributional_metrics.py \
     eval.data_paths_lst=$test_data_dirs_json \
     eval.num_subdirs=null \
     eval.num_samples_per_subdir=null \
-    eval.metrics_save_dir=$WORK/eval_results/${model_type}/$run_name/test_zeroshot \
+    eval.metrics_save_dir=$WORK/eval_results/$model_dir/$run_name/test_zeroshot \
     eval.metrics_fname=distributional_metrics_window-$window_start_time \
     eval.save_forecasts=true \
     eval.save_full_trajectory=true \
@@ -80,12 +90,12 @@ python scripts/compute_distributional_metrics.py \
 #     eval.data_paths_lst=$test_data_dirs_json \
 #     eval.num_subdirs=null \
 #     eval.num_samples_per_subdir=null \
-#     eval.metrics_save_dir=$WORK/eval_results/${model_type}_nondeterministic/$run_name/test_zeroshot \
+#     eval.metrics_save_dir=$WORK/eval_results/$model_dir/$run_name/test_zeroshot \
 #     eval.metrics_fname=distributional_metrics_window-$window_start_time \
 #     eval.save_forecasts=true \
 #     eval.save_full_trajectory=true \
 #     eval.reload_saved_forecasts=false \
-#     eval.num_processes=100 \
+#     eval.num_processes=25 \
 #     eval.window_start_time=$window_start_time \
 #     eval.prediction_length=512 \
 #     eval.context_length=512 \

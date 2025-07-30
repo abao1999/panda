@@ -308,8 +308,8 @@ def get_distributional_metrics(
         with Pool(processes=n_jobs) as pool:
             results = list(
                 tqdm(
-                    # pool.imap(_compute_metrics_worker, worker_args),
-                    pool.imap(_compute_more_metrics_worker, worker_args),
+                    pool.imap(_compute_metrics_worker, worker_args),
+                    # pool.imap(_compute_more_metrics_worker, worker_args),
                     # pool.imap(_compute_dataset_metrics_worker, worker_args),
                     total=len(worker_args),
                     desc="Computing distributional metrics",
@@ -404,8 +404,8 @@ def main(cfg):
             "chronos": {
                 "is_chronos": True,
                 "limit_prediction_length": False,
-                "num_samples": 5,
-                "deterministic": False,
+                "num_samples": cfg.eval.num_samples,
+                "deterministic": True if cfg.eval.num_samples == 1 else False,
                 "verbose": False,
             },
         }[cfg.eval.model_type]

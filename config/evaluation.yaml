@@ -41,7 +41,7 @@ eval:
   seed: 1
 
   # for generating forecasts and getting test split
-  num_samples: 1 # NOTE: this is only used in chronos/evaluate.py
+  num_samples: 1 # NOTE: this is only used in chronos/evaluate.py and scripts/compute_distributional_metrics.py
   parallel_sample_reduction: mean
   limit_prediction_length: true
   context_length: 512
