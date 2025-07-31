@@ -77,7 +77,7 @@ class PatchTSTRopeAttention(nn.Module):
         max_wavelength: int = 10000,
         rope_percent: float = 0.5,
         linear_attn: bool = False,
-        config: PatchTSTConfig | None = None,
+        config: Optional[PatchTSTConfig] = None,
     ):
         super().__init__()
         self.embed_dim = embed_dim
