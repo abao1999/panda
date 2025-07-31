@@ -1,4 +1,5 @@
 from .data_utils import (
+    check_dict_match,
     convert_to_arrow,
     demote_from_numpy,
     dict_demote_from_numpy,
@@ -22,6 +23,7 @@ from .dyst_utils import (
     mutual_information,
     optimal_delay,
     run_zero_one_sweep,
+    test_system_jacobian,
     zero_one_test,
 )
 from .eval_utils import (

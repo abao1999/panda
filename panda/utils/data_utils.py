@@ -339,3 +339,39 @@ def make_ensemble_from_arrow_dir(
         ensemble[dyst_name] = dyst_coords_samples
 
     return ensemble
+
+
+def check_dict_match(d1: dict, d2: dict, path: str = "") -> None:
+    """
+    Recursively check if two dictionaries match in structure and values,
+    including handling of numpy arrays and lists.
+
+    Args:
+        d1 (dict): First dictionary to compare.
+        d2 (dict): Second dictionary to compare.
+        path (str, optional): String representing the current path in the nested dictionary for error reporting.
+
+    Raises:
+        AssertionError: If the dictionaries do not match in keys or values at any level.
+    """
+    if set(d1.keys()) != set(d2.keys()):
+        raise AssertionError(
+            f"Keys don't match at {path}. d1: {set(d1.keys())}, d2: {set(d2.keys())}"
+        )
+
+    for key in d1:
+        v1, v2 = d1[key], d2[key]
+        current_path = f"{path}.{key}" if path else key
+
+        if isinstance(v1, dict) and isinstance(v2, dict):
+            check_dict_match(v1, v2, current_path)
+        elif isinstance(v1, (list, np.ndarray)) and isinstance(v2, (list, np.ndarray)):
+            if not np.allclose(np.array(v1), np.array(v2)):
+                raise AssertionError(
+                    f"Values don't match at {current_path}. v1: {v1}, v2: {v2}"
+                )
+        else:
+            if v1 != v2:
+                raise AssertionError(
+                    f"Values don't match at {current_path}. v1: {v1}, v2: {v2}"
+                )

@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional
 import dysts.flows as flows  # type: ignore
 import numpy as np
 from dysts.base import DynSys  # type: ignore
+from scipy.optimize import approx_fprime
 from scipy.spatial.distance import pdist
 
 from panda.coupling_maps import RandomAdditiveCouplingMap
@@ -398,3 +399,67 @@ def lyap_wolf(
     # Compute exponents: average log-gains over total time
     lambdas = sum_logs / (n_steps * dt)
     return lambdas
+
+
+def compute_jac_fd(
+    rhs: Callable[[np.ndarray, float], np.ndarray],
+    y_val: np.ndarray,
+    t_val: float,
+    eps: float = 1e-8,
+) -> np.ndarray:
+    """Calculate numerical jacobian of a function with respect to a reference value"""
+    func = lambda x: np.array(rhs(x, t_val))
+    y_val = np.array(y_val)
+
+    d = len(y_val)
+    all_rows = list()
+    for i in range(d):
+        row_func = lambda yy: func(yy)[i]
+        row = approx_fprime(y_val, row_func, epsilon=eps)
+        all_rows.append(row)
+    jac = np.array(all_rows)
+
+    return jac
+
+
+def test_system_jacobian(
+    sys: DynSys,
+    num_timesteps: int = 4096,
+    num_periods: int = 10,
+    transient: int = 200,
+    n_points_sample: int = 10,
+    eps: float = 1e-8,
+    verbose: bool = False,
+) -> int:
+    """
+    Test the Jacobian of a system by comparing the analytic and finite difference
+    Returns: 0 if failed, 1 if passed, 2 if not analytic Jacobian not implemented
+    """
+    if not sys.has_jacobian():
+        print(f"Jacobian not implemented for {sys.name}")
+        return 2
+
+    ts, traj = sys.make_trajectory(
+        num_timesteps,
+        pts_per_period=num_timesteps // num_periods,
+        return_times=True,
+        atol=1e-10,
+        rtol=1e-9,
+    )
+    assert traj is not None, f"{sys.name} should be integrable"
+    ts, traj = ts[transient:], traj[transient:]
+    # sample n_points_sample points from the trajectory
+    sample_indices = np.random.choice(len(traj), size=n_points_sample, replace=False)
+    traj_sample = traj[sample_indices]
+    ts_sample = ts[sample_indices]
+
+    for y_val, t_val in zip(traj_sample, ts_sample):
+        if verbose:
+            print(f"Testing analytic versus fd jac at t={t_val}, y={y_val}")
+        jac_fd = compute_jac_fd(sys.rhs, y_val, t_val, eps)
+        jac_analytic = sys.jac(y_val, t_val)
+        if not np.allclose(jac_fd, jac_analytic, atol=1e-5):
+            print(f"Jacobian mismatch at t={t_val}, y={y_val}")
+            return 0
+    print(f"Jacobian passed for {sys.name}")
+    return 1
