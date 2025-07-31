@@ -463,9 +463,6 @@ def make_box_plot(
                     if order_values:
                         ordering_metric_data[run_name] = np.median(order_values)
 
-            if verbose:
-                print(f"{run_name} median {metric_to_plot}: {median_value}")
-
         except Exception as e:
             warnings.warn(f"Error processing {run_name}: {e}")
 
@@ -509,6 +506,23 @@ def make_box_plot(
         lower_box, upper_box = np.percentile(run_data, box_percentile_range)
         lower_whisker, upper_whisker = np.percentile(run_data, whisker_percentile_range)
         median_val = np.median(run_data)
+        if verbose:
+            print("--------------------------------")
+            print(f"{run} median {metric_to_plot}: {median_val}")
+            percentiles_to_print = [25, 75]
+            percentile_values = np.percentile(run_data, percentiles_to_print)
+            percentile_str = ", ".join(
+                f"{p}th: {v:.4f}"
+                for p, v in zip(percentiles_to_print, percentile_values)
+            )
+            print(f"{run} percentiles for {metric_to_plot}: {percentile_str}")
+            # mean_val = np.mean(run_data)
+            # std_val = np.std(run_data)
+            # print(f"{run} mean {metric_to_plot}: {mean_val}")
+            # print(f"{run} std {metric_to_plot}: {std_val}")
+            # std_error = np.std(run_data) / np.sqrt(len(run_data))
+            # print(f"{run} standard error {metric_to_plot}: {std_error}")
+
         if isinstance(colors, dict):
             color = colors[run]
         else:

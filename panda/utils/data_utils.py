@@ -232,9 +232,7 @@ def load_trajectory_from_arrow(
     return coordinates, metadata
 
 
-def get_system_filepaths(
-    system_name: str, base_dir: Union[str, Path], split: str = "train"
-) -> List[Path]:
+def get_system_filepaths(system_name: str, data_dir: str) -> List[Path]:
     """
     Retrieve sorted filepaths for a given dynamical system.
 
@@ -243,8 +241,7 @@ def get_system_filepaths(
 
     Args:
         system_name (str): The name of the dynamical system.
-        base_dir (Union[str, Path]): The base directory containing the data.
-        split (str, optional): The data split to use (e.g., "train", "test"). Defaults to "train".
+        data_dir (Union[str, Path]): The base directory containing the data.
 
     Returns:
         List[Path]: A sorted list of Path objects for the Arrow files of the specified system.
@@ -256,64 +253,92 @@ def get_system_filepaths(
         The function assumes that the Arrow files are named with a numeric prefix
         (e.g., "1_T-1024.arrow") and sorts them based on this prefix.
     """
-    dyst_dir = os.path.join(base_dir, split, system_name)
+    dyst_dir = os.path.join(data_dir, system_name)
     if not os.path.exists(dyst_dir):
         raise Exception(f"Directory {dyst_dir} does not exist.")
 
     # NOTE: sorting by numerical order wrt sample index is very important for consistency
-    # TODO: this is a hacky way to get the sample index, but it works for now
     filepaths = sorted(
-        list(Path(dyst_dir).glob("*.arrow")),
-        key=lambda x: int(x.stem.split("_")[1 if "pp" in x.stem else 0].split("_")[0]),
+        list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0])
     )
     return filepaths
 
 
 def load_dyst_samples(
     dyst_name: str,
-    base_dir: str,
-    split: str,
+    data_dir: str,
     one_dim_target: bool,
     num_samples: int | None = None,
-    verbose: bool = False,
-) -> np.ndarray:
+    transient_prop: float = 0.0,
+) -> np.ndarray | None:
     """
     Load a set of sample trajectories of a given dynamical system from an arrow file
 
     Args:
         dyst_name: The name of the dynamical system
-        base_dir: The base directory containing the data
-        split: The data split to use (e.g., "train", "test")
-        num_samples: The number of samples to load
+        data_dir: The base directory containing the data
+        one_dim_target: Whether the target is one-dimensional
+        num_samples: The number of samples to load. If None, all available samples are loaded.
+                If num_samples = 1, only load the default ensemble (filenames 0_T-1024.arrow).
 
     Returns:
-        A (num_samples, num_features, num_timesteps) numpy array containing the trajectories
+        A numpy array containing the trajectories
+        Array has shape (num_samples, dim, T)
+
     """
-    filepaths = get_system_filepaths(dyst_name, base_dir, split)
+
+    filepaths = get_system_filepaths(dyst_name, data_dir)
     dyst_coords_samples = []
-    selected_filepaths = filepaths[:num_samples]
-    if verbose:
-        print(f"loading {len(selected_filepaths)} filepaths: {selected_filepaths}")
-    for filepath in selected_filepaths:
+    for filepath in filepaths[:num_samples]:
         dyst_coords, _ = load_trajectory_from_arrow(filepath, one_dim_target)
-        dyst_coords_samples.append(dyst_coords)
+        transient_time = int(transient_prop * dyst_coords.shape[1])
+        dyst_coords_samples.append(dyst_coords[:, transient_time:])
 
     dyst_coords_samples = np.array(dyst_coords_samples)  # type: ignore
     return dyst_coords_samples
 
 
 def make_ensemble_from_arrow_dir(
-    base_dir: str,
-    split: str,
+    data_dir: str,
     dyst_names_lst: list[str] | None = None,
     num_samples: int | None = None,
     num_systems: int | None = None,
     one_dim_target: bool = False,
+    transient_prop: float = 0.0,
     num_processes: int = cpu_count(),
 ) -> dict[str, np.ndarray]:
+    """
+    Loads an ensemble of sample trajectories for multiple dynamical systems from Arrow files in a directory.
+
+    Args:
+        data_dir (str): The base directory containing the data.
+        dyst_names_lst (list[str] | None, optional): List of system names to load. If None, all systems in the directory are used.
+        num_samples (int | None, optional): Number of samples to load per system.
+                If None, all available samples are loaded.
+                If num_samples = 1, only load the default ensemble (filenames 0_T-1024.arrow). We defer this functionality to load_dyst_samples()
+        num_systems (int | None, optional): Number of systems to load. If None, all systems are loaded.
+        one_dim_target (bool, optional): Whether the target is one-dimensional. Defaults to False.
+        num_processes (int, optional): Number of processes to use for parallel loading. Defaults to the number of CPU cores.
+
+    Returns:
+        dict[str, np.ndarray]: A dictionary mapping system names to arrays of sample trajectories,
+            where each array has shape (num_samples, num_features, num_timesteps).
+
+    Raises:
+        AssertionError: If num_systems is greater than the number of available systems.
+
+    Note:
+        This function uses multiprocessing to speed up loading of large ensembles.
+        The Arrow files for each system are expected to be in subdirectories under data_dir,
+        and named with a numeric prefix (e.g., "1_T-1024.arrow").
+    """
+    if num_samples == 1:
+        print(
+            "num_samples is 1, only loading the default ensemble (filenames 0_T-1024.arrow)"
+        )
+
     ensemble: dict[str, np.ndarray] = {}
     if dyst_names_lst is None:
-        data_dir = os.path.join(base_dir, split)
         dyst_names_lst = sorted(
             [folder.name for folder in Path(data_dir).iterdir() if folder.is_dir()]
         )
@@ -326,7 +351,7 @@ def make_ensemble_from_arrow_dir(
 
     # Prepare arguments for multiprocessing
     args = [
-        (dyst_name, base_dir, split, one_dim_target, num_samples)
+        (dyst_name, data_dir, one_dim_target, num_samples, transient_prop)
         for dyst_name in dyst_names_lst
     ]
 
@@ -336,6 +361,9 @@ def make_ensemble_from_arrow_dir(
 
     # Collect results into the ensemble dictionary
     for dyst_name, dyst_coords_samples in zip(dyst_names_lst, results):
+        if dyst_coords_samples is None:
+            print(f"No samples found for {dyst_name}")
+            continue
         ensemble[dyst_name] = dyst_coords_samples
 
     return ensemble

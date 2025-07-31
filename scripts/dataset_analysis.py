@@ -13,8 +13,9 @@ from typing import Callable, Dict, Tuple
 import hydra
 import matplotlib.pyplot as plt
 import numpy as np
-import panda.attractor as attractor
 from dysts.analysis import max_lyapunov_exponent_rosenstein  # type: ignore
+
+import panda.attractor as attractor
 from panda.attractor import AttractorValidator
 from panda.utils import (
     make_ensemble_from_arrow_dir,
@@ -167,9 +168,9 @@ def main(cfg):
     os.makedirs(plot_save_dir, exist_ok=True)
 
     # make ensemble from saved trajectories in Arrow files
+    data_dir = os.path.join(cfg.analysis.data_dir, cfg.analysis.split)
     ensemble = make_ensemble_from_arrow_dir(
-        cfg.analysis.data_dir,
-        cfg.analysis.split,
+        data_dir,
         one_dim_target=cfg.analysis.one_dim_target,
         num_samples=cfg.analysis.num_samples,
     )
@@ -208,8 +209,6 @@ def main(cfg):
             plot_grid_trajs_multivariate(
                 {k: v for k, v in list(failed_ensemble.items())[:n_samples_plot]},
                 save_path=save_path,
-                max_samples=n_samples_plot,
-                standardize=True,
                 subplot_size=(n_rows_plot, n_rows_plot),
             )
             logger.info(f"Plotted failed samples to {save_path}")
