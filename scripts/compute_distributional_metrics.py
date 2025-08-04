@@ -11,9 +11,7 @@ import hydra
 import numpy as np
 import torch
 from dysts.analysis import (  # type: ignore
-    corr_gpdim,
     gp_dim,
-    max_lyapunov_exponent_rosenstein,
     max_lyapunov_exponent_rosenstein_multivariate,
 )
 from dysts.metrics import (  # type: ignore
@@ -33,172 +31,58 @@ logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
 
 
-def _compute_dataset_metrics_worker(
-    args,
-) -> tuple[str, dict[str, float | None]]:
-    """
-    Compute distributional metrics (average Hellinger distance and KL divergence)
-    for a single system.
-
-    Args:
-        args: Tuple of (system_name, data_dict) where data_dict contains
-              "context", "predictions", "groundtruth", "full_trajectory" as np.ndarrays.
-
-    Returns:
-        (system_name, {
-            "max_lyap_rosenstein": float,
-        })
-    """
-    dyst_name, data, _ = args
-
-    # Ensure (T, d) shape for all arrays
-    _, _, _, full_trajectory = (
-        data["context"].T,
-        data["predictions"].T,
-        data["groundtruth"].T,
-        data["full_trajectory"].T,
-    )
-
-    def safe_call(fn, *args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except Exception:
-            logger.warning(f"Error computing {fn.__name__} for {dyst_name}")
-            return None
-
-    dyst_name_without_pp = dyst_name.split("_pp")[0]
-    is_skew = "_" in dyst_name_without_pp
-    if is_skew:
-        driver_name, response_name = dyst_name_without_pp.split("_")
-        driver_system = getattr(flows, driver_name)()
-        response_system = getattr(flows, response_name)()
-        period = max(driver_system.period, response_system.period)
-        # dt = min(driver_system.dt, response_system.dt)
-        avg_dt = (40 * period) / 4096
-
-    else:
-        sys = getattr(flows, dyst_name_without_pp)()
-        avg_dt = (40 * sys.period) / 4096
-
-    max_lyap_full_traj = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate, full_trajectory, tau=avg_dt
-    )
-
-    # max_lyap_full_traj = safe_call(max_lyapunov_exponent_rosenstein, full_trajectory)
-
-    return dyst_name, {
-        "max_lyap_rosenstein": max_lyap_full_traj,
-    }
-
-
-def _compute_more_metrics_worker(
+def _compute_metrics_worker(
     args,
 ) -> tuple[str, dict[str, dict[str, float | None]]]:
     """
-    Compute distributional metrics (average Hellinger distance and KL divergence)
-    for a single system.
+    Compute distributional metrics for a single system, including Hellinger distance,
+    KL divergence, generalized (correlation) dimension, and maximum Lyapunov exponents
+    for various combinations of context, predictions, ground truth, and full trajectory.
 
     Args:
-        args: Tuple of (system_name, data_dict) where data_dict contains
-              "context", "predictions", "groundtruth", "full_trajectory" as np.ndarrays.
+        args: Tuple of (system_name, data_dict, pred_interval), where:
+            - system_name (str): Name of the dynamical system.
+            - data_dict (dict): Dictionary containing the following keys:
+                - "context": np.ndarray, shape (d, T) or (T, d)
+                - "predictions": np.ndarray, shape (d, T) or (T, d)
+                - "groundtruth": np.ndarray, shape (d, T) or (T, d)
+                - "full_trajectory": np.ndarray, shape (d, T) or (T, d)
+                - "elapsed_time": float
+            - pred_interval (int): Number of prediction steps to consider.
 
     Returns:
-        (system_name, {
-            "pred_with_context": {
-                "avg_hellinger_distance": float,
-                "kl_divergence": float,
-                "corr_gpdim_pred_with_context": float,
-                "gpdim_gt_with_context": float,
-                "gpdim_pred_with_context": float,
-            },
-            "max_lyap_rosenstein": {
-                "max_lyap_context": float,
-                "max_lyap_full_traj": float,
-            }
-        })
-    """
-    dyst_name, data, pred_interval = args
+        tuple:
+            (system_name, {
+                "prediction_horizon": {
+                    "avg_hellinger_distance": float | None,
+                    "gpdim_gt": float | None,
+                    "gpdim_pred": float | None,
+                    "max_lyap_gt": float | None,
+                    "max_lyap_pred": float | None,
+                },
+                "pred_with_context": {
+                    "avg_hellinger_distance": float | None,
+                    "gpdim_gt_with_context": float | None,
+                    "gpdim_pred_with_context": float | None,
+                },
+                "full_trajectory": {
+                    "avg_hellinger_distance": float | None,
+                    "kl_divergence": float | None,
+                    "gpdim_full_traj": float | None,
+                    "max_lyap_full_traj": float | None,
+                },
+                "prediction_time": float,
+            })
 
-    # Ensure (T, d) shape for all arrays
-    context, predictions, groundtruth, _ = (
-        data["context"].T,
-        data["predictions"].T,
-        data["groundtruth"].T,
-        data["full_trajectory"].T,
-    )
-    predictions = predictions[:pred_interval]
-    groundtruth = groundtruth[:pred_interval]
-
-    elapsed_time = data["elapsed_time"]
-
-    if predictions.shape != groundtruth.shape:
-        raise ValueError(
-            f"Shape mismatch: predictions {predictions.shape} vs groundtruth {groundtruth.shape} for {dyst_name}"
-        )
-    if context.shape[0] != 512:
-        raise ValueError(
-            f"Context length mismatch: {context.shape[0]} != 512 for {dyst_name}"
-        )
-    if (
-        context.shape[1] != predictions.shape[1]
-        or predictions.shape[1] != groundtruth.shape[1]
-    ):
-        raise ValueError(
-            f"Dimension mismatch: {context.shape[1]}, {predictions.shape[1]}, {groundtruth.shape[1]} for {dyst_name}"
-        )
-
-    def safe_call(fn, *args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except Exception:
-            logger.warning(f"Error computing {fn.__name__} for {dyst_name}")
-            return None
-
-    pred_with_context = np.concatenate([context, predictions], axis=0)
-    gt_with_context = np.concatenate([context, groundtruth], axis=0)
-
-    avg_hellinger_pred_with_context = safe_call(
-        average_hellinger_distance, gt_with_context, pred_with_context
-    )
-    kl_pred_with_context = safe_call(
-        estimate_kl_divergence, gt_with_context, pred_with_context
-    )
-
-    corr_gpdim_result = safe_call(corr_gpdim, gt_with_context, pred_with_context)
-    if corr_gpdim_result is not None:
-        corr_gpdim_pred_with_context, gpdim_gt_with_context, gpdim_pred_with_context = (
-            corr_gpdim_result
-        )
-    else:
-        gpdim_gt_with_context = safe_call(gp_dim, gt_with_context)
-        gpdim_pred_with_context = safe_call(gp_dim, pred_with_context)
-
-    return dyst_name, {
-        "pred_with_context": {
-            "avg_hellinger_distance": avg_hellinger_pred_with_context,
-            "kl_divergence": kl_pred_with_context,
-            "corr_gpdim_pred_with_context": corr_gpdim_pred_with_context,
-            "gpdim_gt_with_context": gpdim_gt_with_context,
-            "gpdim_pred_with_context": gpdim_pred_with_context,
-        },
-        "prediction_time": elapsed_time,
-    }
-
-
-def _compute_lyap_worker(args) -> tuple[str, dict[str, dict[str, float | None]]]:
-    """
-    Compute distributional metrics (average Hellinger distance and KL divergence)
-    for a single system.
-
-    Args:
-        args: Tuple of (system_name, data_dict) where data_dict contains
-              "context", "predictions", "groundtruth", "full_trajectory" as np.ndarrays.
-
-    Returns:
-        (system_name, {
-            "prediction_horizon": {"avg_hellinger_distance": float, "kl_divergence": float},
-            "full_trajectory": {"avg_hellinger_distance": float, "kl_divergence": float}
-        })
+    Notes:
+        - All metrics may be None if computation fails for a given system.
+        - The function expects all arrays to be transposed to (T, d) shape.
+        - The "prediction_horizon" section compares predictions and ground truth
+          over the forecast interval.
+        - The "pred_with_context" section compares the concatenation of context
+          and predictions to the concatenation of context and ground truth.
+        - The "full_trajectory" section compares predictions to the full system trajectory.
+        - "prediction_time" is the elapsed time for generating predictions.
     """
     dyst_name, data, pred_interval = args
 
@@ -236,6 +120,32 @@ def _compute_lyap_worker(args) -> tuple[str, dict[str, dict[str, float | None]]]
         except Exception:
             logger.warning(f"Error computing {fn.__name__} for {dyst_name}")
             return None
+
+    # (Context + GT) vs (Context + Preds)
+    pred_with_context = np.concatenate([context, predictions], axis=0)
+    gt_with_context = np.concatenate([context, groundtruth], axis=0)
+
+    avg_hellinger_pred_with_context = safe_call(
+        average_hellinger_distance, gt_with_context, pred_with_context
+    )
+    gpdim_gt_with_context = safe_call(gp_dim, gt_with_context)
+    gpdim_pred_with_context = safe_call(gp_dim, pred_with_context)
+
+    # Prediction Horizon
+    avg_hellinger_pred_horizon = safe_call(
+        average_hellinger_distance, groundtruth, predictions
+    )
+    gpdim_gt = safe_call(gp_dim, groundtruth)
+    gpdim_pred = safe_call(gp_dim, predictions)
+
+    # Prediction vs Full Trajectory
+    avg_hellinger_full_traj = safe_call(
+        average_hellinger_distance, full_trajectory, predictions
+    )
+    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions)
+    # NOTE: this is redundant computation because it should be the same for every context window pkl file,
+    # but we do this for convenience when running notebooks/plot_distributional_metrics.ipynb
+    gpdim_full_traj = safe_call(gp_dim, full_trajectory)
 
     dyst_name_without_pp = dyst_name.split("_pp")[0]
     is_skew = "_" in dyst_name_without_pp
@@ -257,112 +167,30 @@ def _compute_lyap_worker(args) -> tuple[str, dict[str, dict[str, float | None]]]
     max_lyap_pred = safe_call(
         max_lyapunov_exponent_rosenstein_multivariate, predictions, tau=avg_dt
     )
-    max_lyap_pred_with_context = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate,
-        np.concatenate([context, predictions], axis=0),
-        tau=avg_dt,
+    # NOTE: this is redundant computation because it should be the same for every context window pkl file,
+    # but we do this for convenience when running notebooks/plot_distributional_metrics.ipynb
+    max_lyap_full_traj = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate, full_trajectory, tau=avg_dt
     )
-    max_lyap_gt_with_context = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate,
-        np.concatenate([context, groundtruth], axis=0),
-        tau=avg_dt,
-    )
-
-    return dyst_name, {
-        "max_lyap_rosenstein": {
-            "max_lyap_gt": max_lyap_gt,
-            "max_lyap_gt_with_context": max_lyap_gt_with_context,
-            "max_lyap_pred": max_lyap_pred,
-            "max_lyap_pred_with_context": max_lyap_pred_with_context,
-        },
-        "prediction_time": elapsed_time,
-    }
-
-
-def _compute_metrics_worker(args) -> tuple[str, dict[str, dict[str, float | None]]]:
-    """
-    Compute distributional metrics (average Hellinger distance and KL divergence)
-    for a single system.
-
-    Args:
-        args: Tuple of (system_name, data_dict) where data_dict contains
-              "context", "predictions", "groundtruth", "full_trajectory" as np.ndarrays.
-
-    Returns:
-        (system_name, {
-            "prediction_horizon": {"avg_hellinger_distance": float, "kl_divergence": float},
-            "full_trajectory": {"avg_hellinger_distance": float, "kl_divergence": float}
-        })
-    """
-    dyst_name, data, pred_interval = args
-
-    # Ensure (T, d) shape for all arrays
-    context, predictions, groundtruth, full_trajectory = (
-        data["context"].T,
-        data["predictions"].T,
-        data["groundtruth"].T,
-        data["full_trajectory"].T,
-    )
-    predictions = predictions[:pred_interval]
-    groundtruth = groundtruth[:pred_interval]
-
-    elapsed_time = data["elapsed_time"]
-
-    if predictions.shape != groundtruth.shape:
-        raise ValueError(
-            f"Shape mismatch: predictions {predictions.shape} vs groundtruth {groundtruth.shape} for {dyst_name}"
-        )
-    if context.shape[0] != 512:
-        raise ValueError(
-            f"Context length mismatch: {context.shape[0]} != 512 for {dyst_name}"
-        )
-    if (
-        context.shape[1] != predictions.shape[1]
-        or predictions.shape[1] != groundtruth.shape[1]
-    ):
-        raise ValueError(
-            f"Dimension mismatch: {context.shape[1]}, {predictions.shape[1]}, {groundtruth.shape[1]} for {dyst_name}"
-        )
-
-    def safe_call(fn, *args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except Exception:
-            logger.warning(f"Error computing {fn.__name__} for {dyst_name}")
-            return None
-
-    max_lyap_gt = safe_call(max_lyapunov_exponent_rosenstein, groundtruth)
-    max_lyap_pred = safe_call(max_lyapunov_exponent_rosenstein, predictions)
-    max_lyap_pred_with_context = safe_call(
-        max_lyapunov_exponent_rosenstein, np.concatenate([context, predictions], axis=0)
-    )
-    max_lyap_gt_with_context = safe_call(
-        max_lyapunov_exponent_rosenstein, np.concatenate([context, groundtruth], axis=0)
-    )
-
-    avg_hellinger_pred_horizon = safe_call(
-        average_hellinger_distance, groundtruth, predictions
-    )
-    kl_pred_horizon = safe_call(estimate_kl_divergence, groundtruth, predictions)
-    avg_hellinger_full_traj = safe_call(
-        average_hellinger_distance, full_trajectory, predictions
-    )
-    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions)
 
     return dyst_name, {
         "prediction_horizon": {
             "avg_hellinger_distance": avg_hellinger_pred_horizon,
-            "kl_divergence": kl_pred_horizon,
+            "gpdim_gt": gpdim_gt,
+            "gpdim_pred": gpdim_pred,
+            "max_lyap_gt": max_lyap_gt,
+            "max_lyap_pred": max_lyap_pred,
+        },
+        "pred_with_context": {
+            "avg_hellinger_distance": avg_hellinger_pred_with_context,
+            "gpdim_gt_with_context": gpdim_gt_with_context,
+            "gpdim_pred_with_context": gpdim_pred_with_context,
         },
         "full_trajectory": {
             "avg_hellinger_distance": avg_hellinger_full_traj,
             "kl_divergence": kl_full_traj,
-        },
-        "max_lyap_rosenstein": {
-            "max_lyap_gt": max_lyap_gt,
-            "max_lyap_gt_with_context": max_lyap_gt_with_context,
-            "max_lyap_pred": max_lyap_pred,
-            "max_lyap_pred_with_context": max_lyap_pred_with_context,
+            "gpdim_full_traj": gpdim_full_traj,
+            "max_lyap_full_traj": max_lyap_full_traj,
         },
         "prediction_time": elapsed_time,
     }
@@ -411,7 +239,8 @@ def get_distributional_metrics(
 
     results_all_pred_intervals = {}
     # pred_intervals = [128, 192, 256, 320, 384, 448, 512]
-    pred_intervals = [128, 256, 512]
+    # pred_intervals = [128, 256, 512]
+    pred_intervals = [512]
     # pred_intervals = [4096]
 
     for pred_interval in pred_intervals:
@@ -424,10 +253,7 @@ def get_distributional_metrics(
         with Pool(processes=n_jobs) as pool:
             results = list(
                 tqdm(
-                    # pool.imap(_compute_metrics_worker, worker_args),
-                    # pool.imap(_compute_more_metrics_worker, worker_args),
-                    # pool.imap(_compute_dataset_metrics_worker, worker_args),
-                    pool.imap(_compute_lyap_worker, worker_args),
+                    pool.imap(_compute_metrics_worker, worker_args),
                     total=len(worker_args),
                     desc="Computing distributional metrics",
                 )
@@ -608,8 +434,11 @@ def main(cfg):
         forecast_dict, n_jobs=cfg.eval.num_processes
     )
 
+    metrics_fname_suffix = (
+        f"_{cfg.eval.metrics_fname_suffix}" if cfg.eval.metrics_fname_suffix else ""
+    )
     metrics_fname = (
-        f"{cfg.eval.metrics_fname}_lyap"
+        f"{cfg.eval.metrics_fname}{metrics_fname_suffix}"
         if cfg.eval.reload_saved_forecasts
         else cfg.eval.metrics_fname
     )

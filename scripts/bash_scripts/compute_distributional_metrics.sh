@@ -1,16 +1,14 @@
 
 ulimit -n 99999
 
-if [ $# -lt 3 ]; then
-    echo "Usage: $0 <window_start_time> <cuda_device_id> <model_type>"
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <cuda_device_id> <model_type>"
     exit 1
 fi
 
-window_start_time=$1
-cuda_device_id=$2
-model_type=$3
+cuda_device_id=$1
+model_type=$2
 
-echo "window_start_time: $window_start_time"
 echo "cuda_device_id: $cuda_device_id"
 echo "model_type: $model_type"
 
@@ -46,7 +44,7 @@ else
 fi
 
 
-num_samples_chronos=5
+num_samples_chronos=1
 if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
     model_dir="chronos_nondeterministic"
 else
@@ -62,25 +60,29 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 
-python scripts/compute_distributional_metrics.py \
-    eval.mode=predict \
-    eval.model_type=$model_type \
-    eval.checkpoint_path=$WORK/checkpoints/$run_name/checkpoint-final \
-    eval.device=cuda:$cuda_device_id \
-    eval.data_paths_lst=$test_data_dirs_json \
-    eval.num_subdirs=null \
-    eval.num_samples_per_subdir=null \
-    eval.metrics_save_dir=$WORK/eval_results/$model_dir/$run_name/test_zeroshot \
-    eval.metrics_fname=distributional_metrics_window-$window_start_time \
-    eval.save_forecasts=true \
-    eval.save_full_trajectory=true \
-    eval.reload_saved_forecasts=true \
-    eval.num_processes=100 \
-    eval.window_start_time=$window_start_time \
-    eval.prediction_length=512 \
-    eval.context_length=512 \
-    eval.chronos.zero_shot=$zero_shot_flag \
-
+window_start_times=(512 1024 1536 2048)
+for window_start_time in "${window_start_times[@]}"; do
+    echo "window_start_time: $window_start_time"
+    python scripts/compute_distributional_metrics.py \
+        eval.mode=predict \
+        eval.model_type=$model_type \
+        eval.checkpoint_path=$WORK/checkpoints/$run_name/checkpoint-final \
+        eval.device=cuda:$cuda_device_id \
+        eval.data_paths_lst=$test_data_dirs_json \
+        eval.num_subdirs=null \
+        eval.num_samples_per_subdir=null \
+        eval.metrics_save_dir=$WORK/eval_results/$model_dir/$run_name/test_zeroshot \
+        eval.metrics_fname=distributional_metrics_window-$window_start_time \
+        eval.save_forecasts=true \
+        eval.save_full_trajectory=true \
+        eval.reload_saved_forecasts=true \
+        eval.num_processes=100 \
+        eval.window_start_time=$window_start_time \
+        eval.prediction_length=512 \
+        eval.context_length=512 \
+        eval.chronos.zero_shot=$zero_shot_flag \
+        eval.metrics_fname_suffix=final
+    done
 
 # python scripts/compute_distributional_metrics.py \
 #     eval.mode=predict \

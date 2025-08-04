@@ -37,6 +37,7 @@ eval:
 
   metrics_save_dir: null
   metrics_fname: metrics
+  metrics_fname_suffix: null
   overwrite: false
   seed: 1
 
