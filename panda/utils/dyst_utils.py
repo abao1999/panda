@@ -42,6 +42,39 @@ def init_skew_system_from_params(
     sys = SkewProduct(
         driver=driver, response=response, coupling_map=coupling_map, **kwargs
     )
+    sys.ic = np.array(param_dict["ic"])
+
+    return sys
+
+
+def init_base_system_from_params(
+    system_name: str,
+    param_dict: dict[str, Any],
+    **kwargs,
+) -> DynSys:
+    """
+    Initialize a base dynamical system from saved parameters.
+
+    Parameters:
+        system_name: Name of the system (e.g., "JerkCircuit", "Lorenz")
+        param_dict: Dictionary containing system parameters with keys:
+            - "ic": Initial conditions array
+            - "params": System parameters dictionary
+            - "dim": System dimension
+        **kwargs: Additional arguments passed to the system constructor
+
+    Returns:
+        DynSys: Initialized dynamical system
+    """
+    required_keys = ["ic", "params", "dim"]
+    for key in required_keys:
+        if key not in param_dict:
+            raise ValueError(f"Key {key} not found in param_dict for {system_name}")
+
+    # Initialize the system with the provided parameters
+    sys = getattr(flows, system_name)(parameters=param_dict["params"], **kwargs)
+    sys.ic = np.array(param_dict["ic"])
+    sys.dimension = param_dict["dim"]
 
     return sys
 
