@@ -6,6 +6,7 @@ import time
 from functools import partial
 from multiprocessing import Pool
 
+import dysts.flows as flows  # type: ignore
 import hydra
 import numpy as np
 import torch
@@ -13,6 +14,7 @@ from dysts.analysis import (  # type: ignore
     corr_gpdim,
     gp_dim,
     max_lyapunov_exponent_rosenstein,
+    max_lyapunov_exponent_rosenstein_multivariate,
 )
 from dysts.metrics import (  # type: ignore
     average_hellinger_distance,
@@ -64,7 +66,25 @@ def _compute_dataset_metrics_worker(
             logger.warning(f"Error computing {fn.__name__} for {dyst_name}")
             return None
 
-    max_lyap_full_traj = safe_call(max_lyapunov_exponent_rosenstein, full_trajectory)
+    dyst_name_without_pp = dyst_name.split("_pp")[0]
+    is_skew = "_" in dyst_name_without_pp
+    if is_skew:
+        driver_name, response_name = dyst_name_without_pp.split("_")
+        driver_system = getattr(flows, driver_name)()
+        response_system = getattr(flows, response_name)()
+        period = max(driver_system.period, response_system.period)
+        # dt = min(driver_system.dt, response_system.dt)
+        avg_dt = (40 * period) / 4096
+
+    else:
+        sys = getattr(flows, dyst_name_without_pp)()
+        avg_dt = (40 * sys.period) / 4096
+
+    max_lyap_full_traj = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate, full_trajectory, tau=avg_dt
+    )
+
+    # max_lyap_full_traj = safe_call(max_lyapunov_exponent_rosenstein, full_trajectory)
 
     return dyst_name, {
         "max_lyap_rosenstein": max_lyap_full_traj,
@@ -160,6 +180,100 @@ def _compute_more_metrics_worker(
             "corr_gpdim_pred_with_context": corr_gpdim_pred_with_context,
             "gpdim_gt_with_context": gpdim_gt_with_context,
             "gpdim_pred_with_context": gpdim_pred_with_context,
+        },
+        "prediction_time": elapsed_time,
+    }
+
+
+def _compute_lyap_worker(args) -> tuple[str, dict[str, dict[str, float | None]]]:
+    """
+    Compute distributional metrics (average Hellinger distance and KL divergence)
+    for a single system.
+
+    Args:
+        args: Tuple of (system_name, data_dict) where data_dict contains
+              "context", "predictions", "groundtruth", "full_trajectory" as np.ndarrays.
+
+    Returns:
+        (system_name, {
+            "prediction_horizon": {"avg_hellinger_distance": float, "kl_divergence": float},
+            "full_trajectory": {"avg_hellinger_distance": float, "kl_divergence": float}
+        })
+    """
+    dyst_name, data, pred_interval = args
+
+    # Ensure (T, d) shape for all arrays
+    context, predictions, groundtruth, full_trajectory = (
+        data["context"].T,
+        data["predictions"].T,
+        data["groundtruth"].T,
+        data["full_trajectory"].T,
+    )
+    predictions = predictions[:pred_interval]
+    groundtruth = groundtruth[:pred_interval]
+
+    elapsed_time = data["elapsed_time"]
+
+    if predictions.shape != groundtruth.shape:
+        raise ValueError(
+            f"Shape mismatch: predictions {predictions.shape} vs groundtruth {groundtruth.shape} for {dyst_name}"
+        )
+    if context.shape[0] != 512:
+        raise ValueError(
+            f"Context length mismatch: {context.shape[0]} != 512 for {dyst_name}"
+        )
+    if (
+        context.shape[1] != predictions.shape[1]
+        or predictions.shape[1] != groundtruth.shape[1]
+    ):
+        raise ValueError(
+            f"Dimension mismatch: {context.shape[1]}, {predictions.shape[1]}, {groundtruth.shape[1]} for {dyst_name}"
+        )
+
+    def safe_call(fn, *args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            logger.warning(f"Error computing {fn.__name__} for {dyst_name}")
+            return None
+
+    dyst_name_without_pp = dyst_name.split("_pp")[0]
+    is_skew = "_" in dyst_name_without_pp
+    if is_skew:
+        driver_name, response_name = dyst_name_without_pp.split("_")
+        driver_system = getattr(flows, driver_name)()
+        response_system = getattr(flows, response_name)()
+        period = max(driver_system.period, response_system.period)
+        # dt = min(driver_system.dt, response_system.dt)
+        avg_dt = (40 * period) / 4096
+
+    else:
+        sys = getattr(flows, dyst_name_without_pp)()
+        avg_dt = (40 * sys.period) / 4096
+
+    max_lyap_gt = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate, groundtruth, tau=avg_dt
+    )
+    max_lyap_pred = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate, predictions, tau=avg_dt
+    )
+    max_lyap_pred_with_context = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate,
+        np.concatenate([context, predictions], axis=0),
+        tau=avg_dt,
+    )
+    max_lyap_gt_with_context = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate,
+        np.concatenate([context, groundtruth], axis=0),
+        tau=avg_dt,
+    )
+
+    return dyst_name, {
+        "max_lyap_rosenstein": {
+            "max_lyap_gt": max_lyap_gt,
+            "max_lyap_gt_with_context": max_lyap_gt_with_context,
+            "max_lyap_pred": max_lyap_pred,
+            "max_lyap_pred_with_context": max_lyap_pred_with_context,
         },
         "prediction_time": elapsed_time,
     }
@@ -296,7 +410,9 @@ def get_distributional_metrics(
             raise ValueError(f"Missing required data for {dyst_name}: {required_keys}")
 
     results_all_pred_intervals = {}
-    pred_intervals = [128, 192, 256, 320, 384, 448, 512]
+    # pred_intervals = [128, 192, 256, 320, 384, 448, 512]
+    pred_intervals = [128, 256, 512]
+    # pred_intervals = [4096]
 
     for pred_interval in pred_intervals:
         # Prepare arguments for parallel processing
@@ -308,9 +424,10 @@ def get_distributional_metrics(
         with Pool(processes=n_jobs) as pool:
             results = list(
                 tqdm(
-                    pool.imap(_compute_metrics_worker, worker_args),
+                    # pool.imap(_compute_metrics_worker, worker_args),
                     # pool.imap(_compute_more_metrics_worker, worker_args),
                     # pool.imap(_compute_dataset_metrics_worker, worker_args),
+                    pool.imap(_compute_lyap_worker, worker_args),
                     total=len(worker_args),
                     desc="Computing distributional metrics",
                 )
@@ -492,7 +609,7 @@ def main(cfg):
     )
 
     metrics_fname = (
-        f"{cfg.eval.metrics_fname}_more"
+        f"{cfg.eval.metrics_fname}_lyap"
         if cfg.eval.reload_saved_forecasts
         else cfg.eval.metrics_fname
     )
