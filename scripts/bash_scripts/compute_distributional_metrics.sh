@@ -61,8 +61,13 @@ export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 
 window_start_times=(512 1024 1536 2048)
-for window_start_time in "${window_start_times[@]}"; do
-    echo "window_start_time: $window_start_time"
+# window_start_times=(512)
+# window_start_times=(1024 1536 2048)
+for idx in "${!window_start_times[@]}"; do
+    window_start_time="${window_start_times[$idx]}"
+    echo "Index: $idx, window_start_time: $window_start_time"
+    compute_dataset_stats=$((idx == 0))
+    echo "compute_dataset_stats: $compute_dataset_stats"
     python scripts/compute_distributional_metrics.py \
         eval.mode=predict \
         eval.model_type=$model_type \
@@ -81,8 +86,9 @@ for window_start_time in "${window_start_times[@]}"; do
         eval.prediction_length=512 \
         eval.context_length=512 \
         eval.chronos.zero_shot=$zero_shot_flag \
-        eval.metrics_fname_suffix=final
-    done
+        eval.metrics_fname_suffix=all \
+        eval.compute_dataset_stats=$compute_dataset_stats
+done
 
 # python scripts/compute_distributional_metrics.py \
 #     eval.mode=predict \

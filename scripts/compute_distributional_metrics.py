@@ -84,7 +84,9 @@ def _compute_metrics_worker(
         - The "full_trajectory" section compares predictions to the full system trajectory.
         - "prediction_time" is the elapsed time for generating predictions.
     """
-    dyst_name, data, pred_interval = args
+    dyst_name, data, pred_interval, compute_dataset_stats_flag, rosenstein_traj_len = (
+        args
+    )
 
     # Ensure (T, d) shape for all arrays
     context, predictions, groundtruth, full_trajectory = (
@@ -117,7 +119,8 @@ def _compute_metrics_worker(
     def safe_call(fn, *args, **kwargs):
         try:
             return fn(*args, **kwargs)
-        except Exception:
+        except Exception as e:
+            print(e)
             logger.warning(f"Error computing {fn.__name__} for {dyst_name}")
             return None
 
@@ -145,7 +148,10 @@ def _compute_metrics_worker(
     kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions)
     # NOTE: this is redundant computation because it should be the same for every context window pkl file,
     # but we do this for convenience when running notebooks/plot_distributional_metrics.ipynb
-    gpdim_full_traj = safe_call(gp_dim, full_trajectory)
+    if compute_dataset_stats_flag:
+        gpdim_full_traj = safe_call(gp_dim, full_trajectory)
+    else:
+        gpdim_full_traj = None
 
     dyst_name_without_pp = dyst_name.split("_pp")[0]
     is_skew = "_" in dyst_name_without_pp
@@ -162,16 +168,40 @@ def _compute_metrics_worker(
         avg_dt = (40 * sys.period) / 4096
 
     max_lyap_gt = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate, groundtruth, tau=avg_dt
+        max_lyapunov_exponent_rosenstein_multivariate,
+        groundtruth,
+        tau=avg_dt,
+        trajectory_len=rosenstein_traj_len,
     )
     max_lyap_pred = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate, predictions, tau=avg_dt
+        max_lyapunov_exponent_rosenstein_multivariate,
+        predictions,
+        tau=avg_dt,
+        trajectory_len=rosenstein_traj_len,
+    )
+    max_lyap_gt_with_context = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate,
+        gt_with_context,
+        tau=avg_dt,
+        trajectory_len=rosenstein_traj_len,
+    )
+    max_lyap_pred_with_context = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate,
+        pred_with_context,
+        tau=avg_dt,
+        trajectory_len=rosenstein_traj_len,
     )
     # NOTE: this is redundant computation because it should be the same for every context window pkl file,
     # but we do this for convenience when running notebooks/plot_distributional_metrics.ipynb
-    max_lyap_full_traj = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate, full_trajectory, tau=avg_dt
-    )
+    if compute_dataset_stats_flag:
+        max_lyap_full_traj = safe_call(
+            max_lyapunov_exponent_rosenstein_multivariate,
+            full_trajectory,
+            tau=avg_dt,
+            trajectory_len=rosenstein_traj_len,
+        )
+    else:
+        max_lyap_full_traj = None
 
     return dyst_name, {
         "prediction_horizon": {
@@ -185,6 +215,8 @@ def _compute_metrics_worker(
             "avg_hellinger_distance": avg_hellinger_pred_with_context,
             "gpdim_gt_with_context": gpdim_gt_with_context,
             "gpdim_pred_with_context": gpdim_pred_with_context,
+            "max_lyap_gt_with_context": max_lyap_gt_with_context,
+            "max_lyap_pred_with_context": max_lyap_pred_with_context,
         },
         "full_trajectory": {
             "avg_hellinger_distance": avg_hellinger_full_traj,
@@ -199,6 +231,7 @@ def _compute_metrics_worker(
 def get_distributional_metrics(
     forecast_dict: dict[str, dict[str, np.ndarray]],
     n_jobs: int | None = None,
+    compute_dataset_stats: bool = False,
 ) -> dict[str, dict[str, dict[str, float]]]:
     """
     Compute distributional metrics (average Hellinger distance and KL divergence)
@@ -239,16 +272,29 @@ def get_distributional_metrics(
 
     results_all_pred_intervals = {}
     # pred_intervals = [128, 192, 256, 320, 384, 448, 512]
-    # pred_intervals = [128, 256, 512]
-    pred_intervals = [512]
+    pred_intervals = [128, 512]
+    rosenstein_traj_lens = [16, 64]
+    # pred_intervals = [512]
     # pred_intervals = [4096]
 
-    for pred_interval in pred_intervals:
+    for i, pred_interval in enumerate(pred_intervals):
         # Prepare arguments for parallel processing
+        # compute_dataset_stats_flag = i == 0 and compute_dataset_stats
+        compute_dataset_stats_flag = compute_dataset_stats
+        current_rosenstein_traj_len = rosenstein_traj_lens[i]
         worker_args = [
-            (dyst_name, data, pred_interval)
+            (
+                dyst_name,
+                data,
+                pred_interval,
+                compute_dataset_stats_flag,
+                current_rosenstein_traj_len,
+            )
             for dyst_name, data in forecast_dict.items()
         ]
+        print(f"pred_interval: {pred_interval}")
+        print(f"compute_dataset_stats_flag: {compute_dataset_stats_flag}")
+        print(f"rosenstein_traj_len: {current_rosenstein_traj_len}")
         # Use multiprocessing to compute dimensions in parallel
         with Pool(processes=n_jobs) as pool:
             results = list(
@@ -259,8 +305,24 @@ def get_distributional_metrics(
                 )
             )
         results_all_pred_intervals[pred_interval] = results
+        # if i > 0 and compute_dataset_stats:
+        #     # For each dyst_name, update the results dict with gpdim_full_traj and max_lyap_full_traj if present
+        #     for res in results_all_pred_intervals[pred_intervals[i]]:
+        #         dyst_name = res["dyst_name"]
+        #         full_traj = res.get("full_trajectory", {})
+        #         if "gpdim_full_traj" in full_traj:
+        #             res["full_trajectory"]["gpdim_full_traj"] = full_traj[
+        #                 "gpdim_full_traj"
+        #             ]
+        #         if "max_lyap_full_traj" in full_traj:
+        #             res["full_trajectory"]["max_lyap_full_traj"] = full_traj[
+        #                 "max_lyap_full_traj"
+        #             ]
+        #     max_lyap_full_traj = results_all_pred_intervals[pred_intervals[i]][
+        #         "full_trajectory"
+        #     ]["max_lyap_full_traj"]
+        #     results_all_pred_intervals[pred_interval]
 
-    print(results_all_pred_intervals)
     return results_all_pred_intervals
 
 
@@ -431,7 +493,9 @@ def main(cfg):
             forecast_dict = pickle.load(f)
 
     distributional_metrics = get_distributional_metrics(
-        forecast_dict, n_jobs=cfg.eval.num_processes
+        forecast_dict,
+        n_jobs=cfg.eval.num_processes,
+        compute_dataset_stats=cfg.eval.compute_dataset_stats,
     )
 
     metrics_fname_suffix = (
