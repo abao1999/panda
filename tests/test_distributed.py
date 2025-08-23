@@ -35,6 +35,12 @@ def test_distributed():
         export NCCL_IB_DISABLE=1
         export NCCL_SOCKET_IFNAME=lo
         export NCCL_NET_GDR_LEVEL=0
+
+    Usage:
+        CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun \
+        --nproc-per-node 4 \
+        --master-port 29500 \
+        tests/test_distributed.py
     """
     print("=== Environment Variables ===")
     print(f"RANK: {os.environ.get('RANK', 'NOT SET')}")
