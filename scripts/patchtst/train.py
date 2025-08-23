@@ -79,6 +79,12 @@ class CustomTrainer(Trainer):
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
+    # CRITICAL FIX: Set device for distributed training
+    if "LOCAL_RANK" in os.environ:
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        log_on_main(f"Set CUDA device to {local_rank}", logger)
+
     # backend = os.environ.get("DIST_BACKEND", "gloo")  # default to gloo
     # dist.init_process_group(backend=backend)
     # set up wandb project and logging if enabled
@@ -313,9 +319,18 @@ def main(cfg):
         )
 
     log_on_main("Training", logger)
-    trainer.train(
-        resume_from_checkpoint=cfg.train.resume_from_checkpoint
-    )  # Transformers trainer will save model checkpoints automatically
+
+    # CRITICAL FIX: Add error handling for distributed training
+    try:
+        trainer.train(resume_from_checkpoint=cfg.train.resume_from_checkpoint)
+    except Exception as e:
+        log_on_main(f"Training failed with error: {e}", logger)
+        if "LOCAL_RANK" in os.environ:
+            log_on_main(f"Local rank: {os.environ['LOCAL_RANK']}", logger)
+        import traceback
+
+        traceback.print_exc()
+        raise
 
     # save final model checkpoint and training info locally
     if is_main_process():
