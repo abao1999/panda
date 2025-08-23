@@ -44,7 +44,7 @@ else
 fi
 
 
-num_samples_chronos=1
+num_samples_chronos=5
 if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
     model_dir="chronos_nondeterministic"
 else

@@ -1,3 +1,13 @@
+"""
+This script computes inheritance metrics for a given model and dataset.
+
+It computes the following metrics:
+- KLD between base and skew systems
+- KLD between skew systems
+
+See our notebook in notebooks/inheritance.ipynb for more details on use case
+"""
+
 import json
 import multiprocessing
 import os

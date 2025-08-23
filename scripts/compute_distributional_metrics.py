@@ -1,3 +1,17 @@
+"""
+This script computes distributional metrics for a given model and dataset.
+
+It computes the following metrics:
+- Average Hellinger distance
+- Generalized (correlation) dimension
+- Maximum Lyapunov exponents
+- KL divergence
+
+See our notebook in notebooks/plot_distributional_metrics.ipynb and notebooks/plot_lyapunov_comparison.ipynb for more details on use case
+
+TODO: Create a separate script to handle the max Lyapunov exponent computation
+"""
+
 import json
 import logging
 import os
