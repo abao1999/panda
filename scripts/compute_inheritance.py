@@ -5,12 +5,13 @@ It computes the following metrics:
 - KLD between base and skew systems
 - KLD between skew systems
 
-See our notebook in notebooks/inheritance.ipynb for more details on use case
+See our notebook in notebooks/inheritance.ipynb for more details on use case.
 """
 
 import json
 import multiprocessing
 import os
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 from dysts.metrics import estimate_kl_divergence  # type: ignore
@@ -20,25 +21,31 @@ from panda.utils import (
     load_trajectory_from_arrow,
 )
 
-WORK_DIR = os.getenv("WORK", "")
-DATA_DIR = os.path.join(WORK_DIR, "data")
+WORK_DIR: str = os.getenv("WORK", "")
+DATA_DIR: str = os.path.join(WORK_DIR, "data")
 
 
-def sample_kld_pairs(pair_type, filepaths_by_dim, num_pairs, rng):
+def sample_kld_pairs(
+    pair_type: str,
+    filepaths_by_dim: Dict[int, Dict[str, List[str]]],
+    num_pairs: int,
+    rng: np.random.Generator,
+) -> List[Tuple[str, str]]:
     """
     Randomly sample unique trajectory file pairs for KLD computation.
 
     Args:
-        pair_type (str): "intra" (within system) or "inter" (between systems, same dim).
-        filepaths_by_dim (dict): {dim: {system: [filepaths]}}
-        num_pairs (int): Number of pairs to sample.
-        rng (np.random.Generator): Random number generator.
+        pair_type: "intra" (within system) or "inter" (between systems, same dimension).
+        filepaths_by_dim: Mapping from dimension to {system: [filepaths]}.
+        num_pairs: Number of pairs to sample.
+        rng: Numpy random number generator.
 
     Returns:
-        list of (filepath_a, filepath_b) tuples.
+        List of (filepath_a, filepath_b) tuples representing sampled pairs.
+    Raises:
+        ValueError: If not enough unique pairs are available to sample without repeats.
     """
-    # Count total possible pairs without materializing all
-    pair_counts = []
+    pair_counts: List[int] = []
     for dim, sysdict in filepaths_by_dim.items():
         systems = list(sysdict)
         if pair_type == "intra":
@@ -52,13 +59,14 @@ def sample_kld_pairs(pair_type, filepaths_by_dim, num_pairs, rng):
                 for sys_b in systems[i + 1 :]:
                     n_b = len(sysdict[sys_b])
                     pair_counts.append(n_a * n_b)
-    total_pairs = sum(pair_counts)
+    total_pairs: int = sum(pair_counts)
     if total_pairs < num_pairs:
         raise ValueError(
             f"Not enough unique {pair_type}-system same-dimension pairs ({total_pairs}) to sample {num_pairs} pairs without repeats."
         )
-    chosen_idxs = set(rng.choice(total_pairs, num_pairs, replace=False))
-    result, idx_counter = [], 0
+    chosen_idxs: Set[int] = set(rng.choice(total_pairs, num_pairs, replace=False))
+    result: List[Tuple[str, str]] = []
+    idx_counter: int = 0
 
     if pair_type == "intra":
         for sysdict in filepaths_by_dim.values():
@@ -90,32 +98,60 @@ def sample_kld_pairs(pair_type, filepaths_by_dim, num_pairs, rng):
     return result
 
 
-def compute_klds(pairs):
-    klds = []
-    # for file_a, file_b in tqdm(pairs, desc="Computing KLDs"):
+def compute_klds(pairs: Sequence[Tuple[str, str]]) -> List[float]:
+    """
+    Compute Kullback-Leibler divergences for a list of trajectory file pairs.
+
+    Args:
+        pairs: Sequence of (filepath_a, filepath_b) tuples.
+
+    Returns:
+        List of KLD values (float) for each valid pair.
+    """
+    klds: List[float] = []
     for file_a, file_b in pairs:
         coords_a, _ = load_trajectory_from_arrow(file_a)
         coords_b, _ = load_trajectory_from_arrow(file_b)
-        # print(f"Shape of coords_a: {coords_a.shape}, coords_b: {coords_b.shape}")
         if coords_a.shape[0] != coords_b.shape[0]:
             print(
                 f"Skipping pair due to mismatched dimensions: {coords_a.shape[0]} vs {coords_b.shape[0]}"
             )
             continue
         kld = estimate_kl_divergence(coords_a.T, coords_b.T)
-        # print(f"KLD: {kld}")
         klds.append(kld)
     return klds
 
 
-def compute_klds_for_pair(pair):
-    # compute_klds expects a list of pairs, so wrap in a list
+def compute_klds_for_pair(pair: Tuple[str, str]) -> List[float]:
+    """
+    Compute KLD for a single pair of trajectory files.
+
+    Args:
+        pair: Tuple of (filepath_a, filepath_b).
+
+    Returns:
+        List containing a single KLD value, or empty if invalid.
+    """
     return compute_klds([pair]) or []
 
 
-def gather_filepaths_by_dim_and_system(root_dir, system_names, desc=None):
-    """Return {dim: {system: [filepaths]}} for given systems in root_dir."""
-    filepaths = {}
+def gather_filepaths_by_dim_and_system(
+    root_dir: str,
+    system_names: Sequence[str],
+    desc: Optional[str] = None,
+) -> Dict[int, Dict[str, List[str]]]:
+    """
+    Gather trajectory filepaths organized by dimension and system.
+
+    Args:
+        root_dir: Root directory containing system subdirectories.
+        system_names: List of system names (subdirectory names).
+        desc: Optional description for tqdm progress bar.
+
+    Returns:
+        Dictionary mapping dimension -> {system: [filepaths]}.
+    """
+    filepaths: Dict[int, Dict[str, List[str]]] = {}
     iterator = tqdm(system_names, desc=desc) if desc else system_names
     for system in iterator:
         subdir = os.path.join(root_dir, system)
@@ -128,101 +164,50 @@ def gather_filepaths_by_dim_and_system(root_dir, system_names, desc=None):
     return filepaths
 
 
-def parse_driver_response(skew_name):
-    return tuple(skew_name.split("_", 1)) if "_" in skew_name else (skew_name, None)
-
-
-# def sample_skew_vs_base_pairs(skew_filepaths, base_filepaths, which, num_pairs, rng):
-#     """
-#     which: "driver", "response", or "base"
-#     For "driver" or "response", pairs skew system with its driver/response base system.
-#     For "base", pairs skew system with a base system that is neither its driver nor response.
-#     """
-#     pairs = []
-#     for dim, skew_dim_dict in skew_filepaths.items():
-#         base_dim_dict = base_filepaths.get(dim)
-#         if not base_dim_dict:
-#             continue
-#         for skew_name, skew_files in skew_dim_dict.items():
-#             driver, response = parse_driver_response(skew_name)
-#             if which in ("driver", "response"):
-#                 base_name = driver if which == "driver" else response
-#                 if not base_name or base_name not in base_dim_dict:
-#                     continue
-#                 base_files = base_dim_dict[base_name]
-#                 n = min(num_pairs, len(skew_files), len(base_files))
-#                 if n == 0:
-#                     continue
-#                 pairs.extend(
-#                     zip(
-#                         list(
-#                             np.array(skew_files)[
-#                                 rng.choice(len(skew_files), n, replace=False)
-#                             ]
-#                         )
-#                         if len(skew_files) > n
-#                         else skew_files,
-#                         list(
-#                             np.array(base_files)[
-#                                 rng.choice(len(base_files), n, replace=False)
-#                             ]
-#                         )
-#                         if len(base_files) > n
-#                         else base_files,
-#                     )
-#                 )
-#             elif which == "base":
-#                 # Exclude driver and response from base candidates
-#                 exclude = {driver, response}
-#                 base_candidates = [
-#                     name
-#                     for name in base_dim_dict
-#                     if name not in exclude and name is not None
-#                 ]
-#                 if not base_candidates:
-#                     continue
-#                 base_name = rng.choice(base_candidates)
-#                 base_files = base_dim_dict[base_name]
-#                 n = min(num_pairs, len(skew_files), len(base_files))
-#                 if n == 0:
-#                     continue
-#                 pairs.extend(
-#                     zip(
-#                         list(
-#                             np.array(skew_files)[
-#                                 rng.choice(len(skew_files), n, replace=False)
-#                             ]
-#                         )
-#                         if len(skew_files) > n
-#                         else skew_files,
-#                         list(
-#                             np.array(base_files)[
-#                                 rng.choice(len(base_files), n, replace=False)
-#                             ]
-#                         )
-#                         if len(base_files) > n
-#                         else base_files,
-#                     )
-#                 )
-#     if len(pairs) > num_pairs:
-#         idxs = rng.choice(len(pairs), num_pairs, replace=False)
-#         return [pairs[i] for i in idxs]
-#     else:
-#         return pairs
-
-
-def sample_skew_vs_base_pairs(skew_filepaths, base_filepaths, which, num_pairs, rng):
+def parse_driver_response(
+    skew_name: str,
+) -> Tuple[str, Optional[str]]:
     """
-    which: "driver", "response", "base", "skew_intra", or "skew_inter"
-    For "driver" or "response", pairs skew system with its driver/response base system.
-    For "base", pairs skew system with a base system that is neither its driver nor response.
-    For "skew_intra", pairs skew system with another skew system (intra-system).
-    For "skew_inter", pairs skew system with another skew system (inter-system).
+    Parse a skew system name into driver and response components.
+
+    Args:
+        skew_name: Name of the skew system, e.g., "driver_response" or "driver".
+
+    Returns:
+        Tuple of (driver, response) where response may be None (in the case where the system is not a skew system)
     """
-    pairs = []
+    return tuple(skew_name.split("_", 1)) if "_" in skew_name else (skew_name, None)  # type: ignore
+
+
+def sample_skew_vs_base_pairs(
+    skew_filepaths: Dict[int, Dict[str, List[str]]],
+    base_filepaths: Dict[int, Dict[str, List[str]]],
+    which: str,
+    num_pairs: int,
+    rng: np.random.Generator,
+) -> List[Tuple[str, str]]:
+    """
+    Sample pairs of trajectory files for KLD computation between skew and base systems.
+
+    Args:
+        skew_filepaths: Mapping from dimension to {skew_system: [filepaths]}.
+        base_filepaths: Mapping from dimension to {base_system: [filepaths]}.
+        which: One of "driver", "response", "base", "skew_intra", or "skew_inter".
+            - "driver" or "response": pairs skew system with its driver/response base system.
+            - "base": pairs skew system with a base system that is neither its driver nor response.
+            - "skew_intra": pairs skew systems with same parents (intra-system).
+            - "skew_inter": pairs skew systems with different parents (inter-system).
+            - TODO: pair skew systems with skew systems that share the same driver XOR response
+        num_pairs: Number of pairs to sample.
+        rng: Numpy random number generator.
+
+    Returns:
+        List of (skew_filepath, base_filepath) tuples.
+    """
+    pairs: List[Tuple[str, str]] = []
     if which == "skew_intra":
         # Only intra-system pairs (within the same skew system)
-        intra_pairs = []
+        intra_pairs: List[Tuple[str, str]] = []
         for dim, skew_dim_dict in skew_filepaths.items():
             for skew_name, skew_files in skew_dim_dict.items():
                 n = len(skew_files)
@@ -239,7 +224,7 @@ def sample_skew_vs_base_pairs(skew_filepaths, base_filepaths, which, num_pairs, 
         return intra_pairs
     elif which == "skew_inter":
         # Only inter-system pairs (between different skew systems, same dimension)
-        inter_pairs = []
+        inter_pairs: List[Tuple[str, str]] = []
         for dim, skew_dim_dict in skew_filepaths.items():
             skew_systems = list(skew_dim_dict)
             if len(skew_systems) > 1:
@@ -311,8 +296,19 @@ def sample_skew_vs_base_pairs(skew_filepaths, base_filepaths, which, num_pairs, 
             return pairs
 
 
-def base(num_base_systems: int, num_pairs: int, save_fname_suffix: str | None = None):
-    # Sample base systems and gather filepaths by dimension and system
+def base(
+    num_base_systems: int,
+    num_pairs: int,
+    save_fname_suffix: Optional[str] = None,
+) -> None:
+    """
+    Compute and save KLD statistics for intra- and inter-system pairs among base systems.
+
+    Args:
+        num_base_systems: Number of base systems to sample.
+        num_pairs: Number of pairs to sample for each pair type.
+        save_fname_suffix: Optional suffix for output filename.
+    """
     base_dir = os.path.join(DATA_DIR, base_split_name)
     base_system_names = [
         d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))
@@ -327,7 +323,7 @@ def base(num_base_systems: int, num_pairs: int, save_fname_suffix: str | None = 
         ]
     )
 
-    base_filepaths = {}
+    base_filepaths: Dict[int, Dict[str, List[str]]] = {}
     for system in sampled_base_systems:
         subdir = os.path.join(base_dir, system)
         for file in sorted(os.listdir(subdir)):
@@ -337,7 +333,7 @@ def base(num_base_systems: int, num_pairs: int, save_fname_suffix: str | None = 
             base_filepaths.setdefault(dim, {}).setdefault(system, []).append(filepath)
 
     # Compute KLDs for intra- and inter-system pairs, store results in a dict
-    base_kld_results = {}
+    base_kld_results: Dict[str, Dict[str, Any]] = {}
 
     for pair_type in ["intra", "inter"]:
         pairs = sample_kld_pairs(pair_type, base_filepaths, num_pairs, rng)
@@ -355,8 +351,8 @@ def base(num_base_systems: int, num_pairs: int, save_fname_suffix: str | None = 
         if klds:
             base_kld_results[pair_type] = {
                 "pairs": pairs,
-                "mean": np.mean(klds),
-                "std": np.std(klds),
+                "mean": float(np.mean(klds)),
+                "std": float(np.std(klds)),
                 "values": klds,
             }
         else:
@@ -366,12 +362,6 @@ def base(num_base_systems: int, num_pairs: int, save_fname_suffix: str | None = 
                 "std": None,
                 "values": [],
             }
-
-    # Optionally print concise summary
-    for pair_type, res in base_kld_results.items():
-        print(
-            f"{pair_type.capitalize()}-system base pairs: mean KLD={res['mean']}, std={res['std']}, n={len(res['values'])}"
-        )
 
     # Print concise summary for base system KLDs
     for pair_type, res in base_kld_results.items():
@@ -387,8 +377,7 @@ def base(num_base_systems: int, num_pairs: int, save_fname_suffix: str | None = 
     )
     os.makedirs(os.path.dirname(output_json_path), exist_ok=True)
 
-    # Convert any numpy types to native Python types for JSON serialization
-    def convert_np(obj):
+    def convert_np(obj: Any) -> Any:
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         if isinstance(obj, (np.floating)):
@@ -402,7 +391,19 @@ def base(num_base_systems: int, num_pairs: int, save_fname_suffix: str | None = 
     print(f"Dumped base KLD results to {output_json_path}")
 
 
-def skew(num_skew_systems: int, num_pairs: int, save_fname_suffix: str | None = None):
+def skew(
+    num_skew_systems: int,
+    num_pairs: int,
+    save_fname_suffix: Optional[str] = None,
+) -> None:
+    """
+    Compute and save KLD statistics for intra- and inter-system pairs among skew systems.
+
+    Args:
+        num_skew_systems: Number of skew systems to sample.
+        num_pairs: Number of pairs to sample for each pair type.
+        save_fname_suffix: Optional suffix for output filename.
+    """
     skew_dir = os.path.join(DATA_DIR, skew_split_name)
 
     skew_system_names = [
@@ -425,10 +426,9 @@ def skew(num_skew_systems: int, num_pairs: int, save_fname_suffix: str | None = 
     skew_filepaths = gather_filepaths_by_dim_and_system(
         skew_dir, sampled_skew_systems, desc="Skew systems"
     )
-    skew_kld_results = {}
+    skew_kld_results: Dict[str, Dict[str, Any]] = {}
 
     for which in ["skew_intra", "skew_inter"]:
-        # for which in ["driver", "response", "base", "skew"]:
         if which == "skew_intra":
             print("Computing KLDs for skew-skew intra-system pairs...")
         elif which == "skew_inter":
@@ -455,8 +455,8 @@ def skew(num_skew_systems: int, num_pairs: int, save_fname_suffix: str | None = 
             klds = []
         skew_kld_results[which] = {
             "pairs": pairs,
-            "mean": np.mean(klds) if klds else None,
-            "std": np.std(klds) if klds else None,
+            "mean": float(np.mean(klds)) if klds else None,
+            "std": float(np.std(klds)) if klds else None,
             "values": klds,
         }
 
@@ -474,8 +474,7 @@ def skew(num_skew_systems: int, num_pairs: int, save_fname_suffix: str | None = 
         )
         os.makedirs(os.path.dirname(output_json_path), exist_ok=True)
 
-        # Convert any numpy types to native Python types for JSON serialization
-        def convert_np(obj):
+        def convert_np(obj: Any) -> Any:
             if isinstance(obj, np.ndarray):
                 return obj.tolist()
             if isinstance(obj, (np.floating)):
@@ -490,10 +489,9 @@ def skew(num_skew_systems: int, num_pairs: int, save_fname_suffix: str | None = 
 
 
 if __name__ == "__main__":
-    skew_split_name = "improved/final_skew40/train"
-    base_split_name = "improved/final_base40/train"
+    skew_split_name: str = "improved/final_skew40/train"
+    base_split_name: str = "improved/final_base40/train"
 
-    rseed = 987
-    rng = np.random.default_rng(rseed)
-    # base(num_base_systems=111, num_pairs=4000, save_fname_suffix=f"_rseed{rseed}")
+    rseed: int = 987
+    rng: np.random.Generator = np.random.default_rng(rseed)
     skew(num_skew_systems=1109, num_pairs=10000, save_fname_suffix=f"_rseed{rseed}")

@@ -49,20 +49,22 @@ def _compute_metrics_worker(
     args,
 ) -> tuple[str, dict[str, dict[str, float | None]]]:
     """
-    Compute distributional metrics for a single system, including Hellinger distance,
-    KL divergence, generalized (correlation) dimension, and maximum Lyapunov exponents
+    Compute distributional metrics for a single system, including Hellinger distance between power spectra,
+    KL divergence, correlation dimension, and maximum Lyapunov exponents
     for various combinations of context, predictions, ground truth, and full trajectory.
 
     Args:
-        args: Tuple of (system_name, data_dict, pred_interval), where:
+        args: Tuple containing:
             - system_name (str): Name of the dynamical system.
-            - data_dict (dict): Dictionary containing the following keys:
-                - "context": np.ndarray, shape (d, T) or (T, d)
-                - "predictions": np.ndarray, shape (d, T) or (T, d)
-                - "groundtruth": np.ndarray, shape (d, T) or (T, d)
-                - "full_trajectory": np.ndarray, shape (d, T) or (T, d)
+            - data (dict): Dictionary with the following keys:
+                - "context": np.ndarray, shape (d, T)
+                - "predictions": np.ndarray, shape (d, T)
+                - "groundtruth": np.ndarray, shape (d, T)
+                - "full_trajectory": np.ndarray, shape (d, T_full)
                 - "elapsed_time": float
             - pred_interval (int): Number of prediction steps to consider.
+            - compute_dataset_stats_flag (bool): Whether to compute dataset-level stats (e.g., for full trajectory).
+            - rosenstein_traj_len (int): Trajectory length parameter for Lyapunov exponent estimation.
 
     Returns:
         tuple:
@@ -78,6 +80,8 @@ def _compute_metrics_worker(
                     "avg_hellinger_distance": float | None,
                     "gpdim_gt_with_context": float | None,
                     "gpdim_pred_with_context": float | None,
+                    "max_lyap_gt_with_context": float | None,
+                    "max_lyap_pred_with_context": float | None,
                 },
                 "full_trajectory": {
                     "avg_hellinger_distance": float | None,
@@ -90,17 +94,21 @@ def _compute_metrics_worker(
 
     Notes:
         - All metrics may be None if computation fails for a given system.
-        - The function expects all arrays to be transposed to (T, d) shape.
-        - The "prediction_horizon" section compares predictions and ground truth
-          over the forecast interval.
-        - The "pred_with_context" section compares the concatenation of context
-          and predictions to the concatenation of context and ground truth.
-        - The "full_trajectory" section compares predictions to the full system trajectory.
+        - All arrays are transposed to (T, d) shape before metric computation.
+        - "prediction_horizon" compares predictions and ground truth over the forecast interval.
+        - "pred_with_context" compares (context + predictions) to (context + ground truth).
+        - "full_trajectory" compares predictions to the full system trajectory.
         - "prediction_time" is the elapsed time for generating predictions.
+        - Lyapunov exponents are computed using the Rosenstein method with the provided trajectory length.
+        - If compute_dataset_stats_flag is False, full-trajectory metrics for GP dimension and Lyapunov exponent are not computed (set to None).
     """
-    dyst_name, data, pred_interval, compute_dataset_stats_flag, rosenstein_traj_len = (
-        args
-    )
+    (
+        system_name,
+        data,
+        pred_interval,
+        compute_dataset_stats_flag,
+        rosenstein_traj_len,
+    ) = args
 
     # Ensure (T, d) shape for all arrays
     context, predictions, groundtruth, full_trajectory = (
@@ -109,6 +117,7 @@ def _compute_metrics_worker(
         data["groundtruth"].T,
         data["full_trajectory"].T,
     )
+
     predictions = predictions[:pred_interval]
     groundtruth = groundtruth[:pred_interval]
 
@@ -116,18 +125,18 @@ def _compute_metrics_worker(
 
     if predictions.shape != groundtruth.shape:
         raise ValueError(
-            f"Shape mismatch: predictions {predictions.shape} vs groundtruth {groundtruth.shape} for {dyst_name}"
+            f"Shape mismatch: predictions {predictions.shape} vs groundtruth {groundtruth.shape} for {system_name}"
         )
     if context.shape[0] != 512:
         raise ValueError(
-            f"Context length mismatch: {context.shape[0]} != 512 for {dyst_name}"
+            f"Context length mismatch: {context.shape[0]} != 512 for {system_name}"
         )
     if (
         context.shape[1] != predictions.shape[1]
         or predictions.shape[1] != groundtruth.shape[1]
     ):
         raise ValueError(
-            f"Dimension mismatch: {context.shape[1]}, {predictions.shape[1]}, {groundtruth.shape[1]} for {dyst_name}"
+            f"Dimension mismatch: {context.shape[1]}, {predictions.shape[1]}, {groundtruth.shape[1]} for {system_name}"
         )
 
     def safe_call(fn, *args, **kwargs):
@@ -135,7 +144,7 @@ def _compute_metrics_worker(
             return fn(*args, **kwargs)
         except Exception as e:
             print(e)
-            logger.warning(f"Error computing {fn.__name__} for {dyst_name}")
+            logger.warning(f"Error computing {fn.__name__} for {system_name}")
             return None
 
     # (Context + GT) vs (Context + Preds)
@@ -167,19 +176,24 @@ def _compute_metrics_worker(
     else:
         gpdim_full_traj = None
 
-    dyst_name_without_pp = dyst_name.split("_pp")[0]
-    is_skew = "_" in dyst_name_without_pp
+    # Get the average integration dt for purpose of Lyapunov exponent computation
+    full_traj_len = full_trajectory.shape[0]
+    num_periods = 40  # TODO: we are keeping this fixed for now, but make adaptive in the future for mixed period datasets
+
+    system_name_without_pp = system_name.split("_pp")[0]
+    is_skew = "_" in system_name_without_pp
     if is_skew:
-        driver_name, response_name = dyst_name_without_pp.split("_")
+        driver_name, response_name = system_name_without_pp.split("_")
         driver_system = getattr(flows, driver_name)()
         response_system = getattr(flows, response_name)()
         period = max(driver_system.period, response_system.period)
+        # NOTE: we can use either, but it seems that for average dt, using the period is better
         # dt = min(driver_system.dt, response_system.dt)
-        avg_dt = (40 * period) / 4096
+        avg_dt = (num_periods * period) / full_traj_len
 
     else:
-        sys = getattr(flows, dyst_name_without_pp)()
-        avg_dt = (40 * sys.period) / 4096
+        sys = getattr(flows, system_name_without_pp)()
+        avg_dt = (num_periods * sys.period) / full_traj_len
 
     max_lyap_gt = safe_call(
         max_lyapunov_exponent_rosenstein_multivariate,
@@ -217,7 +231,7 @@ def _compute_metrics_worker(
     else:
         max_lyap_full_traj = None
 
-    return dyst_name, {
+    return system_name, {
         "prediction_horizon": {
             "avg_hellinger_distance": avg_hellinger_pred_horizon,
             "gpdim_gt": gpdim_gt,
@@ -258,10 +272,10 @@ def get_distributional_metrics(
     Args:
         forecast_dict (dict[str, dict[str, np.ndarray]]):
             A dictionary mapping system names to dictionaries containing the following keys:
-                - "context": np.ndarray, context data of shape (d, T) or (T, d)
-                - "predictions": np.ndarray, model predictions of shape (d, T) or (T, d)
-                - "groundtruth": np.ndarray, ground truth data of shape (d, T) or (T, d)
-                - "full_trajectory": np.ndarray, full trajectory data of shape (d, T) or (T, d)
+                - "context": np.ndarray, context data of shape (d, T)
+                - "predictions": np.ndarray, model predictions of shape (d, T)
+                - "groundtruth": np.ndarray, ground truth data of shape (d, T)
+                - "full_trajectory": np.ndarray, full trajectory data of shape (d, T)
             Additional keys may be present but are ignored by this function.
         n_jobs (int | None, optional):
             Number of worker processes to use for parallel computation.
@@ -280,31 +294,33 @@ def get_distributional_metrics(
     """
     # Validate all data upfront
     required_keys = ["context", "predictions", "groundtruth", "full_trajectory"]
-    for dyst_name, data in forecast_dict.items():
+    for system_name, data in forecast_dict.items():
         if not all(key in data for key in required_keys):
-            raise ValueError(f"Missing required data for {dyst_name}: {required_keys}")
+            raise ValueError(
+                f"Missing required data for {system_name}: {required_keys}"
+            )
 
     results_all_pred_intervals = {}
     # pred_intervals = [128, 192, 256, 320, 384, 448, 512]
-    pred_intervals = [128, 512]
-    rosenstein_traj_lens = [16, 64]
-    # pred_intervals = [512]
-    # pred_intervals = [4096]
+    pred_intervals = [128, 256, 512]
+    # NOTE: prediction length 128 is too short to use traj_len=64 for the rosenstein estimator implementation we consider.
+    rosenstein_traj_lens = [16, 64, 64]
+
+    compute_dataset_stats_flag = compute_dataset_stats
 
     for i, pred_interval in enumerate(pred_intervals):
+        # if i == 0 and compute_dataset_stats
         # Prepare arguments for parallel processing
-        # compute_dataset_stats_flag = i == 0 and compute_dataset_stats
-        compute_dataset_stats_flag = compute_dataset_stats
         current_rosenstein_traj_len = rosenstein_traj_lens[i]
         worker_args = [
             (
-                dyst_name,
+                system_name,
                 data,
                 pred_interval,
                 compute_dataset_stats_flag,
                 current_rosenstein_traj_len,
             )
-            for dyst_name, data in forecast_dict.items()
+            for system_name, data in forecast_dict.items()
         ]
         print(f"pred_interval: {pred_interval}")
         print(f"compute_dataset_stats_flag: {compute_dataset_stats_flag}")
@@ -319,23 +335,6 @@ def get_distributional_metrics(
                 )
             )
         results_all_pred_intervals[pred_interval] = results
-        # if i > 0 and compute_dataset_stats:
-        #     # For each dyst_name, update the results dict with gpdim_full_traj and max_lyap_full_traj if present
-        #     for res in results_all_pred_intervals[pred_intervals[i]]:
-        #         dyst_name = res["dyst_name"]
-        #         full_traj = res.get("full_trajectory", {})
-        #         if "gpdim_full_traj" in full_traj:
-        #             res["full_trajectory"]["gpdim_full_traj"] = full_traj[
-        #                 "gpdim_full_traj"
-        #             ]
-        #         if "max_lyap_full_traj" in full_traj:
-        #             res["full_trajectory"]["max_lyap_full_traj"] = full_traj[
-        #                 "max_lyap_full_traj"
-        #             ]
-        #     max_lyap_full_traj = results_all_pred_intervals[pred_intervals[i]][
-        #         "full_trajectory"
-        #     ]["max_lyap_full_traj"]
-        #     results_all_pred_intervals[pred_interval]
 
     return results_all_pred_intervals
 
