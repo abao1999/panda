@@ -1,3 +1,4 @@
+#!/bin/bash
 # read debug flag
 DEBUG=0
 while getopts "d" flag; do
@@ -8,15 +9,12 @@ done
 shift $((OPTIND - 1))
 
 train_data_dirs=(
-#     $WORK/data/improved/base_mixedp_ic16/train
-#     $WORK/data/improved/skew_mixedp_ic16/train
     $WORK/data/final_skew40/train
     $WORK/data/final_skew40/train_z5_z10
     $WORK/data/final_base40/train
     $WORK/data/final_base40/train_z5_z10
 )
 train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -c .)
-echo "train_data_dirs: $train_data_dirs_json"
 
 ulimit -n 999999
 if [ "$DEBUG" -eq 0 ]; then
@@ -25,8 +23,8 @@ if [ "$DEBUG" -eq 0 ]; then
         CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
         CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
 
-        CUDA_DEVICES=0,1,2,3
-        # CUDA_DEVICES=4,5,6,7
+        # CUDA_DEVICES=0,1,2,3
+        CUDA_DEVICES=4,5,6,7
         NUM_DEVICES=$(echo "$CUDA_DEVICES" | tr -d ' ' | tr ',' '\n' | wc -l)
         echo "CUDA_DEVICES: $CUDA_DEVICES"
         echo "NUM_DEVICES: $NUM_DEVICES"
@@ -34,28 +32,19 @@ if [ "$DEBUG" -eq 0 ]; then
         echo "CORES_PER_GROUP: $CORES_PER_GROUP"
         echo "TOTAL_CORES: $TOTAL_CORES"
 
-        # CRITICAL FIX: Set NCCL environment variables for AMD GPU compatibility
-        export NCCL_P2P_DISABLE=1
-        export NCCL_IB_DISABLE=1
-        export NCCL_SOCKET_IFNAME=lo
-        export NCCL_NET_GDR_LEVEL=0
-
-        # # ADDITIONAL FIX: Improve distributed communication stability
-        # export TORCH_DISTRIBUTED_DEBUG=DETAIL
-        # export TORCH_SHOW_CPP_STACKTRACES=1
-        export TORCH_DISTRIBUTED_DEBUG=OFF
-        export TORCH_SHOW_CPP_STACKTRACES=0
-
-        export NCCL_DEBUG=WARN  # Only show warnings, not info
+        if python -c "import torch; print(torch.version.hip)" 2>/dev/null | grep -vq "None"; then
+            # ROCm detected - disable P2P
+            export NCCL_P2P_DISABLE=1
+        fi
+        export PYTHONWARNINGS="ignore::FutureWarning"
 
         CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
                 --nproc-per-node $NUM_DEVICES \
-                --master-port 29500 \
+                --standalone \
                 scripts/patchtst/train.py \
                 shuffle_buffer_length=100_000 \
                 train_data_dirs=$train_data_dirs_json \
                 patchtst.mode=predict \
-                patchtst.use_dynamics_embedding=true \
                 patchtst.use_dynamics_embedding=false \
                 patchtst.poly_degrees=2 \
                 patchtst.num_poly_feats=120 \
@@ -105,4 +94,3 @@ else  # this mode allows for breakpoints inside model code
                 train.output_dir=$WORK/checkpoints/ \
                 "$@"
 fi
-

@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "hydra-core",
-    "numpy",
+    "numpy<2",
     "torch>=2.2.0",
     "transformers",
     "accelerate",
