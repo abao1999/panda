@@ -6,13 +6,13 @@ from pathlib import Path
 import hydra
 import torch
 import transformers
+import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
 from transformers.trainer import Trainer
 from transformers.training_args import TrainingArguments
 
-import wandb
 from panda.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
@@ -79,14 +79,8 @@ class CustomTrainer(Trainer):
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
-    # CRITICAL FIX: Set device for distributed training
-    if "LOCAL_RANK" in os.environ:
-        local_rank = int(os.environ["LOCAL_RANK"])
-        torch.cuda.set_device(local_rank)
-        log_on_main(f"Set CUDA device to {local_rank}", logger)
+    torch.set_float32_matmul_precision("high")
 
-    # backend = os.environ.get("DIST_BACKEND", "gloo")  # default to gloo
-    # dist.init_process_group(backend=backend)
     # set up wandb project and logging if enabled
     if cfg.wandb.log and is_main_process():
         run = wandb.init(
@@ -116,7 +110,6 @@ def main(cfg):
         )
         use_tf32 = False
 
-    # set random seed
     log_on_main(f"Using SEED: {cfg.train.seed}", logger)
     transformers.set_seed(seed=cfg.train.seed)
 
@@ -128,6 +121,7 @@ def main(cfg):
         train_data_paths.extend(
             filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
         )
+
     # create a new output directory to save results
     output_dir = get_next_path(
         cfg.run_name if cfg.run_name else "run",
@@ -154,7 +148,6 @@ def main(cfg):
         for data_path in train_data_paths
     ]
 
-    # set probabilities (how we weight draws from each data file)
     if isinstance(cfg.probability, float):
         probability = cfg.probability
     elif cfg.probability is None:
@@ -289,8 +282,6 @@ def main(cfg):
     # This speeds up training and allows checkpoint saving by transformers Trainer
     ensure_contiguous(model)
 
-    # model = DistributedDataParallel(model, device_ids=None)
-
     scheduler_args = dict(cfg.scheduler)
     if scheduler_args.pop("enabled", False):
         log_on_main(
@@ -320,17 +311,7 @@ def main(cfg):
 
     log_on_main("Training", logger)
 
-    # CRITICAL FIX: Add error handling for distributed training
-    try:
-        trainer.train(resume_from_checkpoint=cfg.train.resume_from_checkpoint)
-    except Exception as e:
-        log_on_main(f"Training failed with error: {e}", logger)
-        if "LOCAL_RANK" in os.environ:
-            log_on_main(f"Local rank: {os.environ['LOCAL_RANK']}", logger)
-        import traceback
-
-        traceback.print_exc()
-        raise
+    trainer.train(resume_from_checkpoint=cfg.train.resume_from_checkpoint)
 
     # save final model checkpoint and training info locally
     if is_main_process():

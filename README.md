@@ -26,23 +26,26 @@ Despite having been trained only on low-dimensional ordinary differential equati
 We demonstrate a neural scaling law for differential equations, underscoring the potential of pretrained models for probing abstract mathematical domains like nonlinear dynamics."
 
 ## Setup
-Install the most up-to-date version of [dysts](https://github.com/williamgilpin/dysts) for dynamical systems with `pip install --no-deps git+https://github.com/williamgilpin/dysts`. Consider installing `numba` for faster numerical integration.
-
 **We have merged much of our dataset generation functionality into the dysts repo. See dysts for more up-to-date development.**
 
 *NOTE:* When cloning this repo, to avoid downloading the large commit history (~ 60 MB) we recommend a *shallow clone*:
 
 `git clone --depth=1 git@github.com:abao1999/panda.git`
 
-To setup, run:
+We recommend using [uv](https://docs.astral.sh/uv/getting-started/installation/) to install the dependencies. After cloning, create a virtual environment:
 ```
-$ pip install -e .
+uv venv --python 3.13
+source .venv/bin/activate
+```
+And simply run `uv sync` to install dependencies. To install torch for GPU run:
+```
+uv sync --extra-index-url https://download.pytorch.org/whl/rocm6.3
+```
+To install torch with ROCm, or for CUDA:
+```
+uv sync --extra-index-url https://download.pytorch.org/whl/cuda12.9
 ```
 
-If training on AMD GPUs, install with the ROCm extras:
-```
-$ pip install -e .[rocm] --extra-index-url https://download.pytorch.org/whl/rocm5.7
-```
 
 ## Dataset Generation
 Our dataset consists of parameter perturbations of base and skew systems. Each trajectory is a numerically integrated system of coupled ODEs that we filter according to the methodology outlined in our preprint. To run the data generation, see our scripts for [making trajectories from saved params](https://github.com/abao1999/panda/blob/main/scripts/make_dataset_from_params.py), [parameter perturbations of skew systems](https://github.com/abao1999/panda/blob/main/scripts/make_skew_systems.py), and [parameter perturbations of base systems](https://github.com/abao1999/panda/blob/main/scripts/make_dyst_data.py). For ease of use we have also provided an example data generation [bash script](https://github.com/abao1999/panda/blob/main/scripts/bash_scripts/run_data_generation.sh) that calls these scripts.

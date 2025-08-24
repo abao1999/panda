@@ -15,17 +15,17 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "hydra-core", 
-    "numpy<2", 
-    "torch", 
-    "transformers", 
-    "accelerate", 
-    "dysts", 
-    "gluonts[arrow]", 
-    "scipy", 
-    "scikit-learn", 
-    "tqdm", 
-    "wandb", 
+    "hydra-core",
+    "numpy<2",
+    "torch>=2.2.0",
+    "transformers",
+    "accelerate",
+    "dysts[numba] @ git+https://github.com/williamgilpin/dysts",
+    "gluonts[arrow]",
+    "scipy",
+    "scikit-learn",
+    "tqdm",
+    "wandb",
     "matplotlib",
     "statsmodels",
     "orjson",
@@ -33,13 +33,8 @@ dependencies = [
     "seaborn"
 ]
 
-# Optional dependencies
-[project.optional-dependencies]
-numba = ["numba"]
-chronos = ["datasets"] # huggingface datasets
-rocm = ["torch==2.2.2"]
-profile = ["memory_profiler", "psutil"]
-
 # Package data
-[tool.setuptools]
-packages = ["panda", "panda.utils"] 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dysts*"]
+exclude = ["tests*", "scripts*", "notebooks*"]
