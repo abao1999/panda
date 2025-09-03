@@ -36,5 +36,5 @@ dependencies = [
 # Package data
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["dysts*"]
+include = ["panda*"]
 exclude = ["tests*", "scripts*", "notebooks*"]

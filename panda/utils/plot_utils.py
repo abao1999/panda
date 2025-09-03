@@ -617,7 +617,7 @@ def make_box_plot(
 
     # Add a dagger to the run name if it has NaNs
     if not ignore_nans:
-        runs = [f"{run}$^\dagger$" if has_nans[run] else run for run in runs]
+        runs = [rf"{run}$^\dagger$" if has_nans[run] else run for run in runs]
 
     if isinstance(colors, dict):
         legend_handles = [
@@ -839,7 +839,7 @@ def plot_all_metrics_by_prediction_length(
                     markersize=6,
                     label=model_name
                     if not nan_models.get(model_name, False)
-                    else f"{model_name}$^\dagger$",
+                    else rf"{model_name}$^\dagger$",
                     linestyle="-." if nan_models.get(model_name, False) else "-",
                     markerfacecolor="none"
                     if nan_models.get(model_name, False)
