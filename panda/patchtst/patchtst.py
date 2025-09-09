@@ -277,7 +277,6 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
             use_rope=True,
             max_wavelength=config.max_wavelength,
             rope_percent=config.rope_percent,
-            linear_attn=config.temporal_linattn,
         )
         if self.channel_attention:
             self.channel_self_attn = PatchTSTRopeAttention(
@@ -287,7 +286,6 @@ class PatchTSTEncoderLayerWithRope(nn.Module):
                 use_rope=config.channel_rope,  # channels are not positional
                 max_wavelength=config.max_wavelength,
                 rope_percent=config.rope_percent,
-                linear_attn=config.channel_linattn,
             )
 
         # Add & Norm of the sublayer 1
