@@ -201,8 +201,10 @@ def evaluate_forecasting_model(
     if parallel_sample_reduction_fn is None:
         parallel_sample_reduction_fn = lambda x: x
 
-    for system in tqdm(systems, desc="Forecasting..."):
+    pbar = tqdm(systems, desc="Forecasting...")
+    for system in pbar:
         dataset = systems[system]
+        num_sys = len(dataset.datasets)
         predictions, labels, contexts, future_values = [], [], [], []
 
         # length of the dataset iterator is equal to len(dataset.datasets)*num_eval_windows
@@ -289,6 +291,8 @@ def evaluate_forecasting_model(
             system_contexts[system] = contexts.transpose(0, 2, 1)
         if return_labels:
             system_labels[system] = labels.transpose(0, 2, 1)
+
+        pbar.set_postfix({"system": system, "num systems": num_sys})
 
     return (
         system_predictions if return_predictions else None,

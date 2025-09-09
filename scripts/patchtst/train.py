@@ -269,6 +269,7 @@ def main(cfg):
         gradient_accumulation_steps=cfg.train.gradient_accumulation_steps,
         dataloader_num_workers=dataloader_num_workers,
         dataloader_prefetch_factor=cfg.train.dataloader_prefetch_factor,
+        dataloader_persistent_workers=cfg.train.dataloader_persistent_workers,
         tf32=use_tf32,  # remove this if not using Ampere GPUs (e.g., A100)
         torch_compile=cfg.train.torch_compile,
         ddp_find_unused_parameters=cfg.train.ddp_find_unused_parameters,
