@@ -100,7 +100,7 @@ for run_name in ${run_names[@]}; do
         eval.metrics_save_dir=$WORK/eval_results/patchtst/$run_name/test_zeroshot \
         eval.metrics_fname=metrics \
         eval.overwrite=true \
-        eval.device=cuda:2 \
+        eval.device=cuda:0 \
         eval.save_labels=false \
         eval.save_forecasts=false
 done

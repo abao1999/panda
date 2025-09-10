@@ -19,18 +19,19 @@ train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -
 ulimit -n 999999
 if [ "$DEBUG" -eq 0 ]; then
 
-    TOTAL_CORES=$(nproc)
-    CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
-    CORES_PER_JOB=$(( $CORES_PER_GROUP / 4 ))
-
     CUDA_DEVICES=0,1,2,3
     #CUDA_DEVICES=4,5,6,7
+    echo "CUDA Devices: $CUDA_DEVICES"
+
     NUM_DEVICES=$(echo "$CUDA_DEVICES" | tr -d ' ' | tr ',' '\n' | wc -l)
-    echo "CUDA_DEVICES: $CUDA_DEVICES"
-    echo "NUM_DEVICES: $NUM_DEVICES"
-    echo "CORES_PER_JOB: $CORES_PER_JOB"
-    echo "CORES_PER_GROUP: $CORES_PER_GROUP"
-    echo "TOTAL_CORES: $TOTAL_CORES"
+    TOTAL_PROCESSES=$(nproc)
+    PER_GROUP=$(( $TOTAL_PROCESSES / 2 ))
+    PER_RANK=$(( $PER_GROUP / $NUM_DEVICES ))
+
+    export OMP_NUM_THREADS=$PER_RANK
+    export MKL_NUM_THREADS=$PER_RANK
+    export OPENBLAS_NUM_THREADS=$PER_RANK
+    export NUMEXPR_NUM_THREADS=$PER_RANK
 
     if python -c "import torch; print(torch.version.hip)" 2>/dev/null | grep -vq "None"; then
         # ROCm detected - disable P2P
@@ -38,7 +39,7 @@ if [ "$DEBUG" -eq 0 ]; then
     fi
     export PYTHONWARNINGS="ignore::FutureWarning"
 
-    CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
+    CUDA_VISIBLE_DEVICES=$CUDA_DEVICES torchrun \
             --nproc-per-node $NUM_DEVICES \
             --standalone \
             scripts/patchtst/train.py \
@@ -67,7 +68,7 @@ if [ "$DEBUG" -eq 0 ]; then
             patchtst.pooling_type=mean \
             patchtst.loss=mse \
             patchtst.distribution_output=null \
-            train.per_device_train_batch_size=768 \
+            train.per_device_train_batch_size=512 \
             train.max_steps=100_000 \
             train.save_steps=20_000 \
             train.log_steps=1_000 \
