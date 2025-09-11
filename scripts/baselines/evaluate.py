@@ -10,7 +10,8 @@ from panda.baselines.baselines import (
     FourierBaseline,
     MeanBaseline,
 )
-from panda.baselines.evaluation import evaluate_forecasting_model
+from panda.baselines.baselines import BaselinePipeline
+from panda.patchtst.evaluation import evaluate_multivariate_forecasting_model
 from panda.dataset import MultivariateTimeSeriesDataset
 from panda.utils import (
     get_dim_from_dataset,
@@ -89,8 +90,10 @@ def main(cfg):
         "fourier": FourierBaseline(prediction_length=cfg.eval.prediction_length),
     }[cfg.eval.baselines.baseline_model]
 
-    predictions, contexts, labels, metrics = evaluate_forecasting_model(
-        baseline_model,
+    pipeline = BaselinePipeline(baseline_model, device="cpu")
+
+    predictions, contexts, labels, metrics = evaluate_multivariate_forecasting_model(
+        pipeline,
         test_datasets,
         batch_size=cfg.eval.batch_size,
         prediction_length=cfg.eval.prediction_length,

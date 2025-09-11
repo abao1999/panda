@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+import torch
 from panda.utils import safe_standardize
 from statsmodels.tsa.arima.model import ARIMA
 
@@ -174,3 +175,37 @@ class FourierARIMABaseline:
         return forecasts.reshape(
             batch_size, num_features, self.prediction_length
         ).transpose(0, 2, 1)
+
+
+class BaselinePipeline:
+    """Adapter to use numpy baseline models with the multivariate evaluator.
+
+    Exposes a predict method compatible with PatchTST pipelines:
+    input torch Tensor (B, T, C) → output torch Tensor (S=1, B, L, C).
+    """
+
+    def __init__(self, model_fn, device: str = "cpu"):
+        self.model_fn = model_fn
+        self.device = device
+        self.mode = "predict"
+
+    @torch.no_grad()
+    def predict(self, past_batch: torch.Tensor, prediction_length: int, **kwargs) -> torch.Tensor:
+        """Generate forecasts for a multivariate batch using a numpy baseline.
+
+        Args:
+            past_batch: Torch tensor of shape (batch_size, context_length, num_channels).
+            prediction_length: Forecast horizon length. The underlying baseline should
+                be initialized/configured to produce this horizon.
+            **kwargs: Ignored. Accepted for compatibility with other pipelines.
+
+        Returns:
+            Torch tensor of shape (1, batch_size, prediction_length, num_channels),
+            where the leading dimension corresponds to num_parallel_samples.
+        """
+        # Accept (B, T, C) torch tensor and return (1, B, L, C) torch tensor
+        past_np = past_batch.detach().cpu().numpy()
+        preds_np = self.model_fn(past_np)
+        if preds_np.ndim != 3:
+            raise ValueError("Baseline model_fn must return (B, L, C) numpy array")
+        return torch.from_numpy(preds_np).unsqueeze(0)

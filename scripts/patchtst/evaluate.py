@@ -9,9 +9,9 @@ import torch
 import transformers
 
 from panda.dataset import MultivariateTimeSeriesDataset
-from panda.patchtst.evaluation import (
-    evaluate_forecasting_model,
-    evaluate_mlm_model,
+from panda.evaluation import (
+    evaluate_multivariate_forecasting_model,
+    evaluate_multivariate_mlm_model,
 )
 from panda.patchtst.pipeline import PatchTSTPipeline
 from panda.utils import (
@@ -159,7 +159,7 @@ def main(cfg):
             "median": lambda x: np.median(x, axis=0),
         }.get(cfg.eval.parallel_sample_reduction, lambda x: x)
 
-        predictions, contexts, labels, metrics = evaluate_forecasting_model(
+        predictions, contexts, labels, metrics = evaluate_multivariate_forecasting_model(
             pipeline,
             test_datasets,
             batch_size=cfg.eval.batch_size,
@@ -205,7 +205,7 @@ def main(cfg):
 
     elif cfg.eval.mode == "pretrain":
         completions, processed_past_values, timestep_masks, metrics = (
-            evaluate_mlm_model(
+            evaluate_multivariate_mlm_model(
                 pipeline,
                 test_datasets,
                 metric_names=cfg.eval.metric_names,

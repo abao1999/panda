@@ -10,7 +10,7 @@ import transformers
 from gluonts.transform import LastValueImputation
 
 from panda.dataset import UnivariateTimeSeriesDataset
-from panda.chronos.evaluation import evaluate_chronos_forecast
+from panda.evaluation import evaluate_univariate_forecasting_model
 from panda.chronos.pipeline import ChronosPipeline
 from panda.utils import (
     get_dim_from_dataset,
@@ -152,7 +152,7 @@ def main(cfg):
         "num_samples": 1 if cfg.eval.chronos.deterministic else cfg.eval.num_samples,
     }
 
-    predictions, contexts, labels, metrics = evaluate_chronos_forecast(
+    predictions, contexts, labels, metrics = evaluate_univariate_forecasting_model(
         pipeline,
         test_datasets,
         batch_size=cfg.eval.batch_size,
