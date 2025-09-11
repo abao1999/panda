@@ -36,7 +36,7 @@ if [ "$DEBUG" -eq 0 ]; then
         export NUMEXPR_NUM_THREADS=$PER_RANK
 
         if python -c "import torch; print(torch.version.hip)" 2>/dev/null | grep -vq "None"; then
-                # ROCm detected - disable P2P
+                echo "ROCm detected - disabling P2P for distributed training"
                 export NCCL_P2P_DISABLE=1
         fi
         export PYTHONWARNINGS="ignore"
@@ -72,7 +72,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 train.per_device_train_batch_size=100 \
                 train.warmup_ratio=0.05 \
                 train.torch_compile=true \
-                train.weight_decay=0.0 \
+                train.weight_decay=1e-4 \
                 train.output_dir=$WORK/checkpoints/ \
                 "$@"
 else  # this mode allows for breakpoints inside model code
