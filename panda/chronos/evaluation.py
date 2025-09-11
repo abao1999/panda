@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.itertools import batcher
-from panda.chronos.dataset import ChronosDataset
+from panda.chronos.dataset import UnivariateTimeSeriesDataset
 from panda.chronos.pipeline import ChronosPipeline
 from panda.utils import safe_standardize
 from tqdm.auto import tqdm
@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 
 def evaluate_chronos_forecast(
     pipeline: ChronosPipeline,
-    systems: dict[str, ChronosDataset],
+    systems: dict[str, UnivariateTimeSeriesDataset],
     batch_size: int,
     prediction_length: int,
     system_dims: dict[str, int],
@@ -36,7 +36,7 @@ def evaluate_chronos_forecast(
 
     Args:
         pipeline: The Chronos Pipeline for evaluation.
-        systems: A dictionary mapping system names to their respective ChronosDataset.
+        systems: A dictionary mapping system names to their respective UnivariateTimeSeriesDataset.
         batch_size: The batch size to use for evaluation.
         metric_names: Optional list of metric names to compute.
         parallel_sample_reduction: How to reduce the parallel samples over dim 0,

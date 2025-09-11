@@ -5,16 +5,15 @@ import numpy as np
 import torch
 from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.itertools import batcher
-from panda.patchtst.dataset import TimeSeriesDataset
+from panda.patchtst.dataset import MultivariateTimeSeriesDataset
 from panda.patchtst.pipeline import PatchTSTPipeline
 from panda.utils import safe_standardize
 from tqdm import tqdm
 
 
-# TODO: test this and compute metrics for mlms, distributional metrics
 def evaluate_mlm_model(
     pipeline: PatchTSTPipeline,
-    systems: dict[str, TimeSeriesDataset],
+    systems: dict[str, MultivariateTimeSeriesDataset],
     batch_size: int,
     metric_names: list[str] | None = None,
     undo_normalization: bool = False,
@@ -141,12 +140,11 @@ def evaluate_mlm_model(
 
 def evaluate_forecasting_model(
     pipeline: PatchTSTPipeline,
-    systems: dict[str, TimeSeriesDataset],
+    systems: dict[str, MultivariateTimeSeriesDataset],
     batch_size: int,
     prediction_length: int,
     metric_names: list[str] | None = None,
     parallel_sample_reduction_fn: Callable | None = None,
-    channel_sampler: Callable | None = None,
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
@@ -164,13 +162,12 @@ def evaluate_forecasting_model(
 
     Args:
         model: The PatchTST model to evaluate.
-        systems: A dictionary mapping system names to their respective TimeSeriesDataset.
+        systems: A dictionary mapping system names to their respective MultivariateTimeSeriesDataset.
         batch_size: The batch size to use for evaluation.
         prediction_length: The length of the predictions to make.
         limit_prediction_length: Whether to limit the prediction length to the prediction length.
         metric_names: Optional list of metric names to compute.
         parallel_sample_reduction_fn: How to reduce the parallel samples over dim 0
-        channel_sampler: callable which subsamples channels from context via the model.predict method
         return_predictions: Whether to return the predictions.
         return_contexts: Whether to return the contexts.
         return_labels: Whether to return the future values.
@@ -220,8 +217,6 @@ def evaluate_forecasting_model(
             past_batch = torch.stack(past_values, dim=0).to(pipeline.device)
 
             # shape: (num_parallel_samples, batch size, prediction_length, num_channels)
-            # shit changes when using a channel sampler. notably, the batch dim, but it doesnt
-            # matter if one just needs to aggregate over that to get metrics
             preds = (
                 pipeline.predict(
                     past_batch, prediction_length=prediction_length, **prediction_kwargs
@@ -238,16 +233,6 @@ def evaluate_forecasting_model(
             # Truncate predictions to match future_batch length if needed
             if preds.shape[2] > future_batch.shape[1]:
                 preds = preds[..., : future_batch.shape[1], :]
-
-            # if channel sampler is used, the preds batch size and num_channels changes
-            # reflect the changes in the other tensors as well
-            if channel_sampler is not None:
-                future_batch = channel_sampler(
-                    torch.from_numpy(future_batch), resample_inds=False
-                ).numpy()
-                context = channel_sampler(
-                    torch.from_numpy(context), resample_inds=False
-                ).numpy()
 
             # standardize using stats from the past_batch
             if redo_normalization:

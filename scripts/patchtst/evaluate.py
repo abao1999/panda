@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import transformers
 
-from panda.patchtst.dataset import TimeSeriesDataset
+from panda.patchtst.dataset import MultivariateTimeSeriesDataset
 from panda.patchtst.evaluation import (
     evaluate_forecasting_model,
     evaluate_mlm_model,
@@ -120,7 +120,7 @@ def main(cfg):
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     test_datasets = {
-        system_name: TimeSeriesDataset(
+        system_name: MultivariateTimeSeriesDataset(
             datasets=test_data_dict[system_name],
             probabilities=[1.0 / len(test_data_dict[system_name])]
             * len(test_data_dict[system_name]),

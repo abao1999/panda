@@ -145,7 +145,7 @@ class RestarableIteratorWrapper:
 
 
 @dataclass
-class ChronosDataset(IterableDataset, ShuffleMixin):
+class UnivariateTimeSeriesDataset(IterableDataset, ShuffleMixin):
     """
     Dataset wrapper, using a ``ChronosTokenizer`` to turn data from a time series
     into a HuggingFace-compatible set of ``input_ids``, ``attention_mask`` and

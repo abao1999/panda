@@ -22,7 +22,7 @@ from panda.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from panda.patchtst.dataset import TimeSeriesDataset
+from panda.patchtst.dataset import MultivariateTimeSeriesDataset
 from panda.patchtst.patchtst import (
     PatchTSTForPrediction,
     PatchTSTForPretraining,
@@ -211,7 +211,7 @@ def main(cfg):
         RandomDimSelectionTransform(num_dims=cfg.fixed_dim),
     ]
 
-    shuffled_train_dataset = TimeSeriesDataset(
+    shuffled_train_dataset = MultivariateTimeSeriesDataset(
         datasets=train_datasets,
         probabilities=probability,
         context_length=cfg.patchtst.context_length,

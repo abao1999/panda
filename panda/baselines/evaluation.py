@@ -4,14 +4,14 @@ from typing import Callable
 import numpy as np
 from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.itertools import batcher
-from panda.patchtst.dataset import TimeSeriesDataset
+from panda.patchtst.dataset import MultivariateTimeSeriesDataset
 from panda.utils import safe_standardize
 from tqdm import tqdm
 
 
 def evaluate_forecasting_model(
     model: Callable,
-    systems: dict[str, TimeSeriesDataset],
+    systems: dict[str, MultivariateTimeSeriesDataset],
     batch_size: int,
     prediction_length: int,
     metric_names: list[str] | None = None,
@@ -31,7 +31,7 @@ def evaluate_forecasting_model(
 
     Args:
         model: The baseline model to evaluate.
-        systems: A dictionary mapping system names to their respective TimeSeriesDataset.
+        systems: A dictionary mapping system names to their respective MultivariateTimeSeriesDataset.
         batch_size: The batch size to use for evaluation.
         prediction_length: The length of the predictions to make.
         metric_names: Optional list of metric names to compute.

@@ -21,7 +21,7 @@ from panda.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from panda.chronos.dataset import ChronosDataset
+from panda.chronos.dataset import UnivariateTimeSeriesDataset
 from panda.chronos.model import ChronosConfig
 from panda.utils import (
     ensure_contiguous,
@@ -206,7 +206,7 @@ def main(cfg):
 
     transforms: list = [StandardizeTransform()]
 
-    shuffled_train_dataset = ChronosDataset(
+    shuffled_train_dataset = UnivariateTimeSeriesDataset(
         datasets=train_datasets,
         probabilities=probability,
         tokenizer=tokenizer,

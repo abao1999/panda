@@ -51,7 +51,7 @@ class PseudoShuffledIterableDataset(IterableDataset):
 
 
 @dataclass
-class TimeSeriesDataset(IterableDataset):
+class MultivariateTimeSeriesDataset(IterableDataset):
     datasets: list
     probabilities: list[float]
     context_length: int = 512

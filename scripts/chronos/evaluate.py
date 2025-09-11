@@ -9,7 +9,7 @@ import torch
 import transformers
 from gluonts.transform import LastValueImputation
 
-from panda.chronos.dataset import ChronosDataset
+from panda.chronos.dataset import UnivariateTimeSeriesDataset
 from panda.chronos.evaluation import evaluate_chronos_forecast
 from panda.chronos.pipeline import ChronosPipeline
 from panda.utils import (
@@ -99,7 +99,7 @@ def main(cfg):
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     test_datasets = {
-        system_name: ChronosDataset(
+        system_name: UnivariateTimeSeriesDataset(
             datasets=test_data_dict[system_name],
             probabilities=[1.0 / len(test_data_dict[system_name])]
             * len(test_data_dict[system_name]),
