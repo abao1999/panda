@@ -13,7 +13,7 @@ train:
   dataloader_prefetch_factor: 4
   dataloader_persistent_workers: false
 
-  tf32: false # NOTE: tf32 requires Ampere or a newer GPU arch, cuda>=11 and torch>=1.7
+  tf32: true
   torch_compile: true
 
   # optimizer
