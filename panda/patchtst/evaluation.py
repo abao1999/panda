@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.itertools import batcher
-from panda.patchtst.dataset import MultivariateTimeSeriesDataset
+from panda.dataset import MultivariateTimeSeriesDataset
 from panda.patchtst.pipeline import PatchTSTPipeline
 from panda.utils import safe_standardize
 from tqdm import tqdm

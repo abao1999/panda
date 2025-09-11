@@ -21,7 +21,7 @@ from panda.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from panda.chronos.dataset import UnivariateTimeSeriesDataset
+from panda.dataset import UnivariateTimeSeriesDataset
 from panda.chronos.model import ChronosConfig
 from panda.utils import (
     ensure_contiguous,

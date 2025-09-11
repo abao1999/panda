@@ -11,7 +11,7 @@ from panda.baselines.baselines import (
     MeanBaseline,
 )
 from panda.baselines.evaluation import evaluate_forecasting_model
-from panda.patchtst.dataset import MultivariateTimeSeriesDataset
+from panda.dataset import MultivariateTimeSeriesDataset
 from panda.utils import (
     get_dim_from_dataset,
     get_eval_data_dict,

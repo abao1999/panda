@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import transformers
 
-from panda.patchtst.dataset import MultivariateTimeSeriesDataset
+from panda.dataset import MultivariateTimeSeriesDataset
 from panda.patchtst.evaluation import (
     evaluate_forecasting_model,
     evaluate_mlm_model,

@@ -22,7 +22,7 @@ from panda.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from panda.patchtst.dataset import MultivariateTimeSeriesDataset
+from panda.dataset import MultivariateTimeSeriesDataset
 from panda.patchtst.patchtst import (
     PatchTSTForPrediction,
     PatchTSTForPretraining,

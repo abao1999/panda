@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.itertools import batcher
-from panda.chronos.dataset import UnivariateTimeSeriesDataset
+from panda.dataset import UnivariateTimeSeriesDataset
 from panda.chronos.pipeline import ChronosPipeline
 from panda.utils import safe_standardize
 from tqdm.auto import tqdm

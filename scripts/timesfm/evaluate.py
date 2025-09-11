@@ -8,7 +8,7 @@ import torch
 import transformers
 from gluonts.transform import LastValueImputation
 
-from panda.chronos.dataset import UnivariateTimeSeriesDataset
+from panda.dataset import UnivariateTimeSeriesDataset
 from panda.chronos.evaluation import evaluate_chronos_forecast
 from panda.utils import (
     get_dim_from_dataset,
