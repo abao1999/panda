@@ -37,7 +37,7 @@ if [ "$DEBUG" -eq 0 ]; then
         # ROCm detected - disable P2P
         export NCCL_P2P_DISABLE=1
     fi
-    export PYTHONWARNINGS="ignore::FutureWarning"
+    export PYTHONWARNINGS="ignore"
 
     CUDA_VISIBLE_DEVICES=$CUDA_DEVICES torchrun \
             --nproc-per-node $NUM_DEVICES \

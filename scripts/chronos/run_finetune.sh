@@ -21,17 +21,29 @@ echo "train_data_dirs: $train_data_dirs_json"
 ulimit -n 99999
 if [ "$DEBUG" -eq 0 ]; then
 
-        TOTAL_CORES=$(nproc)
-        CORES_PER_GROUP=$(( $TOTAL_CORES / 2 ))
-        CORES_PER_JOB=$(( $CORES_PER_GROUP / 6 ))
+        CUDA_DEVICES=0,1,2,3
+        #CUDA_DEVICES=4,5,6,7
+        echo "CUDA Devices: $CUDA_DEVICES"
 
-        # CUDA_DEVICES=0,1,2,3
-        CUDA_DEVICES=2,3,4,5,6,7
         NUM_DEVICES=$(echo "$CUDA_DEVICES" | tr -d ' ' | tr ',' '\n' | wc -l)
+        TOTAL_PROCESSES=$(nproc)
+        PER_GROUP=$(( $TOTAL_PROCESSES / 2 ))
+        PER_RANK=$(( $PER_GROUP / $NUM_DEVICES ))
 
-        CUDA_VISIBLE_DEVICES=$CUDA_DEVICES OMP_NUM_THREADS=$CORES_PER_JOB torchrun \
+        export OMP_NUM_THREADS=$PER_RANK
+        export MKL_NUM_THREADS=$PER_RANK
+        export OPENBLAS_NUM_THREADS=$PER_RANK
+        export NUMEXPR_NUM_THREADS=$PER_RANK
+
+        if python -c "import torch; print(torch.version.hip)" 2>/dev/null | grep -vq "None"; then
+                # ROCm detected - disable P2P
+                export NCCL_P2P_DISABLE=1
+        fi
+        export PYTHONWARNINGS="ignore"
+
+        CUDA_VISIBLE_DEVICES=$CUDA_DEVICES torchrun \
                 --nproc-per-node $NUM_DEVICES \
-                --master-port 29504 \
+                --standalone \
                 scripts/chronos/train.py \
                 shuffle_buffer_length=100_000 \
                 train_data_dirs=$train_data_dirs_json \
