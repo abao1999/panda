@@ -7,10 +7,10 @@ Shared samplers and shuffle utilities are defined here.
 """
 
 import itertools
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import partial
 from typing import Callable, Generator, Iterator
-from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
@@ -24,9 +24,9 @@ from gluonts.transform import (
     MissingValueImputation,
     ValidationSplitSampler,
 )
-from panda.chronos.model import ChronosTokenizer
 from torch.utils.data import IterableDataset, get_worker_info
 
+from panda.chronos.model import ChronosTokenizer
 
 # used for prediction length in test mode when window style is single
 # if you're predicting for more timepoints than this at a time...what are you doing??
@@ -123,27 +123,25 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
 
     @property
     @abstractmethod
-    def rng(self) -> np.random.Generator:
-        ...
+    def rng(self) -> np.random.Generator: ...
 
     @abstractmethod
-    def _preprocessed_datasets(self) -> list:
-        ...
+    def _preprocessed_datasets(self) -> list: ...
 
     @abstractmethod
-    def _format_train(self, entry: dict) -> dict:
-        ...
+    def _format_train(self, entry: dict) -> dict: ...
 
     @abstractmethod
-    def _format_eval(self, entry: dict) -> dict:
-        ...
+    def _format_eval(self, entry: dict) -> dict: ...
 
     def _create_instance_splitter(self, mode: str):
         assert mode in ["train", "test", "validation"]
         assert self.window_style in ["sampled", "rolling", "single"]
 
         window_sampler = {
-            "sampled": partial(NumInstanceSampler, N=self.num_test_instances, rng=self.rng),
+            "sampled": partial(
+                NumInstanceSampler, N=self.num_test_instances, rng=self.rng
+            ),
             "rolling": partial(RegularWindowedSampler, stride=self.window_stride),
             "single": SingleContextSampler,
         }[self.window_style]
@@ -155,7 +153,9 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
                 min_past=self.context_length,
                 min_future=self.prediction_length,
             ),
-            "test": window_sampler(min_past=self.context_length, min_future=self.prediction_length),
+            "test": window_sampler(
+                min_past=self.context_length, min_future=self.prediction_length
+            ),
             "validation": ValidationSplitSampler(min_future=self.prediction_length),
         }[mode]
 
@@ -198,7 +198,9 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
         elif self.mode == "test":
             iterables = [self.create_test_data(ds) for ds in preprocessed_datasets]
         else:
-            iterables = [self.create_validation_data(ds) for ds in preprocessed_datasets]
+            iterables = [
+                self.create_validation_data(ds) for ds in preprocessed_datasets
+            ]
 
         worker_info = get_worker_info()
         if worker_info is None:
@@ -207,7 +209,9 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
             worker_id = worker_info.id
             num_workers = worker_info.num_workers
             iterables = list(itertools.islice(iterables, worker_id, None, num_workers))
-            probs = list(itertools.islice(self.probabilities, worker_id, None, num_workers))
+            probs = list(
+                itertools.islice(self.probabilities, worker_id, None, num_workers)
+            )
 
         probs = [prob / sum(probs) for prob in probs]
 
@@ -261,6 +265,9 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
     augmentation_probabilities: list[float] | None = None
     augmentation_rate: float = 0.0
     random_seed: int = 1337
+
+    # add a single dim at dim 0
+    singleton: bool = False
 
     def __post_init__(self):
         super().__init__()
@@ -346,8 +353,11 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
         }
 
     def to_hf_format_eval(self, entry: dict) -> dict:
-        past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
-        future_target = torch.tensor(entry["future_target"]).unsqueeze(0)
+        past_target = torch.tensor(entry["past_target"])
+        future_target = torch.tensor(entry["future_target"])
+        if self.singleton:
+            past_target = past_target.unsqueeze(0)
+            future_target = future_target.unsqueeze(0)
         return {
             "past_values": past_target,
             "future_values": future_target,
@@ -440,5 +450,3 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
 
     def _format_eval(self, entry: dict) -> dict:
         return self.to_hf_format(entry)
-
-

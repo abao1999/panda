@@ -14,7 +14,7 @@ test_data_dirs=(
 test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "test_data_dirs: $test_data_dirs_json"
 
-chronos_model_size=base
+chronos_model_size=mini
 run_name=chronos_${chronos_model_size}_zeroshot
 # run_name=chronos_t5_mini_ft-0 # newest chronos sft 300k iterations
 # run_name=chronos_small_ft-4

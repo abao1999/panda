@@ -9,9 +9,9 @@ import torch
 import transformers
 from gluonts.transform import LastValueImputation
 
+from panda.chronos.pipeline import ChronosPipeline
 from panda.dataset import UnivariateTimeSeriesDataset
 from panda.evaluation import evaluate_univariate_forecasting_model
-from panda.chronos.pipeline import ChronosPipeline
 from panda.utils import (
     get_dim_from_dataset,
     get_eval_data_dict,

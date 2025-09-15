@@ -5,16 +5,20 @@ import numpy as np
 import torch
 from dysts.metrics import compute_metrics  # type: ignore
 from gluonts.itertools import batcher
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from panda.chronos.pipeline import ChronosPipeline
 from panda.dataset import (
     MultivariateTimeSeriesDataset,
     UnivariateTimeSeriesDataset,
 )
+from panda.patchtst.pipeline import PatchTSTPipeline
 from panda.utils import safe_standardize
-from tqdm import tqdm
 
 
 def evaluate_univariate_forecasting_model(
-    pipeline: Any,
+    pipeline: ChronosPipeline | Any,
     systems: dict[str, UnivariateTimeSeriesDataset],
     batch_size: int,
     prediction_length: int,
@@ -27,6 +31,7 @@ def evaluate_univariate_forecasting_model(
     return_labels: bool = False,
     redo_normalization: bool = False,
     prediction_kwargs: dict | None = None,
+    num_workers: int = 4,
 ) -> tuple[
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
@@ -47,39 +52,42 @@ def evaluate_univariate_forecasting_model(
     if parallel_sample_reduction_fn is None:
         parallel_sample_reduction_fn = lambda x: x
 
-    for system in tqdm(systems, desc="Forecasting..."):
+    pbar = tqdm(systems, desc="Forecasting...")
+    for system in pbar:
         dataset = systems[system]
         num_sys = len(dataset.datasets)
         dim = system_dims[system]
         predictions, labels, contexts, future_values = [], [], [], []
 
-        for batch in batcher(dataset, batch_size=batch_size):
-            past_values, future_values = zip(
-                *[(data["past_values"], data["future_values"]) for data in batch]
-            )
+        for batch in DataLoader(
+            dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True
+        ):
+            past_values, future_values = batch["past_values"], batch["future_values"]
 
-            past_batch = torch.cat(past_values, dim=0).to(pipeline.model.device).cpu()
-            context = past_batch.numpy()
+            # squeeze singleton dim from UnivariateTimeSeriesDataset if present
+            if past_values.ndim > 2:
+                past_values = past_values.squeeze(1)
 
             predict_args = {
-                "context": past_batch,
+                "context": past_values,
                 "prediction_length": prediction_length,
                 **prediction_kwargs,
             }
             preds = pipeline.predict(**predict_args).transpose(0, 1).cpu().numpy()
             num_samples = preds.shape[0]
 
-            future_batch = torch.cat(future_values, dim=0).cpu().numpy()
+            context = past_values.cpu().numpy()
+            horizon = future_values.cpu().numpy()
 
-            if preds.shape[-1] > future_batch.shape[-1]:
-                preds = preds[..., : future_batch.shape[-1]]
+            if preds.shape[-1] > horizon.shape[-1]:
+                preds = preds[..., : horizon.shape[-1]]
 
             if redo_normalization:
-                future_batch = safe_standardize(future_batch, context=context)
+                horizon = safe_standardize(horizon, context=context)
                 preds = safe_standardize(preds, context=context[None, :, :])
                 context = safe_standardize(context)
 
-            labels.append(future_batch)
+            labels.append(horizon)
             predictions.append(preds)
             contexts.append(context)
 
@@ -120,6 +128,8 @@ def evaluate_univariate_forecasting_model(
         if return_labels:
             system_labels[system] = labels.transpose(0, 2, 1)
 
+        pbar.set_postfix({"system": system, "num systems": num_sys})
+
     return (
         system_predictions if return_predictions else None,
         system_contexts if return_contexts else None,
@@ -129,7 +139,7 @@ def evaluate_univariate_forecasting_model(
 
 
 def evaluate_multivariate_forecasting_model(
-    pipeline: Any,
+    pipeline: PatchTSTPipeline | Any,
     systems: dict[str, MultivariateTimeSeriesDataset],
     batch_size: int,
     prediction_length: int,
@@ -141,6 +151,7 @@ def evaluate_multivariate_forecasting_model(
     redo_normalization: bool = False,
     prediction_kwargs: dict | None = None,
     eval_subintervals: list[tuple[int, int]] | None = None,
+    num_workers: int = 4,
 ) -> tuple[
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
@@ -162,37 +173,36 @@ def evaluate_multivariate_forecasting_model(
     if parallel_sample_reduction_fn is None:
         parallel_sample_reduction_fn = lambda x: x
 
-    for system in tqdm(systems, desc="Forecasting..."):
+    pbar = tqdm(systems, desc="Forecasting...")
+    for system in pbar:
         dataset = systems[system]
         num_sys = len(dataset.datasets)
         predictions, labels, contexts, future_values = [], [], [], []
 
-        for batch in batcher(dataset, batch_size=batch_size):
-            past_values, future_values = zip(
-                *[(data["past_values"], data["future_values"]) for data in batch]
-            )
-            past_batch = torch.stack(past_values, dim=0).to(pipeline.device)
+        for batch in DataLoader(
+            dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True
+        ):
+            past_values, future_values = batch["past_values"], batch["future_values"]
 
-            preds = (
-                pipeline.predict(
-                    past_batch, prediction_length=prediction_length, **prediction_kwargs
-                )
-                .transpose(0, 1)
-                .cpu()
-                .numpy()
-            )
-            context = past_batch.cpu().numpy()
+            predict_args = {
+                "context": past_values,
+                "prediction_length": prediction_length,
+                **prediction_kwargs,
+            }
+            preds = pipeline.predict(**predict_args).transpose(0, 1).cpu().numpy()
 
-            future_batch = torch.stack(future_values, dim=0).cpu().numpy()
-            if preds.shape[2] > future_batch.shape[1]:
-                preds = preds[..., : future_batch.shape[1], :]
+            context = past_values.cpu().numpy()
+            horizon = future_values.cpu().numpy()
+
+            if preds.shape[2] > horizon.shape[1]:
+                preds = preds[..., : horizon.shape[1], :]
 
             if redo_normalization:
                 preds = safe_standardize(preds, context=context[None, :, :], axis=2)
-                future_batch = safe_standardize(future_batch, context=context, axis=1)
+                horizon = safe_standardize(horizon, context=context, axis=1)
                 context = safe_standardize(context, axis=1)
 
-            labels.append(future_batch)
+            labels.append(horizon)
             predictions.append(preds)
             contexts.append(context)
 
@@ -217,6 +227,8 @@ def evaluate_multivariate_forecasting_model(
             system_contexts[system] = contexts.transpose(0, 2, 1)
         if return_labels:
             system_labels[system] = labels.transpose(0, 2, 1)
+
+        pbar.set_postfix({"system": system, "num systems": num_sys})
 
     return (
         system_predictions if return_predictions else None,
@@ -319,7 +331,9 @@ def evaluate_multivariate_mlm_model(
             full_completion = np.concatenate(all_completions, axis=0)
             system_completions[system] = full_completion.transpose(0, 2, 1)
         if return_processed_past_values:
-            full_processed_past_values = np.concatenate(all_processed_past_values, axis=0)
+            full_processed_past_values = np.concatenate(
+                all_processed_past_values, axis=0
+            )
             system_processed_past_values[system] = full_processed_past_values.transpose(
                 0, 2, 1
             )
@@ -333,5 +347,3 @@ def evaluate_multivariate_mlm_model(
         system_timestep_masks if return_masks else None,
         {context_length: system_metrics},
     )
-
-
