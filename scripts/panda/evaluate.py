@@ -59,6 +59,7 @@ def main(cfg):
     )
     model_config = dict(vars(pipeline.model.config))
     train_config = train_config or dict(cfg.train)
+
     # set floating point precision
     use_tf32 = train_config.get("tf32", False)
     log(f"use tf32: {use_tf32}")
@@ -86,11 +87,6 @@ def main(cfg):
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
     log(f"channel_attention: {channel_attention}")
     log(f"use_dynamics_embedding: {use_dynamics_embedding}")
-
-    if channel_attention:
-        # check use of channel rope
-        channel_rope = model_config["channel_rope"]
-        log(f"channel_rope: {channel_rope}")
 
     if use_dynamics_embedding:
         # check dynamics embedding parameters
@@ -159,25 +155,27 @@ def main(cfg):
             "median": lambda x: np.median(x, axis=0),
         }.get(cfg.eval.parallel_sample_reduction, lambda x: x)
 
-        predictions, contexts, labels, metrics = evaluate_multivariate_forecasting_model(
-            pipeline,
-            test_datasets,
-            batch_size=cfg.eval.batch_size,
-            prediction_length=cfg.eval.prediction_length,
-            metric_names=cfg.eval.metric_names,
-            return_predictions=cfg.eval.save_forecasts,
-            return_contexts=cfg.eval.save_contexts,
-            return_labels=cfg.eval.save_labels,
-            parallel_sample_reduction_fn=parallel_sample_reduction_fn,
-            redo_normalization=True,
-            prediction_kwargs=dict(
-                sliding_context=cfg.eval.sliding_context,
-                limit_prediction_length=cfg.eval.limit_prediction_length,
-                verbose=cfg.eval.verbose,
-            ),
-            eval_subintervals=[
-                (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
-            ],
+        predictions, contexts, labels, metrics = (
+            evaluate_multivariate_forecasting_model(
+                pipeline,
+                test_datasets,
+                batch_size=cfg.eval.batch_size,
+                prediction_length=cfg.eval.prediction_length,
+                metric_names=cfg.eval.metric_names,
+                return_predictions=cfg.eval.save_forecasts,
+                return_contexts=cfg.eval.save_contexts,
+                return_labels=cfg.eval.save_labels,
+                parallel_sample_reduction_fn=parallel_sample_reduction_fn,
+                redo_normalization=True,
+                prediction_kwargs=dict(
+                    sliding_context=cfg.eval.sliding_context,
+                    limit_prediction_length=cfg.eval.limit_prediction_length,
+                    verbose=cfg.eval.verbose,
+                ),
+                eval_subintervals=[
+                    (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
+                ],
+            )
         )
         save_eval_results_fn(metrics)
 
