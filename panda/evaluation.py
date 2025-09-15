@@ -31,7 +31,7 @@ def evaluate_univariate_forecasting_model(
     return_labels: bool = False,
     redo_normalization: bool = False,
     prediction_kwargs: dict | None = None,
-    num_workers: int = 4,
+    num_workers: int = 1,
 ) -> tuple[
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
@@ -63,10 +63,6 @@ def evaluate_univariate_forecasting_model(
             dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True
         ):
             past_values, future_values = batch["past_values"], batch["future_values"]
-
-            # squeeze singleton dim from UnivariateTimeSeriesDataset if present
-            if past_values.ndim > 2:
-                past_values = past_values.squeeze(1)
 
             predict_args = {
                 "context": past_values,

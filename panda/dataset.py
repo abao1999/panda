@@ -232,7 +232,7 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
                 yield self._format_eval(entry)
 
 
-class RestarableIteratorWrapper:
+class RestartableIteratorWrapper:
     def __init__(self, generator_func, *args, **kwargs):
         self.generator_func = generator_func
         self.args = args
@@ -266,8 +266,8 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
     augmentation_rate: float = 0.0
     random_seed: int = 1337
 
-    # add a single dim at dim 0
-    singleton: bool = False
+    # add a single dim at a specified dim
+    singleton: int | None = None
 
     def __post_init__(self):
         super().__init__()
@@ -356,8 +356,8 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
         past_target = torch.tensor(entry["past_target"])
         future_target = torch.tensor(entry["future_target"])
         if self.singleton:
-            past_target = past_target.unsqueeze(0)
-            future_target = future_target.unsqueeze(0)
+            past_target = past_target.unsqueeze(self.singleton)
+            future_target = future_target.unsqueeze(self.singleton)
         return {
             "past_values": past_target,
             "future_values": future_target,
@@ -365,7 +365,7 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
 
     def _preprocessed_datasets(self) -> list:
         return [
-            RestarableIteratorWrapper(self.preprocess_iter, dataset, self.mode)
+            RestartableIteratorWrapper(self.preprocess_iter, dataset, self.mode)
             for dataset in self.datasets
         ]
 

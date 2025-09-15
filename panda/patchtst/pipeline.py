@@ -8,6 +8,7 @@ import warnings
 from dataclasses import dataclass
 
 import torch
+
 from panda.patchtst.patchtst import (
     PatchTSTForPrediction,
     PatchTSTForPretraining,
@@ -101,7 +102,7 @@ class PatchTSTPipeline:
 
         # context_tensor: [bs x context_length x num_channels]
         context_tensor = self._prepare_and_validate_context(context=context)
-    
+
         if prediction_length > self.model.config.prediction_length and verbose:
             msg = (
                 f"We recommend keeping prediction length <= {self.model.config.prediction_length}. "
