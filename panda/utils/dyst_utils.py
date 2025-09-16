@@ -2,12 +2,11 @@
 Additional dynamical systems utils to be merged with dysts repo at a future date
 """
 
-from typing import Any, Callable, Optional
+from typing import Any
 
 import dysts.flows as flows  # type: ignore
 import numpy as np
 from dysts.base import DynSys  # type: ignore
-from scipy.optimize import approx_fprime
 from scipy.spatial.distance import pdist
 
 from panda.coupling_maps import RandomAdditiveCouplingMap
@@ -39,9 +38,7 @@ def init_skew_system_from_params(
 
     coupling_map = RandomAdditiveCouplingMap._deserialize(param_dict["coupling_map"])
 
-    sys = SkewProduct(
-        driver=driver, response=response, coupling_map=coupling_map, **kwargs
-    )
+    sys = SkewProduct(driver=driver, response=response, coupling_map=coupling_map, **kwargs)
     sys.ic = np.array(param_dict["ic"])
 
     return sys
@@ -129,9 +126,7 @@ def optimal_delay(
 
     # Find a prominent local minimum
     # 1. smooth the MI curve to reduce noise
-    smoothed_mi = np.convolve(
-        mi_values, np.ones(conv_window_size) / conv_window_size, mode="valid"
-    )
+    smoothed_mi = np.convolve(mi_values, np.ones(conv_window_size) / conv_window_size, mode="valid")
 
     # 2. Calculate the prominence of each minimum
     minima_indices = []
@@ -167,9 +162,7 @@ def optimal_delay(
 ### Utils for Zero-One Test for Chaos ###
 
 
-def compute_translation_variables(
-    phi: np.ndarray, c: float
-) -> tuple[np.ndarray, np.ndarray]:
+def compute_translation_variables(phi: np.ndarray, c: float) -> tuple[np.ndarray, np.ndarray]:
     """
     Parameters:
         phi: 1D array of shape (T,)
@@ -282,9 +275,7 @@ def run_zero_one_sweep(
     assert timeseries.ndim == 1, "timeseries must be 1D"
     c_vals = np.random.uniform(c_min, c_max, n_runs)
     K_vals = []
-    tau_opt = optimal_delay(
-        timeseries, max_delay=50, bins=64, first_k_minima_to_consider=k
-    )
+    tau_opt = optimal_delay(timeseries, max_delay=50, bins=64, first_k_minima_to_consider=k)
 
     timeseries = timeseries[::tau_opt]
     for c_val in c_vals:
@@ -296,9 +287,6 @@ def run_zero_one_sweep(
 
     K_vals = np.array(K_vals)
     return K_vals
-
-
-### Utils for GP Dimension
 
 
 def compute_gp_dimension(
@@ -337,9 +325,7 @@ def compute_gp_dimension(
     C = np.array([np.sum(distances < r) / N_pairs for r in r_vals])
 
     # Compute logarithms (safely to avoid log(0))
-    log_r = np.log10(
-        r_vals
-    )  # r_vals are already guaranteed to be > 0 from r_min = max(r_min, 1e-10)
+    log_r = np.log10(r_vals)  # r_vals are already guaranteed to be > 0 from r_min = max(r_min, 1e-10)
     # Ensure C values are positive before taking log
     C_safe = np.maximum(C, 1e-10)  # Add small epsilon to avoid log(0)
     log_C = np.log10(C_safe)
@@ -356,143 +342,3 @@ def compute_gp_dimension(
     D2 = slope  # The slope corresponds to the correlation dimension D2
 
     return D2
-
-
-def lyap_wolf(
-    f: Callable[[np.ndarray, float], np.ndarray],
-    x0: np.ndarray,
-    dt: float,
-    jac: Callable[[np.ndarray, float], np.ndarray] | None = None,
-    n_steps: int = 100000,
-    k: Optional[int] = None,
-) -> np.ndarray:
-    """
-    Compute the Lyapunov spectrum using the Wolf/Benettin algorithm.
-
-    Parameters
-    ----------
-    f : Callable[[np.ndarray, float], np.ndarray]
-        Function f(x, t) returning dx/dt (array of shape (n,)).
-    jac : Optional[Callable[[np.ndarray, float], np.ndarray]]
-        Function J(x, t) returning the Jacobian matrix (n, n) at state x and time t.
-        If None, a numeric finite-difference approximation is used.
-    x0 : np.ndarray
-        Initial state (array of shape (n,)).
-    dt : float
-        Time step for integration (and orthonormalization).
-    n_steps : int
-        Number of steps to integrate (total time = n_steps * dt).
-    k : Optional[int], default=None
-        Number of exponents to compute (<= n). If None, uses n = dimension.
-
-    Returns
-    -------
-    np.ndarray
-        Array of shape (k,) with estimated Lyapunov exponents (from largest to smallest).
-    """
-    x = np.array(x0, dtype=float)
-    n = x.size
-    if k is None or k > n:
-        k = n
-    # Initialize orthonormal deviation vectors Q (n×k matrix)
-    Q = np.eye(n, k)
-    sum_logs = np.zeros(k)
-    eps = 1e-6  # finite-difference step for Jacobian if needed
-
-    for step in range(n_steps):
-        t = step * dt  # current time
-
-        # Integrate state x forward by dt (Euler step)
-        dx = np.array(f(x, t))
-        x = x + dt * dx
-
-        # Compute Jacobian at new x and current time t
-        if jac is not None:
-            J = jac(x, t)
-        else:
-            # Vectorized numerical Jacobian computation
-            fx = np.array(f(x, t))
-            # Create perturbation matrix: x_eps[i,j] = x[j] + eps * delta_ij
-            x_eps = x.reshape(-1, 1) + eps * np.eye(n)
-            # Compute f(x + eps * e_j) for all j simultaneously
-            fx_eps = np.array([f(x_eps[:, j], t) for j in range(n)]).T
-            # Compute Jacobian: J_ij = (f_i(x + eps*e_j) - f_i(x)) / eps
-            J = (fx_eps - fx.reshape(-1, 1)) / eps
-
-        # Evolve tangent vectors: Q = Q + dt * (J @ Q)
-        Q = Q + dt * (J @ Q)
-
-        # Orthonormalize via QR decomposition
-        Q, R = np.linalg.qr(Q)
-
-        # Accumulate logarithms of the diagonal of R
-        logs = np.log(np.abs(np.diag(R)))
-        sum_logs += logs[:k]
-
-    # Compute exponents: average log-gains over total time
-    lambdas = sum_logs / (n_steps * dt)
-    return lambdas
-
-
-def compute_jac_fd(
-    rhs: Callable[[np.ndarray, float], np.ndarray],
-    y_val: np.ndarray,
-    t_val: float,
-    eps: float = 1e-8,
-) -> np.ndarray:
-    """Calculate numerical jacobian of a function with respect to a reference value"""
-    func = lambda x: np.array(rhs(x, t_val))
-    y_val = np.array(y_val)
-
-    d = len(y_val)
-    all_rows = list()
-    for i in range(d):
-        row_func = lambda yy: func(yy)[i]
-        row = approx_fprime(y_val, row_func, epsilon=eps)
-        all_rows.append(row)
-    jac = np.array(all_rows)
-
-    return jac
-
-
-def test_system_jacobian(
-    sys: DynSys,
-    num_timesteps: int = 4096,
-    num_periods: int = 10,
-    transient: int = 200,
-    n_points_sample: int = 10,
-    eps: float = 1e-8,
-    verbose: bool = False,
-) -> int:
-    """
-    Test the Jacobian of a system by comparing the analytic and finite difference
-    Returns: 0 if failed, 1 if passed, 2 if not analytic Jacobian not implemented
-    """
-    if not sys.has_jacobian():
-        print(f"Jacobian not implemented for {sys.name}")
-        return 2
-
-    ts, traj = sys.make_trajectory(
-        num_timesteps,
-        pts_per_period=num_timesteps // num_periods,
-        return_times=True,
-        atol=1e-10,
-        rtol=1e-9,
-    )
-    assert traj is not None, f"{sys.name} should be integrable"
-    ts, traj = ts[transient:], traj[transient:]
-    # sample n_points_sample points from the trajectory
-    sample_indices = np.random.choice(len(traj), size=n_points_sample, replace=False)
-    traj_sample = traj[sample_indices]
-    ts_sample = ts[sample_indices]
-
-    for y_val, t_val in zip(traj_sample, ts_sample):
-        if verbose:
-            print(f"Testing analytic versus fd jac at t={t_val}, y={y_val}")
-        jac_fd = compute_jac_fd(sys.rhs, y_val, t_val, eps)
-        jac_analytic = sys.jac(y_val, t_val)
-        if not np.allclose(jac_fd, jac_analytic, atol=1e-5):
-            print(f"Jacobian mismatch at t={t_val}, y={y_val}")
-            return 0
-    print(f"Jacobian passed for {sys.name}")
-    return 1

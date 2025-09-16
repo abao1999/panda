@@ -8,7 +8,7 @@ NOTE: this is not currently used, it's a remnant of a previous attempt to add a 
 from dataclasses import dataclass
 from logging import Logger
 from math import cos, exp, pi
-from typing import Callable
+from collections.abc import Callable
 
 from transformers import TrainerCallback, TrainerControl, TrainerState
 

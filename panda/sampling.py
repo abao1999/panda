@@ -5,7 +5,7 @@ NOTE: this functionality has been merged into the dysts repo.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 from dysts.base import BaseDyn  # type: ignore

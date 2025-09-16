@@ -4,7 +4,8 @@ NOTE: this functionality has been merged into the dysts repo.
 """
 
 from dataclasses import dataclass
-from typing import Callable, Literal, Union
+from typing import Literal
+from collections.abc import Callable
 
 import numpy as np
 
@@ -343,8 +344,8 @@ class RandomActivatedCouplingMap(BaseCouplingMap):
         driver_activation_fn_name: Nonlinear activation function to apply to driver.
     """
 
-    driver_scale: Union[float, np.ndarray] = 1.0
-    response_scale: Union[float, np.ndarray] = 1.0
+    driver_scale: float | np.ndarray = 1.0
+    response_scale: float | np.ndarray = 1.0
 
     random_seed: int = 0
     matrix_init_fn_name: Literal["lowrank", "random"] = "random"

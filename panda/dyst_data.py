@@ -8,32 +8,30 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from collections.abc import Callable
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from itertools import starmap
 from multiprocessing import Manager, Pool
-from typing import Callable
 
 import dysts.flows as flows  # type: ignore
 import numpy as np
+import wandb
 from dysts.base import BaseDyn  # type: ignore
 from dysts.sampling import BaseSampler  # type: ignore
 from dysts.systems import make_trajectory_ensemble  # type: ignore
 from tqdm import tqdm
 
-import wandb
 from panda.attractor import AttractorValidator
 from panda.sampling import OnAttractorInitCondSampler
 from panda.skew_system import SkewProduct
-from panda.utils import dict_demote_from_numpy, process_trajs, timeit
+from panda.utils.data_utils import dict_demote_from_numpy, process_trajs, timeit
 
 logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def managed_cache(
-    sampler: OnAttractorInitCondSampler | None, use_multiprocessing: bool
-):
+def managed_cache(sampler: OnAttractorInitCondSampler | None, use_multiprocessing: bool):
     """Context manager to handle shared cache for OnAttractorInitCondSampler."""
     if use_multiprocessing and isinstance(sampler, OnAttractorInitCondSampler):
         with Manager() as manager:
@@ -144,18 +142,12 @@ class DynSysSampler(BaseDynSysSampler):
         self.failed_integrations = defaultdict(list)
         self.rng = np.random.default_rng(self.rseed)
         if self.param_sampler is None:
-            assert self.num_param_perturbations == 0, (
-                "No parameter sampler provided, but num_param_perturbations > 0"
-            )
+            assert self.num_param_perturbations == 0, "No parameter sampler provided, but num_param_perturbations > 0"
         if self.ic_sampler is None:
-            assert self.num_ics == 1, (
-                "No initial condition sampler provided, but num_ics > 1"
-            )
+            assert self.num_ics == 1, "No initial condition sampler provided, but num_ics > 1"
         self.attractor_validator = None
         if self.attractor_tests is None and self.num_param_perturbations > 0:
-            logger.warning(
-                "No attractor tests specified. Parameter perturbations may not result in valid attractors!"
-            )
+            logger.warning("No attractor tests specified. Parameter perturbations may not result in valid attractors!")
         elif self.attractor_tests is not None:
             self.attractor_validator = AttractorValidator(
                 transient_time_frac=self.validator_transient_frac,
@@ -205,9 +197,7 @@ class DynSysSampler(BaseDynSysSampler):
         save the ensembles to disk and save the parameters to a json file.
         """
         sys_names = [sys if isinstance(sys, str) else sys.name for sys in systems]
-        assert len(set(sys_names)) == len(sys_names), (
-            "Cannot have duplicate system names"
-        )
+        assert len(set(sys_names)) == len(sys_names), "Cannot have duplicate system names"
         if save_dir is not None:
             logger.info(
                 f"Making {split} split with {len(systems)} dynamical systems"
@@ -219,9 +209,7 @@ class DynSysSampler(BaseDynSysSampler):
             self.attractor_validator.reset()
             self.failed_integrations.clear()
 
-        save_dyst_dir, failed_dyst_dir = self._prepare_save_directories(
-            save_dir, split, split_failures=split_failures
-        )
+        save_dyst_dir, failed_dyst_dir = self._prepare_save_directories(save_dir, split, split_failures=split_failures)
 
         num_periods = self.rng.choice(self.num_periods)
         logger.info(f"Generating default ensemble with {num_periods} periods")
@@ -236,16 +224,8 @@ class DynSysSampler(BaseDynSysSampler):
             silent_errors=silent_errors,
             **kwargs,
         )
-        failed_integrations = [
-            key
-            for key, value in default_ensemble.items()
-            if value is None or np.isnan(value).any()
-        ]
-        default_ensemble = {
-            key: value
-            for key, value in default_ensemble.items()
-            if key not in failed_integrations
-        }
+        failed_integrations = [key for key, value in default_ensemble.items() if value is None or np.isnan(value).any()]
+        default_ensemble = {key: value for key, value in default_ensemble.items() if key not in failed_integrations}
 
         num_total_samples = self.num_param_perturbations * self.num_ics
 
@@ -343,16 +323,10 @@ class DynSysSampler(BaseDynSysSampler):
 
         args = (
             (system, ic_transform, param_transform, ic_rng, param_rng)
-            for system, ic_rng, param_rng in zip(
-                systems, ic_rng_stream, param_rng_stream
-            )
+            for system, ic_rng, param_rng in zip(systems, ic_rng_stream, param_rng_stream)
         )
 
-        with (
-            Pool(**self.multiprocess_kwargs)
-            if use_multiprocessing
-            else nullcontext() as pool
-        ):
+        with Pool(**self.multiprocess_kwargs) if use_multiprocessing else nullcontext() as pool:
             map_fn = pool.starmap if use_multiprocessing else starmap  # type: ignore
             transformed_systems = list(map_fn(self._transform_params_and_ics, args))
 
@@ -391,13 +365,9 @@ class DynSysSampler(BaseDynSysSampler):
                     for sys, pp_sys in zip(systems, param_perturbed_systems)
                     if pp_sys is None
                 ]
-                param_perturbed_systems = [
-                    sys for sys in param_perturbed_systems if sys is not None
-                ]
+                param_perturbed_systems = [sys for sys in param_perturbed_systems if sys is not None]
 
-                if self.ic_sampler is not None and isinstance(
-                    self.ic_sampler, OnAttractorInitCondSampler
-                ):
+                if self.ic_sampler is not None and isinstance(self.ic_sampler, OnAttractorInitCondSampler):
                     self.ic_sampler.clear_cache()
 
                 ic_rng_stream = param_rng.spawn(self.num_ics)
@@ -418,12 +388,8 @@ class DynSysSampler(BaseDynSysSampler):
                         for sys, ic_sys in zip(systems, ic_perturbed_systems)
                         if ic_sys is None
                     ] + excluded_pperts  # systems that failed ic and param transforms
-                    perturbed_systems = [
-                        sys for sys in ic_perturbed_systems if sys is not None
-                    ]
-                    assert len(perturbed_systems) + len(excluded_systems) == len(
-                        systems
-                    )
+                    perturbed_systems = [sys for sys in ic_perturbed_systems if sys is not None]
+                    assert len(perturbed_systems) + len(excluded_systems) == len(systems)
 
                     num_periods = self.rng.choice(self.num_periods)
                     logger.info(
@@ -442,15 +408,9 @@ class DynSysSampler(BaseDynSysSampler):
 
                     # filter out failed integrations
                     excluded_systems.extend(
-                        key
-                        for key, value in ensemble.items()
-                        if value is None or np.isnan(value).any()
+                        key for key, value in ensemble.items() if value is None or np.isnan(value).any()
                     )
-                    ensemble = {
-                        key: value
-                        for key, value in ensemble.items()
-                        if key not in excluded_systems
-                    }
+                    ensemble = {key: value for key, value in ensemble.items() if key not in excluded_systems}
 
                     for callback in postprocessing_callbacks or []:
                         callback(
@@ -529,27 +489,21 @@ class DynSysSampler(BaseDynSysSampler):
         # stack and transpose to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
         ensemble_sys_names = [sys for ens in ensemble_list for sys in ens.keys()]
         ensemble = {
-            sys: np.stack(
-                [ens[sys] for ens in ensemble_list if sys in ens], axis=0
-            ).transpose(0, 2, 1)
+            sys: np.stack([ens[sys] for ens in ensemble_list if sys in ens], axis=0).transpose(0, 2, 1)
             for sys in ensemble_sys_names
         }
 
         current_param_pert_summary = {}
         if perturbed_systems is not None:
-            dims = {
-                sys.name: getattr(sys, "driver_dim", 0) for sys in perturbed_systems
-            }
+            dims = {sys.name: getattr(sys, "driver_dim", 0) for sys in perturbed_systems}
             ensemble = {sys: traj[:, dims[sys] :, :] for sys, traj in ensemble.items()}
 
         current_param_pert_summary["num_systems_integrated"] = len(ensemble)
 
         if self.attractor_validator is not None:
             logger.info(f"Applying attractor validator to {len(ensemble)} systems")
-            ensemble, failed_ensemble = (
-                self.attractor_validator.multiprocessed_filter_ensemble(
-                    ensemble, first_sample_idx=sample_idx
-                )
+            ensemble, failed_ensemble = self.attractor_validator.multiprocessed_filter_ensemble(
+                ensemble, first_sample_idx=sample_idx
             )
             current_param_pert_summary["num_systems_valid"] = len(ensemble)
         else:
@@ -582,12 +536,8 @@ class DynSysSampler(BaseDynSysSampler):
             )
 
         if save_params_dir is not None and perturbed_systems is not None:
-            successful_systems = [
-                sys for sys in perturbed_systems if sys.name in ensemble.keys()
-            ]
-            failed_systems = [
-                sys for sys in perturbed_systems if sys.name in failed_ensemble.keys()
-            ]
+            successful_systems = [sys for sys in perturbed_systems if sys.name in ensemble.keys()]
+            failed_systems = [sys for sys in perturbed_systems if sys.name in failed_ensemble.keys()]
 
             success_dir = os.path.join(save_params_dir, "successes.json")
             self._save_parameters(sample_idx, successful_systems, success_dir)
@@ -609,7 +559,7 @@ class DynSysSampler(BaseDynSysSampler):
             return
         logger.info(f"Saving parameters to {save_path}")
         if os.path.exists(save_path):
-            with open(save_path, "r") as f:
+            with open(save_path) as f:
                 param_dict = json.load(f)
         else:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -658,7 +608,7 @@ class DynSysSampler(BaseDynSysSampler):
         save_path = os.path.join(save_dir, "traj_stats.json")
         logger.info(f"Saving trajectory stats to {save_path}")
         if os.path.exists(save_path):
-            with open(save_path, "r") as f:
+            with open(save_path) as f:
                 traj_stats = json.load(f)
         else:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -684,9 +634,7 @@ class DynSysSampler(BaseDynSysSampler):
         with open(save_path, "w") as f:
             json.dump(traj_stats, f, indent=4)
 
-    def save_summary(
-        self, save_json_path: str, return_dict: bool = False
-    ) -> dict | None:
+    def save_summary(self, save_json_path: str, return_dict: bool = False) -> dict | None:
         """
         Save a summary of valid attractor counts and failed checks to a json file.
         """
@@ -707,11 +655,7 @@ class DynSysSampler(BaseDynSysSampler):
                     for sample_inds in valid_samples.values()
                 ),
                 "num_total_candidates": self.num_param_perturbations
-                * len(
-                    valid_samples.keys()
-                    | failed_samples.keys()
-                    | self.failed_integrations.keys()
-                ),
+                * len(valid_samples.keys() | failed_samples.keys() | self.failed_integrations.keys()),
                 "valid_dyst_counts": valid_dyst_counts,
                 "failed_checks": failed_checks,
                 "failed_integrations": self.failed_integrations,
@@ -852,9 +796,7 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
         # stack and transpose to get shape (num_samples, num_dims, num_timesteps) from original (num_timesteps, num_dims)
         ensemble_sys_names = [sys for ens in ensemble_list for sys in ens.keys()]
         ensemble = {
-            sys: np.stack(
-                [ens[sys] for ens in ensemble_list if sys in ens], axis=0
-            ).transpose(0, 2, 1)
+            sys: np.stack([ens[sys] for ens in ensemble_list if sys in ens], axis=0).transpose(0, 2, 1)
             for sys in ensemble_sys_names
         }
 
@@ -867,9 +809,7 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
 
         if self.attractor_validator is not None:
             logger.info(f"Applying attractor validator to {len(ensemble)} systems")
-            ensemble, _ = self.attractor_validator.multiprocessed_filter_ensemble(
-                ensemble, first_sample_idx=sample_idx
-            )
+            ensemble, _ = self.attractor_validator.multiprocessed_filter_ensemble(ensemble, first_sample_idx=sample_idx)
             current_param_pert_summary["num_systems_valid"] = len(ensemble)
 
         if self.wandb_run is not None:
@@ -905,9 +845,7 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
         Wrapper around _generate_ensembles, for sampling ensembles with different initial conditions
         """
         sys_names = [sys.name for sys in systems]
-        assert len(set(sys_names)) == len(sys_names), (
-            "Cannot have duplicate system names"
-        )
+        assert len(set(sys_names)) == len(sys_names), "Cannot have duplicate system names"
         logger.info(
             f"Making {split} split with {len(systems)} dynamical systems"
             f" (showing first {min(5, len(sys_names))}): \n {sys_names[:5]}"
@@ -957,18 +895,14 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
         Generate trajectory ensembles for a given set of dynamical systems, with different initial conditions
         """
         n_systems = len(systems)
-        pbar = tqdm(
-            total=self.num_ics, desc=f"Generating ensembles for {n_systems} systems"
-        )
+        pbar = tqdm(total=self.num_ics, desc=f"Generating ensembles for {n_systems} systems")
         ic_cache = {}
         for ic_idx in range(self.num_ics):
             if self.wandb_run is not None:
                 self.wandb_run.log({"sample_idx": ic_idx})
 
             num_periods = self.rng.choice(self.num_periods)
-            logger.info(
-                f"Generating ensemble of ic perturbation {ic_idx} with {num_periods} periods"
-            )
+            logger.info(f"Generating ensemble of ic perturbation {ic_idx} with {num_periods} periods")
 
             ensemble = make_trajectory_ensemble(
                 self.num_points,
@@ -981,21 +915,11 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
             )
 
             # filter out failed integrations
-            excluded_systems = [
-                key
-                for key, value in ensemble.items()
-                if value is None or np.isnan(value).any()
-            ]
-            ensemble = {
-                key: value
-                for key, value in ensemble.items()
-                if key not in excluded_systems
-            }
+            excluded_systems = [key for key, value in ensemble.items() if value is None or np.isnan(value).any()]
+            ensemble = {key: value for key, value in ensemble.items() if key not in excluded_systems}
 
             if ic_idx == 0 and not save_first_sample:
-                logger.info(
-                    f"Skipping validation and saving for first sample, ic_idx={ic_idx}"
-                )
+                logger.info(f"Skipping validation and saving for first sample, ic_idx={ic_idx}")
                 self._reset_events_callback()
 
             else:
@@ -1013,12 +937,8 @@ class DynSysSamplerRestartIC(BaseDynSysSampler):
 
                 # Cache ICs for future iterations
                 for sys in systems:
-                    curr_traj = ensemble[sys.name][
-                        int(self.validator_transient_frac * self.num_points) :
-                    ]
-                    ic_cache[sys.name] = self.rng.choice(
-                        curr_traj, size=(self.num_ics - 1), replace=False
-                    )
+                    curr_traj = ensemble[sys.name][int(self.validator_transient_frac * self.num_points) :]
+                    ic_cache[sys.name] = self.rng.choice(curr_traj, size=(self.num_ics - 1), replace=False)
 
             # Set next IC for each system
             if ic_idx < self.num_ics - 1:

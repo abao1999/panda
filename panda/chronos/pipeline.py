@@ -9,20 +9,21 @@ Modified from original Chronos codebase https://github.com/amazon-science/chrono
 import logging
 import warnings
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
-from panda.chronos.model import (
-    ChronosConfig,
-    ChronosModel,
-    ChronosTokenizer,
-)
-from panda.utils import left_pad_and_stack_1D
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
     AutoModelForSeq2SeqLM,
 )
+
+from panda.chronos.model import (
+    ChronosConfig,
+    ChronosModel,
+    ChronosTokenizer,
+)
+from panda.utils.eval_utils import left_pad_and_stack_1D
 
 logger = logging.getLogger(__file__)
 
@@ -51,9 +52,7 @@ class ChronosPipeline:
     def device(self):
         return self.model.device
 
-    def _prepare_and_validate_context(
-        self, context: Union[torch.Tensor, List[torch.Tensor]]
-    ):
+    def _prepare_and_validate_context(self, context: torch.Tensor | list[torch.Tensor]):
         if isinstance(context, list):
             context = left_pad_and_stack_1D(context)
         assert isinstance(context, torch.Tensor)
@@ -64,9 +63,7 @@ class ChronosPipeline:
         return context
 
     @torch.no_grad()
-    def embed(
-        self, context: Union[torch.Tensor, List[torch.Tensor]]
-    ) -> Tuple[torch.Tensor, Any]:
+    def embed(self, context: torch.Tensor | list[torch.Tensor]) -> tuple[torch.Tensor, Any]:
         """
         Get encoder embeddings for the given time series.
 
@@ -90,9 +87,7 @@ class ChronosPipeline:
             provided, and the extra 1 is for EOS.
         """
         context_tensor = self._prepare_and_validate_context(context=context)
-        token_ids, attention_mask, tokenizer_state = (
-            self.tokenizer.context_input_transform(context_tensor)
-        )
+        token_ids, attention_mask, tokenizer_state = self.tokenizer.context_input_transform(context_tensor)
         embeddings = self.model.encode(
             input_ids=token_ids.to(self.model.device),
             attention_mask=attention_mask.to(self.model.device),
@@ -101,12 +96,12 @@ class ChronosPipeline:
 
     def predict(
         self,
-        context: Union[torch.Tensor, List[torch.Tensor]],
-        prediction_length: Optional[int] = None,
-        num_samples: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_k: Optional[int] = None,
-        top_p: Optional[float] = None,
+        context: torch.Tensor | list[torch.Tensor],
+        prediction_length: int | None = None,
+        num_samples: int | None = None,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
         limit_prediction_length: bool = True,
         verbose: bool = True,
         deterministic: bool = False,
@@ -174,9 +169,7 @@ class ChronosPipeline:
         remaining = prediction_length
 
         while remaining > 0:
-            token_ids, attention_mask, scale = self.tokenizer.context_input_transform(
-                context_tensor
-            )
+            token_ids, attention_mask, scale = self.tokenizer.context_input_transform(context_tensor)
             samples = self.model(
                 token_ids.to(self.model.device),
                 attention_mask.to(self.model.device),
@@ -186,9 +179,7 @@ class ChronosPipeline:
                 top_k,
                 top_p,
             )
-            prediction = self.tokenizer.output_transform(
-                samples.to(scale.device), scale
-            )
+            prediction = self.tokenizer.output_transform(samples.to(scale.device), scale)
 
             predictions.append(prediction)
             remaining -= prediction.shape[-1]
@@ -196,9 +187,7 @@ class ChronosPipeline:
             if remaining <= 0:
                 break
 
-            context_tensor = torch.cat(
-                [context_tensor, prediction.median(dim=1).values], dim=-1
-            )
+            context_tensor = torch.cat([context_tensor, prediction.median(dim=1).values], dim=-1)
         return torch.cat(predictions, dim=-1)
 
     @classmethod

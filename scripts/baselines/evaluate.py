@@ -6,20 +6,16 @@ import numpy as np
 import transformers
 
 from panda.baselines.baselines import (
+    BaselinePipeline,
     FourierARIMABaseline,
     FourierBaseline,
     MeanBaseline,
 )
-from panda.baselines.baselines import BaselinePipeline
-from panda.patchtst.evaluation import evaluate_multivariate_forecasting_model
 from panda.dataset import MultivariateTimeSeriesDataset
-from panda.utils import (
-    get_dim_from_dataset,
-    get_eval_data_dict,
-    log_on_main,
-    process_trajs,
-    save_evaluation_results,
-)
+from panda.evaluation import evaluate_multivariate_forecasting_model
+from panda.utils.data_utils import get_dim_from_dataset, process_trajs
+from panda.utils.eval_utils import get_eval_data_dict, save_evaluation_results
+from panda.utils.train_utils import log_on_main
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
@@ -36,21 +32,15 @@ def main(cfg):
 
     transformers.set_seed(seed=cfg.eval.seed)
     # for convenience, get system dimensions, for saving as a column in the metrics csv
-    system_dims = {
-        system_name: get_dim_from_dataset(test_data_dict[system_name][0])
-        for system_name in test_data_dict
-    }
-    n_system_samples = {
-        system_name: len(test_data_dict[system_name]) for system_name in test_data_dict
-    }
+    system_dims = {system_name: get_dim_from_dataset(test_data_dict[system_name][0]) for system_name in test_data_dict}
+    n_system_samples = {system_name: len(test_data_dict[system_name]) for system_name in test_data_dict}
 
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     test_datasets = {
         system_name: MultivariateTimeSeriesDataset(
             datasets=test_data_dict[system_name],
-            probabilities=[1.0 / len(test_data_dict[system_name])]
-            * len(test_data_dict[system_name]),
+            probabilities=[1.0 / len(test_data_dict[system_name])] * len(test_data_dict[system_name]),
             context_length=cfg.eval.context_length,
             prediction_length=cfg.eval.prediction_length,
             num_test_instances=cfg.eval.num_test_instances,
@@ -102,28 +92,20 @@ def main(cfg):
         return_contexts=True,
         return_labels=True,
         redo_normalization=True,
-        eval_subintervals=[
-            (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
-        ],
+        eval_subintervals=[(0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)],
     )
     save_eval_results_fn(metrics)
 
     if cfg.eval.save_forecasts and predictions is not None and contexts is not None:
         process_trajs_fn(
             cfg.eval.forecast_save_dir,
-            {
-                system: np.concatenate([contexts[system], predictions[system]], axis=2)
-                for system in predictions
-            },
+            {system: np.concatenate([contexts[system], predictions[system]], axis=2) for system in predictions},
         )
 
     if cfg.eval.save_labels and labels is not None and contexts is not None:
         process_trajs_fn(
             cfg.eval.labels_save_dir,
-            {
-                system: np.concatenate([contexts[system], labels[system]], axis=2)
-                for system in labels
-            },
+            {system: np.concatenate([contexts[system], labels[system]], axis=2) for system in labels},
         )
 
 

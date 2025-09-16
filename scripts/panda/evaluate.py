@@ -14,13 +14,9 @@ from panda.evaluation import (
     evaluate_multivariate_mlm_model,
 )
 from panda.patchtst.pipeline import PatchTSTPipeline
-from panda.utils import (
-    get_dim_from_dataset,
-    get_eval_data_dict,
-    log_on_main,
-    process_trajs,
-    save_evaluation_results,
-)
+from panda.utils.data_utils import get_dim_from_dataset, process_trajs
+from panda.utils.eval_utils import get_eval_data_dict, save_evaluation_results
+from panda.utils.train_utils import log_on_main
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
@@ -40,7 +36,7 @@ def main(cfg):
     training_info_path = os.path.join(checkpoint_path, "training_info.json")
     if os.path.exists(training_info_path):
         log(f"Training info file found at: {training_info_path}")
-        with open(training_info_path, "r") as f:
+        with open(training_info_path) as f:
             training_info = json.load(f)
             train_config = training_info.get("train_config", None)
             if train_config is None:  # for backwards compatibility
@@ -63,13 +59,10 @@ def main(cfg):
     # set floating point precision
     use_tf32 = train_config.get("tf32", False)
     log(f"use tf32: {use_tf32}")
-    if use_tf32 and not (
-        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
-    ):
+    if use_tf32 and not (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8):
         # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
         log(
-            "TF32 format is only available on devices with compute capability >= 8. "
-            "Setting tf32 to False.",
+            "TF32 format is only available on devices with compute capability >= 8. Setting tf32 to False.",
         )
         use_tf32 = False
 
@@ -105,21 +98,15 @@ def main(cfg):
     pipeline.model.eval()
 
     # for convenience, get system dimensions, for saving as a column in the metrics csv
-    system_dims = {
-        system_name: get_dim_from_dataset(test_data_dict[system_name][0])
-        for system_name in test_data_dict
-    }
-    n_system_samples = {
-        system_name: len(test_data_dict[system_name]) for system_name in test_data_dict
-    }
+    system_dims = {system_name: get_dim_from_dataset(test_data_dict[system_name][0]) for system_name in test_data_dict}
+    n_system_samples = {system_name: len(test_data_dict[system_name]) for system_name in test_data_dict}
 
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     test_datasets = {
         system_name: MultivariateTimeSeriesDataset(
             datasets=test_data_dict[system_name],
-            probabilities=[1.0 / len(test_data_dict[system_name])]
-            * len(test_data_dict[system_name]),
+            probabilities=[1.0 / len(test_data_dict[system_name])] * len(test_data_dict[system_name]),
             context_length=context_length,
             prediction_length=cfg.eval.prediction_length,
             num_test_instances=cfg.eval.num_test_instances,
@@ -155,27 +142,23 @@ def main(cfg):
             "median": lambda x: np.median(x, axis=0),
         }.get(cfg.eval.parallel_sample_reduction, lambda x: x)
 
-        predictions, contexts, labels, metrics = (
-            evaluate_multivariate_forecasting_model(
-                pipeline,
-                test_datasets,
-                batch_size=cfg.eval.batch_size,
-                prediction_length=cfg.eval.prediction_length,
-                metric_names=cfg.eval.metric_names,
-                return_predictions=cfg.eval.save_forecasts,
-                return_contexts=cfg.eval.save_contexts,
-                return_labels=cfg.eval.save_labels,
-                parallel_sample_reduction_fn=parallel_sample_reduction_fn,
-                redo_normalization=True,
-                prediction_kwargs=dict(
-                    sliding_context=cfg.eval.sliding_context,
-                    limit_prediction_length=cfg.eval.limit_prediction_length,
-                    verbose=cfg.eval.verbose,
-                ),
-                eval_subintervals=[
-                    (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
-                ],
-            )
+        predictions, contexts, labels, metrics = evaluate_multivariate_forecasting_model(
+            pipeline,
+            test_datasets,
+            batch_size=cfg.eval.batch_size,
+            prediction_length=cfg.eval.prediction_length,
+            metric_names=cfg.eval.metric_names,
+            return_predictions=cfg.eval.save_forecasts,
+            return_contexts=cfg.eval.save_contexts,
+            return_labels=cfg.eval.save_labels,
+            parallel_sample_reduction_fn=parallel_sample_reduction_fn,
+            redo_normalization=True,
+            prediction_kwargs=dict(
+                sliding_context=cfg.eval.sliding_context,
+                limit_prediction_length=cfg.eval.limit_prediction_length,
+                verbose=cfg.eval.verbose,
+            ),
+            eval_subintervals=[(0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)],
         )
         save_eval_results_fn(metrics)
 
@@ -184,10 +167,7 @@ def main(cfg):
             process_trajs_fn(
                 cfg.eval.forecast_save_dir,
                 {  # concatenate contexts and predictions
-                    system: np.concatenate(
-                        [contexts[system], predictions[system]], axis=2
-                    )
-                    for system in predictions
+                    system: np.concatenate([contexts[system], predictions[system]], axis=2) for system in predictions
                 },
             )
 
@@ -196,23 +176,20 @@ def main(cfg):
             process_trajs_fn(
                 cfg.eval.labels_save_dir,
                 {  # concatenate contexts and labels
-                    system: np.concatenate([contexts[system], labels[system]], axis=2)
-                    for system in labels
+                    system: np.concatenate([contexts[system], labels[system]], axis=2) for system in labels
                 },
             )
 
     elif cfg.eval.mode == "pretrain":
-        completions, processed_past_values, timestep_masks, metrics = (
-            evaluate_multivariate_mlm_model(
-                pipeline,
-                test_datasets,
-                metric_names=cfg.eval.metric_names,
-                batch_size=cfg.eval.batch_size,
-                undo_normalization=False,
-                return_completions=cfg.eval.save_completions,
-                return_processed_past_values=cfg.eval.save_contexts,
-                return_masks=cfg.eval.save_masks,
-            )
+        completions, processed_past_values, timestep_masks, metrics = evaluate_multivariate_mlm_model(
+            pipeline,
+            test_datasets,
+            metric_names=cfg.eval.metric_names,
+            batch_size=cfg.eval.batch_size,
+            undo_normalization=False,
+            return_completions=cfg.eval.save_completions,
+            return_processed_past_values=cfg.eval.save_contexts,
+            return_masks=cfg.eval.save_masks,
         )
         save_eval_results_fn(metrics)
 

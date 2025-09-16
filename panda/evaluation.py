@@ -1,5 +1,6 @@
 from collections import defaultdict
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import torch
@@ -14,7 +15,7 @@ from panda.dataset import (
     UnivariateTimeSeriesDataset,
 )
 from panda.patchtst.pipeline import PatchTSTPipeline
-from panda.utils import safe_standardize
+from panda.utils.data_utils import safe_standardize
 
 
 def evaluate_univariate_forecasting_model(
@@ -29,9 +30,9 @@ def evaluate_univariate_forecasting_model(
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
-    redo_normalization: bool = False,
     prediction_kwargs: dict | None = None,
     num_workers: int = 1,
+    scale_axis: int | None = -1,
 ) -> tuple[
     dict[str, np.ndarray] | None,
     dict[str, np.ndarray] | None,
@@ -59,9 +60,7 @@ def evaluate_univariate_forecasting_model(
         dim = system_dims[system]
         predictions, labels, contexts, future_values = [], [], [], []
 
-        for batch in DataLoader(
-            dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True
-        ):
+        for batch in DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True):
             past_values, future_values = batch["past_values"], batch["future_values"]
 
             predict_args = {
@@ -78,15 +77,21 @@ def evaluate_univariate_forecasting_model(
             if preds.shape[-1] > horizon.shape[-1]:
                 preds = preds[..., : horizon.shape[-1]]
 
-            if redo_normalization:
-                horizon = safe_standardize(horizon, context=context)
-                preds = safe_standardize(preds, context=context[None, :, :])
-                context = safe_standardize(context)
+            if scale_axis is not None:
+                breakpoint()
+                horizon = safe_standardize(horizon, context=context, axis=scale_axis)
+                preds = safe_standardize(preds, context=context[None, ...], axis=scale_axis)
+                context = safe_standardize(context, axis=scale_axis)
+            breakpoint()
 
             labels.append(horizon)
             predictions.append(preds)
             contexts.append(context)
 
+        # if parallel_sample_reduction_fn is None, then predictions shape is:
+        # shape: (num_parallel_samples, num_systems*num_eval_windows, prediction_length, dim)
+        # otherwise, predictions shape is:
+        # shape: (num_systems*num_eval_windows, prediction_length, dim)
         predictions = (
             np.concatenate(predictions, axis=1)
             .reshape(num_samples, num_sys, dim, -1, prediction_length)
@@ -100,11 +105,12 @@ def evaluate_univariate_forecasting_model(
             .transpose(0, 2, 3, 1)
             .reshape(-1, prediction_length, dim)
         )
+        # shape: (num_systems*num_eval_windows, context_length, dim)
         contexts = (
             np.concatenate(contexts, axis=0)
-            .reshape(num_sys, dim, -1, contexts[0].shape[-1])
+            .reshape(num_sys, dim, -1, dataset.context_length)
             .transpose(0, 2, 3, 1)
-            .reshape(-1, contexts[0].shape[-1], dim)
+            .reshape(-1, dataset.context_length, dim)
         )
 
         if metric_names is not None:
@@ -116,6 +122,7 @@ def evaluate_univariate_forecasting_model(
                     include=metric_names,
                     batch_axis=0,
                 )
+                breakpoint()
 
         if return_predictions:
             system_predictions[system] = predictions.transpose(0, 2, 1)
@@ -175,9 +182,7 @@ def evaluate_multivariate_forecasting_model(
         num_sys = len(dataset.datasets)
         predictions, labels, contexts, future_values = [], [], [], []
 
-        for batch in DataLoader(
-            dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True
-        ):
+        for batch in DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True):
             past_values, future_values = batch["past_values"], batch["future_values"]
 
             predict_args = {
@@ -266,13 +271,9 @@ def evaluate_multivariate_mlm_model(
             past_values = [data["past_values"] for data in batch]
             past_batch = torch.stack(past_values, dim=0).to(pipeline.device)
 
-            completions_output = pipeline.model.generate_completions(
-                past_batch, past_observed_mask=None
-            )
+            completions_output = pipeline.model.generate_completions(past_batch, past_observed_mask=None)
             completions = (
-                completions_output.completions.reshape(
-                    past_batch.shape[0], past_batch.shape[-1], -1
-                )
+                completions_output.completions.reshape(past_batch.shape[0], past_batch.shape[-1], -1)
                 .detach()
                 .cpu()
                 .numpy()
@@ -288,9 +289,7 @@ def evaluate_multivariate_mlm_model(
             if completions_output.patched_past_values is None:
                 raise ValueError("Patched past values are None")
             processed_past_values = (
-                completions_output.patched_past_values.reshape(
-                    past_batch.shape[0], past_batch.shape[-1], -1
-                )
+                completions_output.patched_past_values.reshape(past_batch.shape[0], past_batch.shape[-1], -1)
                 .detach()
                 .cpu()
                 .numpy()
@@ -312,9 +311,7 @@ def evaluate_multivariate_mlm_model(
                     include=metric_names,  # type: ignore
                 )
                 for metric, value in eval_metrics.items():
-                    system_metrics[system][metric] += (
-                        value - system_metrics[system].get(metric, 0.0)
-                    ) / (i + 1)
+                    system_metrics[system][metric] += (value - system_metrics[system].get(metric, 0.0)) / (i + 1)
 
             if return_completions:
                 all_completions.append(completions)
@@ -327,12 +324,8 @@ def evaluate_multivariate_mlm_model(
             full_completion = np.concatenate(all_completions, axis=0)
             system_completions[system] = full_completion.transpose(0, 2, 1)
         if return_processed_past_values:
-            full_processed_past_values = np.concatenate(
-                all_processed_past_values, axis=0
-            )
-            system_processed_past_values[system] = full_processed_past_values.transpose(
-                0, 2, 1
-            )
+            full_processed_past_values = np.concatenate(all_processed_past_values, axis=0)
+            system_processed_past_values[system] = full_processed_past_values.transpose(0, 2, 1)
         if return_masks:
             full_timestep_masks = np.concatenate(all_timestep_masks, axis=0)
             system_timestep_masks[system] = full_timestep_masks

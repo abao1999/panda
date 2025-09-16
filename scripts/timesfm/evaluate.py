@@ -9,14 +9,10 @@ import transformers
 from gluonts.transform import LastValueImputation
 
 from panda.dataset import UnivariateTimeSeriesDataset
-from panda.chronos.evaluation import evaluate_chronos_forecast
-from panda.utils import (
-    get_dim_from_dataset,
-    get_eval_data_dict,
-    log_on_main,
-    process_trajs,
-    save_evaluation_results,
-)
+from panda.evaluation import evaluate_univariate_forecasting_model
+from panda.utils.data_utils import get_dim_from_dataset, process_trajs
+from panda.utils.eval_utils import get_eval_data_dict, save_evaluation_results
+from panda.utils.train_utils import log_on_main
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
@@ -77,13 +73,10 @@ def main(cfg):
     # set floating point precision
     use_tf32 = train_config.get("tf32", False)
     log(f"use tf32: {use_tf32}")
-    if use_tf32 and not (
-        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
-    ):
+    if use_tf32 and not (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8):
         # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
         log(
-            "TF32 format is only available on devices with compute capability >= 8. "
-            "Setting tf32 to False.",
+            "TF32 format is only available on devices with compute capability >= 8. Setting tf32 to False.",
         )
         use_tf32 = False
 
@@ -98,21 +91,15 @@ def main(cfg):
     log(f"eval prediction_length: {cfg.eval.prediction_length}")
 
     # for convenience, get system dimensions
-    system_dims = {
-        system_name: get_dim_from_dataset(test_data_dict[system_name][0])
-        for system_name in test_data_dict
-    }
-    n_system_samples = {
-        system_name: len(test_data_dict[system_name]) for system_name in test_data_dict
-    }
+    system_dims = {system_name: get_dim_from_dataset(test_data_dict[system_name][0]) for system_name in test_data_dict}
+    n_system_samples = {system_name: len(test_data_dict[system_name]) for system_name in test_data_dict}
 
     log(f"Running evaluation on {list(test_data_dict.keys())}")
 
     test_datasets = {
         system_name: UnivariateTimeSeriesDataset(
             datasets=test_data_dict[system_name],
-            probabilities=[1.0 / len(test_data_dict[system_name])]
-            * len(test_data_dict[system_name]),
+            probabilities=[1.0 / len(test_data_dict[system_name])] * len(test_data_dict[system_name]),
             tokenizer=None,  # type: ignore # not relevant for evaluation
             context_length=cfg.chronos.context_length,
             prediction_length=cfg.eval.prediction_length,  # NOTE: should match the forecast prediction length
@@ -121,9 +108,7 @@ def main(cfg):
             window_style=cfg.eval.window_style,
             window_stride=cfg.eval.window_stride,
             model_type=cfg.chronos.model_type,
-            imputation_method=LastValueImputation()
-            if cfg.chronos.model_type == "causal"
-            else None,
+            imputation_method=LastValueImputation() if cfg.chronos.model_type == "causal" else None,
             mode="test",
         )
         for system_name in test_data_dict
@@ -152,7 +137,7 @@ def main(cfg):
         "median": lambda x: np.median(x, axis=0),
     }[cfg.eval.parallel_sample_reduction]
 
-    predictions, contexts, labels, metrics = evaluate_chronos_forecast(
+    predictions, contexts, labels, metrics = evaluate_univariate_forecasting_model(
         pipeline,  # type: ignore
         test_datasets,
         batch_size=cfg.eval.batch_size,
@@ -163,33 +148,24 @@ def main(cfg):
         return_contexts=True,
         return_labels=True,
         parallel_sample_reduction_fn=parallel_sample_reduction_fn,
-        redo_normalization=True,
         prediction_kwargs=dict(
             limit_prediction_length=cfg.eval.limit_prediction_length,
             verbose=cfg.eval.verbose,
         ),
-        eval_subintervals=[
-            (0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)
-        ],
+        eval_subintervals=[(0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)],
     )
     save_eval_results_fn(metrics)
 
     if cfg.eval.save_forecasts and predictions is not None and contexts is not None:
         process_trajs_fn(
             cfg.eval.forecast_save_dir,
-            {
-                system: np.concatenate([contexts[system], predictions[system]], axis=1)
-                for system in predictions
-            },
+            {system: np.concatenate([contexts[system], predictions[system]], axis=1) for system in predictions},
         )
 
     if cfg.eval.save_labels and labels is not None and contexts is not None:
         process_trajs_fn(
             cfg.eval.labels_save_dir,
-            {
-                system: np.concatenate([contexts[system], labels[system]], axis=1)
-                for system in labels
-            },
+            {system: np.concatenate([contexts[system], labels[system]], axis=1) for system in labels},
         )
 
 

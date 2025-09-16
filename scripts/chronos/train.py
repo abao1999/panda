@@ -23,18 +23,13 @@ from panda.augmentations import (
 )
 from panda.dataset import UnivariateTimeSeriesDataset
 from panda.chronos.model import ChronosConfig
-from panda.utils import (
-    ensure_contiguous,
-    get_next_path,
-    has_enough_observations,
-    is_main_process,
-    load_chronos_model,
-    log_on_main,
-    save_training_info,
-)
+from panda.utils import train_utils
 from transformers import Trainer, TrainingArguments
 
 import wandb
+from panda.utils.train_utils import log_on_main
+from panda.utils.train_utils import is_main_process
+from panda.utils.train_utils import load_chronos_model
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -88,7 +83,7 @@ def main(cfg):
             )
 
     # create a new output directory to save results
-    output_dir = get_next_path(
+    output_dir = train_utils.get_next_path(
         cfg.run_name if cfg.run_name else "run",
         base_dir=Path(cfg.train.output_dir),
         file_type="",
@@ -102,7 +97,7 @@ def main(cfg):
     train_datasets = [
         Filter(
             partial(
-                has_enough_observations,
+                train_utils.has_enough_observations,
                 min_length=cfg.min_past + cfg.chronos.prediction_length,
                 max_missing_prop=cfg.max_missing_prop,
             ),
@@ -258,7 +253,7 @@ def main(cfg):
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.
     # This speeds up training and allows checkpoint saving by transformers Trainer
-    ensure_contiguous(model)
+    train_utils.ensure_contiguous(model)
 
     trainer = Trainer(
         model=model, args=training_args, train_dataset=shuffled_train_dataset
@@ -272,7 +267,7 @@ def main(cfg):
     # save final model checkpoint and training info locally
     if is_main_process():
         model.save_pretrained(output_dir / "checkpoint-final")
-        save_training_info(
+        train_utils.save_training_info(
             output_dir / "checkpoint-final",
             model_config=vars(chronos_config),  # TODO: add model_id to this
             train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore

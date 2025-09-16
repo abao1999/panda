@@ -2,8 +2,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
-from panda.utils import safe_standardize
 from statsmodels.tsa.arima.model import ARIMA
+
+from panda.utils.data_utils import safe_standardize
 
 
 @dataclass
@@ -19,9 +20,7 @@ class MeanBaseline:
         Returns:
             (batch_size, prediction_length, num_features) numpy array
         """
-        return np.mean(x, axis=1, keepdims=True) * np.ones(
-            (x.shape[0], self.prediction_length, x.shape[2])
-        )
+        return np.mean(x, axis=1, keepdims=True) * np.ones((x.shape[0], self.prediction_length, x.shape[2]))
 
 
 @dataclass
@@ -41,9 +40,7 @@ class FourierBaseline:
         rfft_vals = np.fft.rfft(safe_standardize(x, axis=1), axis=1)
         ntotal = context_length + self.prediction_length
         reconstructed = np.fft.irfft(rfft_vals, n=ntotal, axis=1)
-        return safe_standardize(
-            reconstructed[:, context_length:], context=x, axis=1, denormalize=True
-        )
+        return safe_standardize(reconstructed[:, context_length:], context=x, axis=1, denormalize=True)
 
 
 @dataclass
@@ -69,9 +66,7 @@ class FourierARIMABaseline:
 
         # Find peaks in batch for each feature
         peaks = np.zeros_like(autocorr, dtype=bool)
-        peaks[:, 1:-1] = (autocorr[:, 1:-1] > autocorr[:, :-2]) & (
-            autocorr[:, 1:-1] > autocorr[:, 2:]
-        )
+        peaks[:, 1:-1] = (autocorr[:, 1:-1] > autocorr[:, :-2]) & (autocorr[:, 1:-1] > autocorr[:, 2:])
 
         periods = self.max_period * np.ones(b)
         x, y = np.where(peaks)
@@ -100,7 +95,7 @@ class FourierARIMABaseline:
         if period is None:
             period = self._estimate_period(signal)
         elif isinstance(period, (int, float)):
-            period = np.ones((batch_size)) * period
+            period = np.ones(batch_size) * period
 
         t = np.arange(n_points)
         fourier_features = np.zeros((batch_size, n_points, 2 * self.num_fourier_terms))
@@ -148,9 +143,7 @@ class FourierARIMABaseline:
         batched = x.transpose(0, 2, 1).reshape(-1, context_length)
         standardized = safe_standardize(batched, axis=1)
         periods = self._estimate_period(standardized)
-        fourier_features = self._create_fourier_features(
-            standardized, total_length, period=periods
-        )
+        fourier_features = self._create_fourier_features(standardized, total_length, period=periods)
         context_features = fourier_features[:, :context_length]
         forecast_features = fourier_features[:, context_length:]
         deseasonalized, coeffs = self._deseasonalize(standardized, context_features)
@@ -168,13 +161,9 @@ class FourierARIMABaseline:
 
         # Add back seasonal component and denormalize
         forecasts += seasonal_forecast
-        forecasts = safe_standardize(
-            forecasts, axis=1, context=batched, denormalize=True
-        )
+        forecasts = safe_standardize(forecasts, axis=1, context=batched, denormalize=True)
 
-        return forecasts.reshape(
-            batch_size, num_features, self.prediction_length
-        ).transpose(0, 2, 1)
+        return forecasts.reshape(batch_size, num_features, self.prediction_length).transpose(0, 2, 1)
 
 
 class BaselinePipeline:

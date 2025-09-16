@@ -5,7 +5,8 @@ from datetime import datetime
 from functools import wraps
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
-from typing import Any, Callable, List, Literal, Union
+from typing import Any, Literal
+from collections.abc import Callable
 
 import numpy as np
 from dysts.systems import get_attractor_list  # type: ignore
@@ -128,8 +129,8 @@ def split_systems(
 
 
 def convert_to_arrow(
-    path: Union[str, Path],
-    time_series: Union[List[np.ndarray], np.ndarray],
+    path: str | Path,
+    time_series: list[np.ndarray] | np.ndarray,
     compression: Literal["lz4", "zstd"] = "lz4",
     split_coords: bool = False,
 ):
@@ -232,7 +233,7 @@ def load_trajectory_from_arrow(
     return coordinates, metadata
 
 
-def get_system_filepaths(system_name: str, data_dir: str) -> List[Path]:
+def get_system_filepaths(system_name: str, data_dir: str) -> list[Path]:
     """
     Retrieve sorted filepaths for a given dynamical system.
 

@@ -6,7 +6,8 @@ from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
-from panda.utils import safe_standardize
+
+from panda.utils.data_utils import safe_standardize
 
 
 @dataclass
@@ -20,9 +21,7 @@ class RandomDimSelectionTransform:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
     def __call__(self, timeseries: NDArray, axis: int = 0) -> NDArray:
-        selected_dims = self.rng.choice(
-            timeseries.shape[axis], self.num_dims, replace=False
-        )
+        selected_dims = self.rng.choice(timeseries.shape[axis], self.num_dims, replace=False)
         return np.take(timeseries, selected_dims, axis=axis)
 
 
@@ -75,21 +74,16 @@ class FixedDimensionDelayEmbeddingTransform:
         remaining_dims = (self.embedding_dim - num_channels) % num_channels
 
         if num_channels >= self.embedding_dim:
-            selected_dims = self.rng.choice(
-                num_channels, self.embedding_dim, replace=False
-            )
+            selected_dims = self.rng.choice(num_channels, self.embedding_dim, replace=False)
             return timeseries[selected_dims]
 
         # Distribute remaining dimensions evenly
         extra_dims = [1 if i < remaining_dims else 0 for i in range(num_channels)]
 
         delay_embeddings = [
-            np.stack(
-                [
-                    np.roll(timeseries[i], shift)
-                    for shift in range(1, 1 + per_dim_embed_dim + extra)
-                ]
-            )[:, 1 + per_dim_embed_dim :]
+            np.stack([np.roll(timeseries[i], shift) for shift in range(1, 1 + per_dim_embed_dim + extra)])[
+                :, 1 + per_dim_embed_dim :
+            ]
             for i, extra in enumerate(extra_dims)
             if extra > 0 or per_dim_embed_dim > 0
         ]
@@ -158,16 +152,13 @@ class RandomFourierSeries:
         num_channels, num_timepoints = timeseries.shape
         num_components = self.rng.integers(*self.mode_range, endpoint=True)
 
-        freqs = self.rng.uniform(
-            0, np.pi * self.max_wavenumber, (num_channels, num_components)
-        )
+        freqs = self.rng.uniform(0, np.pi * self.max_wavenumber, (num_channels, num_components))
         amps = self.rng.uniform(0, self.max_amp, (num_channels, num_components))
         phases = self.rng.uniform(0, 2 * np.pi, (num_channels, num_components))
 
         t = np.linspace(0, 1, num_timepoints)
         fourier_series = np.sum(
-            amps[..., np.newaxis]
-            * np.sin(2 * np.pi * freqs[..., np.newaxis] * t + phases[..., np.newaxis]),
+            amps[..., np.newaxis] * np.sin(2 * np.pi * freqs[..., np.newaxis] * t + phases[..., np.newaxis]),
             axis=1,
         )
 
@@ -201,12 +192,7 @@ class RandomTakensEmbedding:
 
         # create delay embedding of selected dimension with specified time lag
         N = timeseries.shape[1] - lag * (timeseries.shape[0] - 1)
-        delays = np.stack(
-            [
-                timeseries[embed_dim, i * lag : i * lag + N]
-                for i in range(timeseries.shape[0])
-            ]
-        )
+        delays = np.stack([timeseries[embed_dim, i * lag : i * lag + N] for i in range(timeseries.shape[0])])
 
         return delays
 
@@ -229,9 +215,7 @@ class RandomConvexCombinationTransform:
 
     def __call__(self, timeseries: NDArray) -> NDArray:
         dims = self.rng.integers(self.dim_range[0], self.dim_range[1], endpoint=True)
-        coeffs = self.rng.dirichlet(
-            self.alpha * np.ones(timeseries.shape[0]), size=dims
-        )
+        coeffs = self.rng.dirichlet(self.alpha * np.ones(timeseries.shape[0]), size=dims)
         return coeffs @ timeseries
 
 
@@ -253,12 +237,8 @@ class RandomAffineTransform:
 
     def __call__(self, timeseries: NDArray) -> NDArray:
         dims = self.rng.integers(self.dim_range[0], self.dim_range[1], endpoint=True)
-        affine_transform = self.rng.normal(
-            scale=self.scale, size=(dims, 1 + timeseries.shape[0])
-        ) / np.sqrt(dims)
-        return (
-            affine_transform[:, :-1] @ timeseries + affine_transform[:, -1, np.newaxis]
-        )
+        affine_transform = self.rng.normal(scale=self.scale, size=(dims, 1 + timeseries.shape[0])) / np.sqrt(dims)
+        return affine_transform[:, :-1] @ timeseries + affine_transform[:, -1, np.newaxis]
 
 
 @dataclass
@@ -284,10 +264,6 @@ class RandomProjectedSkewTransform:
         self.rng: np.random.Generator = np.random.default_rng(self.random_seed)
 
     def __call__(self, timeseries1: NDArray, timeseries2: NDArray) -> NDArray:
-        proj1 = self.rng.normal(
-            scale=self.scale, size=(self.embedding_dim, timeseries1.shape[0])
-        )
-        proj2 = self.rng.normal(
-            scale=self.scale, size=(self.embedding_dim, timeseries2.shape[0])
-        )
+        proj1 = self.rng.normal(scale=self.scale, size=(self.embedding_dim, timeseries1.shape[0]))
+        proj2 = self.rng.normal(scale=self.scale, size=(self.embedding_dim, timeseries2.shape[0]))
         return proj1 @ timeseries1 + proj2 @ timeseries2

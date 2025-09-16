@@ -28,7 +28,7 @@ from panda.patchtst.patchtst import (
     PatchTSTForPretraining,
 )
 from panda.schedulers import Scheduler, SchedulerLoggingCallback
-from panda.utils import (
+from panda.utils.train_utils import (
     ensure_contiguous,
     get_next_path,
     has_enough_observations,
@@ -97,15 +97,12 @@ def main(cfg):
 
     # set floating point precision
     use_tf32 = cfg.train.tf32
-    if use_tf32 and not (
-        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
-    ):
+    if use_tf32 and not (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8):
         # TF32 floating point format is available only on NVIDIA GPUs
         # with compute capability 8 and above. See link for details.
         # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
         log_on_main(
-            "TF32 format is only available on devices with compute capability >= 8. "
-            "Setting tf32 to False.",
+            "TF32 format is only available on devices with compute capability >= 8. Setting tf32 to False.",
             logger,
         )
         use_tf32 = False
@@ -118,9 +115,7 @@ def main(cfg):
     train_data_paths = []
     for train_data_dir in train_data_dir_lst:
         train_data_dir = os.path.expandvars(train_data_dir)
-        train_data_paths.extend(
-            filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*"))
-        )
+        train_data_paths.extend(filter(lambda file: file.is_file(), Path(train_data_dir).rglob("*")))
 
     # create a new output directory to save results
     output_dir = get_next_path(
@@ -159,8 +154,7 @@ def main(cfg):
     dataloader_num_workers = cfg.train.dataloader_num_workers
     if dataloader_num_workers > len(train_datasets):
         log_on_main(
-            f"Setting the number of data loader workers to {len(train_datasets)}, "
-            f"instead of {dataloader_num_workers}.",
+            f"Setting the number of data loader workers to {len(train_datasets)}, instead of {dataloader_num_workers}.",
             logger,
         )
         dataloader_num_workers = len(train_datasets)
@@ -192,13 +186,10 @@ def main(cfg):
         ),
     ]
     if cfg.augmentations.probabilities is None:
-        cfg.augmentations.probabilities = [1.0 / len(augmentations)] * len(
-            augmentations
-        )
+        cfg.augmentations.probabilities = [1.0 / len(augmentations)] * len(augmentations)
     else:  # ensure probabilities sum to 1
         cfg.augmentations.probabilities = [
-            prob / sum(cfg.augmentations.probabilities)
-            for prob in cfg.augmentations.probabilities
+            prob / sum(cfg.augmentations.probabilities) for prob in cfg.augmentations.probabilities
         ]
 
     log_on_main(
@@ -224,10 +215,7 @@ def main(cfg):
         transforms=transforms,
     ).shuffle(shuffle_buffer_length=cfg.shuffle_buffer_length)
 
-    if (
-        cfg.patchtst.mode == "predict"
-        and cfg.patchtst.pretrained_encoder_path is not None
-    ):
+    if cfg.patchtst.mode == "predict" and cfg.patchtst.pretrained_encoder_path is not None:
         log_on_main(
             f"Loading pretrained encoder from {cfg.patchtst.pretrained_encoder_path}",
             logger,
@@ -306,9 +294,7 @@ def main(cfg):
             callbacks=[logging_callback],
         )
     else:
-        trainer = Trainer(
-            model=model, args=training_args, train_dataset=shuffled_train_dataset
-        )
+        trainer = Trainer(model=model, args=training_args, train_dataset=shuffled_train_dataset)
 
     log_on_main("Training", logger)
 

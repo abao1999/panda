@@ -10,7 +10,7 @@ import itertools
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Generator, Iterator
+from collections.abc import Callable, Generator, Iterator
 
 import numpy as np
 import torch

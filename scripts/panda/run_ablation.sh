@@ -39,7 +39,6 @@ run_names_multivariate=(
 
 # multivariate with the kernel embedding
 run_names_multivariate_kernelemb=(
-    pft_rff496_proj-0
     pft_chattn_emb_w_poly-0
     pft_chattn_fullemb_pretrained-0
 )
@@ -62,14 +61,14 @@ run_names_patch_ablations=(
 run_names=(
     # panda_nh12_dmodel768_mixedp-4
     # panda_nh10_dmodel640-1
-    ${run_names_patch_ablations[@]}
+    # ${run_names_patch_ablations[@]}
     # ${run_names_new[@]}
     # ${run_names_scalinglaw[@]}
     # ${run_names_univariate[@]}
     # ${run_names_univariate_kernelemb_old[@]}
     # ${run_names_multivariate[@]}
     # ${run_names_multivariate_kernelemb_old[@]}
-    # ${run_names_multivariate_kernelemb[@]}
+    ${run_names_multivariate_kernelemb[@]}
     # ${run_names_multivariate_linattnpolyemb[@]}
 )
 

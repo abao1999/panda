@@ -4,7 +4,7 @@ NOTE: this functionality has been merged into the dysts repo.
 """
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 from dysts.base import DynSys  # type: ignore

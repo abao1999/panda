@@ -8,7 +8,7 @@ Modified from original Chronos codebase https://github.com/amazon-science/chrono
 
 import importlib
 from dataclasses import dataclass
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
@@ -26,7 +26,7 @@ class ChronosConfig:
     """
 
     tokenizer_class: str
-    tokenizer_kwargs: Dict[str, Any]
+    tokenizer_kwargs: dict[str, Any]
     context_length: int
     prediction_length: int
     n_tokens: int
@@ -66,7 +66,7 @@ class ChronosTokenizer:
     def context_input_transform(
         self,
         context: torch.Tensor,
-    ) -> Tuple:
+    ) -> tuple:
         """
         Turn a batch of time series into token IDs, attention map, and tokenizer_state.
 
@@ -95,7 +95,7 @@ class ChronosTokenizer:
         """
         raise NotImplementedError()
 
-    def label_input_transform(self, label: torch.Tensor, tokenizer_state: Any) -> Tuple:
+    def label_input_transform(self, label: torch.Tensor, tokenizer_state: Any) -> tuple:
         """
         Turn a batch of label slices of time series into token IDs and attention map
         using the ``tokenizer_state`` provided by ``context_input_transform``.
@@ -170,8 +170,8 @@ class MeanScaleUniformBins(ChronosTokenizer):
         )
 
     def _input_transform(
-        self, context: torch.Tensor, scale: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self, context: torch.Tensor, scale: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         attention_mask = ~torch.isnan(context)
 
         if scale is None:
@@ -197,7 +197,7 @@ class MeanScaleUniformBins(ChronosTokenizer):
 
     def _append_eos_token(
         self, token_ids: torch.Tensor, attention_mask: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size = token_ids.shape[0]
         eos_tokens = torch.full((batch_size, 1), fill_value=self.config.eos_token_id)
         token_ids = torch.concat((token_ids, eos_tokens), dim=1)
@@ -208,7 +208,7 @@ class MeanScaleUniformBins(ChronosTokenizer):
 
     def context_input_transform(
         self, context: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         length = context.shape[-1]
 
         if length > self.config.context_length:
@@ -225,7 +225,7 @@ class MeanScaleUniformBins(ChronosTokenizer):
 
     def label_input_transform(
         self, label: torch.Tensor, scale: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         length = label.shape[-1]
 
         assert length == self.config.prediction_length
@@ -306,11 +306,11 @@ class ChronosModel(nn.Module):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        prediction_length: Optional[int] = None,
-        num_samples: Optional[int] = None,
-        temperature: Optional[float] = None,
-        top_k: Optional[int] = None,
-        top_p: Optional[float] = None,
+        prediction_length: int | None = None,
+        num_samples: int | None = None,
+        temperature: float | None = None,
+        top_k: int | None = None,
+        top_p: float | None = None,
     ) -> torch.Tensor:
         """
         Predict future sample tokens for the given token sequences.

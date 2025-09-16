@@ -6,9 +6,10 @@ NOTE: this functionality has been merged into the dysts repo.
 import functools
 import warnings
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from multiprocessing import Pool
-from typing import Callable, Dict, List, Literal, Optional, Tuple
+from typing import Literal
 
 import numpy as np
 from dysts.analysis import max_lyapunov_exponent_rosenstein
@@ -17,7 +18,7 @@ from scipy.signal import find_peaks
 from scipy.spatial.distance import cdist
 from statsmodels.tsa.stattools import adfuller, kpss
 
-from panda.utils import run_zero_one_sweep
+from panda.utils.dyst_utils import run_zero_one_sweep
 
 
 @dataclass
@@ -29,7 +30,7 @@ class AttractorValidator:
     """
 
     transient_time_frac: float = 0.05  # should be low, should be on attractor
-    tests: Optional[List[Callable]] = None
+    tests: list[Callable] | None = None
 
     multiprocess_kwargs: dict = field(default_factory=dict)
 
@@ -52,7 +53,7 @@ class AttractorValidator:
         self,
         test_fn: Callable,
         traj_sample: np.ndarray,
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Execute a single test for a given trajectory sample of a system.
         Args:
@@ -64,9 +65,7 @@ class AttractorValidator:
         Returns:
             bool: True if the test passed, False otherwise
         """
-        original_func = (
-            test_fn.func if isinstance(test_fn, functools.partial) else test_fn
-        )
+        original_func = test_fn.func if isinstance(test_fn, functools.partial) else test_fn
         func_name = original_func.__name__
         status = test_fn(traj_sample)
         return status, func_name
@@ -76,7 +75,7 @@ class AttractorValidator:
         dyst_name: str,
         all_traj: np.ndarray,
         first_sample_idx: int = 0,
-    ) -> Tuple[np.ndarray, np.ndarray, List[Tuple[int, str]], List[int]]:
+    ) -> tuple[np.ndarray, np.ndarray, list[tuple[int, str]], list[int]]:
         """
         Multiprocessed version of self._filter_dyst without any verbose output
 
@@ -113,8 +112,8 @@ class AttractorValidator:
         )
 
     def filter_ensemble(
-        self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+        self, ensemble: dict[str, np.ndarray], first_sample_idx: int = 0
+    ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         """
         Execute all tests for all trajectory samples in the ensemble, and split the ensemble into valid and failed ensembles.
         Args:
@@ -125,8 +124,8 @@ class AttractorValidator:
             valid_attractor_ensemble: A new ensemble with only the valid trajectories
             failed_attractor_ensemble: A new ensemble with only the failed trajectories
         """
-        valid_attractor_ensemble: Dict[str, np.ndarray] = {}
-        failed_attractor_ensemble: Dict[str, np.ndarray] = {}
+        valid_attractor_ensemble: dict[str, np.ndarray] = {}
+        failed_attractor_ensemble: dict[str, np.ndarray] = {}
         for dyst_name, all_traj in ensemble.items():
             (
                 valid_attractor_trajs,
@@ -151,44 +150,33 @@ class AttractorValidator:
         return valid_attractor_ensemble, failed_attractor_ensemble
 
     def multiprocessed_filter_ensemble(
-        self, ensemble: Dict[str, np.ndarray], first_sample_idx: int = 0
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+        self, ensemble: dict[str, np.ndarray], first_sample_idx: int = 0
+    ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         """
         Multiprocessed version of self.filter_ensemble
         """
         with Pool(**self.multiprocess_kwargs) as pool:
             results = pool.starmap(
                 self._filter_system_worker_fn,
-                [
-                    (dyst_name, all_traj, first_sample_idx)
-                    for dyst_name, all_traj in ensemble.items()
-                ],
+                [(dyst_name, all_traj, first_sample_idx) for dyst_name, all_traj in ensemble.items()],
             )
         valid_trajs, failed_trajs, failed_checks, valid_samples = zip(*results)
         for dyst_name, failed_check_lst in zip(list(ensemble.keys()), failed_checks):
             if len(failed_check_lst) > 0:
                 self.failed_checks[dyst_name].append(failed_check_lst)
-                self.failed_samples[dyst_name].extend(
-                    [index for index, _ in failed_check_lst]
-                )
+                self.failed_samples[dyst_name].extend([index for index, _ in failed_check_lst])
         for dyst_name, valid_samples_lst in zip(list(ensemble.keys()), valid_samples):
             if len(valid_samples_lst) > 0:
                 self.valid_samples[dyst_name].extend(valid_samples_lst)
                 self.valid_dyst_counts[dyst_name] += len(valid_samples_lst)
         # form the valid and failed ensembles
         # note: relies on python 3.7+ order preservation in dictionaries
-        valid_ensemble = {
-            k: v for k, v in zip(list(ensemble.keys()), valid_trajs) if v.shape[0] > 0
-        }
-        failed_ensemble = {
-            k: v for k, v in zip(list(ensemble.keys()), failed_trajs) if v.shape[0] > 0
-        }
+        valid_ensemble = {k: v for k, v in zip(list(ensemble.keys()), valid_trajs) if v.shape[0] > 0}
+        failed_ensemble = {k: v for k, v in zip(list(ensemble.keys()), failed_trajs) if v.shape[0] > 0}
         return valid_ensemble, failed_ensemble
 
 
-def check_boundedness(
-    traj: np.ndarray, threshold: float = 1e4, max_zscore: float = 10, eps: float = 1e-10
-) -> bool:
+def check_boundedness(traj: np.ndarray, threshold: float = 1e4, max_zscore: float = 10, eps: float = 1e-10) -> bool:
     """
     Check if a multi-dimensional trajectory is bounded (not diverging).
 
@@ -214,9 +202,7 @@ def check_boundedness(
     return True
 
 
-def check_not_fixed_point(
-    traj: np.ndarray, tail_prop: float = 0.05, atol: float = 1e-3
-) -> bool:
+def check_not_fixed_point(traj: np.ndarray, tail_prop: float = 0.05, atol: float = 1e-3) -> bool:
     """
     Check if the system trajectory converges to a fixed point.
     Actually, this tests the variance decay in the trajectory to detect a fixed point.
@@ -238,9 +224,7 @@ def check_not_fixed_point(
     return True
 
 
-def check_not_trajectory_decay(
-    traj: np.ndarray, tail_prop: float = 0.5, atol: float = 1e-3
-) -> bool:
+def check_not_trajectory_decay(traj: np.ndarray, tail_prop: float = 0.5, atol: float = 1e-3) -> bool:
     """
     Check if a multi-dimensional trajectory is not decaying.
     Args:
@@ -296,9 +280,7 @@ def check_not_limit_cycle(
     dist_matrix = np.triu(dist_matrix, k=1)
 
     # Step 2: Get recurrence times from thresholding distance matrix
-    recurrence_indices = np.asarray(
-        (dist_matrix < tolerance) & (dist_matrix > 0)
-    ).nonzero()
+    recurrence_indices = np.asarray((dist_matrix < tolerance) & (dist_matrix > 0)).nonzero()
 
     n_recurrences = len(recurrence_indices[0])
     if n_recurrences == 0:
@@ -307,10 +289,7 @@ def check_not_limit_cycle(
     if enforce_endpoint_recurrence:
         # check if an eps neighborhood around either n-1 or 0 is in either of the recurrence indices
         eps = 0
-        if not any(
-            (n - 1) - max(indices) <= eps or min(indices) - 0 <= eps
-            for indices in recurrence_indices
-        ):
+        if not any((n - 1) - max(indices) <= eps or min(indices) - 0 <= eps for indices in recurrence_indices):
             return True
 
     # get recurrence times
@@ -324,9 +303,7 @@ def check_not_limit_cycle(
 
     # Heuristic 2: Check if there are enough valid recurrence times
     rtimes_counts = Counter(recurrence_times)
-    n_valid_rtimes = sum(
-        1 for count in rtimes_counts.values() if count >= min_counts_per_rtime
-    )
+    n_valid_rtimes = sum(1 for count in rtimes_counts.values() if count >= min_counts_per_rtime)
     if n_valid_rtimes < 1:
         return True
 
@@ -344,11 +321,7 @@ def check_not_limit_cycle(
             rtime = abs(t2 - t1)
             if rtime < min_recurrence_time:
                 continue
-            if (
-                rtime == prev_rtime
-                and abs(t1 - prev_t1) == 1
-                and abs(t2 - prev_t2) == 1
-            ):
+            if rtime == prev_rtime and abs(t1 - prev_t1) == 1 and abs(t2 - prev_t2) == 1:
                 block_length += 1
             else:
                 if block_length > min_block_length:
@@ -377,9 +350,7 @@ def check_lyapunov_exponent(traj: np.ndarray, traj_len: int = 100) -> bool:
         bool: False if the Lyapunov exponent is less than 1, True otherwise.
     """
     # TODO: debug this, the rosenstein implementation expects univariate time series, not broadcastable
-    lyapunov_exponent = max_lyapunov_exponent_rosenstein(
-        traj.T, trajectory_len=traj_len
-    )
+    lyapunov_exponent = max_lyapunov_exponent_rosenstein(traj.T, trajectory_len=traj_len)
     if lyapunov_exponent < 0:
         return False
     return True
@@ -419,9 +390,7 @@ def check_power_spectrum(
     return any(len(peaks) >= min_peaks for peaks in peaks_per_dim)
 
 
-def check_not_linear(
-    traj: np.ndarray, r2_threshold: float = 0.98, eps: float = 1e-10
-) -> bool:
+def check_not_linear(traj: np.ndarray, r2_threshold: float = 0.98, eps: float = 1e-10) -> bool:
     """Check if n-dimensional trajectory follows a straight line using PCA.
 
     Args:
@@ -517,9 +486,7 @@ def check_zero_one_test(
     return False
 
 
-def check_smooth(
-    traj: np.ndarray, freq_threshold: float = 0.3, jump_std_factor: float = 3.0
-) -> bool:  # type: ignore
+def check_smooth(traj: np.ndarray, freq_threshold: float = 0.3, jump_std_factor: float = 3.0) -> bool:  # type: ignore
     """
     Check if a multi-dimensional trajectory is smooth.
     """

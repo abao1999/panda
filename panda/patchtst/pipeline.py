@@ -13,7 +13,7 @@ from panda.patchtst.patchtst import (
     PatchTSTForPrediction,
     PatchTSTForPretraining,
 )
-from panda.utils import left_pad_and_stack_multivariate
+from panda.utils.eval_utils import left_pad_and_stack_multivariate
 
 
 @dataclass
@@ -41,9 +41,7 @@ class PatchTSTPipeline:
         model = model_class.from_pretrained(pretrain_path, **kwargs)
         return cls(mode=mode, model=model)
 
-    def _prepare_and_validate_context(
-        self, context: torch.Tensor | list[torch.Tensor]
-    ) -> torch.Tensor:
+    def _prepare_and_validate_context(self, context: torch.Tensor | list[torch.Tensor]) -> torch.Tensor:
         if isinstance(context, list):
             assert len(set(c.shape[-1] for c in context)) == 1, (
                 "All contexts must have the same number of channels"
@@ -96,9 +94,7 @@ class PatchTSTPipeline:
             Tensor of sample forecasts, of shape
             [bs x num_samples x prediction_length x num_channels]
         """
-        assert self.mode == "predict", (
-            "Model must be in predict mode to use this method"
-        )
+        assert self.mode == "predict", "Model must be in predict mode to use this method"
 
         # context_tensor: [bs x context_length x num_channels]
         context_tensor = self._prepare_and_validate_context(context=context)
@@ -129,15 +125,11 @@ class PatchTSTPipeline:
                 break
 
             # need to contract over the num_samples dimension, use median
-            context_tensor = torch.cat(
-                [context_tensor, prediction.median(dim=1).values], dim=1
-            )
+            context_tensor = torch.cat([context_tensor, prediction.median(dim=1).values], dim=1)
 
             # dont grow the context window, only keep the most recent context_length
             if sliding_context:
-                context_tensor = context_tensor[
-                    :, -self.model.config.context_length :, :
-                ]
+                context_tensor = context_tensor[:, -self.model.config.context_length :, :]
 
         # shape: [bs x num_samples x prediction_length x num_channels]
         predictions = torch.cat(predictions, dim=2)
@@ -168,18 +160,12 @@ class PatchTSTPipeline:
             Tensor of completions, of shape
             [bs x context_length x num_channels]
         """
-        assert self.mode == "pretrain", (
-            "Model must be in pretrain mode to use this method"
-        )
+        assert self.mode == "pretrain", "Model must be in pretrain mode to use this method"
 
         context_tensor = self._prepare_and_validate_context(context=context)
-        completions_output = self.model.generate_completions(
-            context_tensor, past_observed_mask=past_observed_mask
-        )
+        completions_output = self.model.generate_completions(context_tensor, past_observed_mask=past_observed_mask)
         # TODO: need to check shapes
-        completions = completions_output.completions.view_as(context_tensor).permute(
-            0, 2, 1
-        )
+        completions = completions_output.completions.view_as(context_tensor).permute(0, 2, 1)
         loc = completions_output.loc
         scale = completions_output.scale
         # mask = completions_output.mask
