@@ -155,70 +155,11 @@ def main():
 
     # Print summary
     print("\nLyapunov exponent calculation summary:")
-    breakpoint()
     for system_name, lyap_values in lyapunov_results.items():
         valid_results = [lyap for lyap in lyap_values if lyap is not None]
         print(f"{system_name}: {len(valid_results)}/{len(lyap_values)} successful calculations")
         if valid_results:
             print(f"  Mean max Lyapunov: {sum(valid_results) / len(valid_results):.4f}")
-
-
-#     # Define paths
-#     work_dir = os.environ.get("WORK", "/stor/work/AMDG_Gilpin_Summer2024")
-#     base_dir = f"{work_dir}/data/improved/final_base40"
-
-#     test_zeroshot_dir = f"{base_dir}/test_zeroshot"
-#     test_zeroshot_z5_z10_dir = f"{base_dir}/test_zeroshot_z5_z10"
-#     successes_file = f"{base_dir}/parameters/test/successes.json"
-
-#     # Extract system data from both directories
-#     print("Extracting system data from test_zeroshot...")
-#     system_data_1 = extract_system_data_from_directory(test_zeroshot_dir)
-#     print(f"Found {len(system_data_1)} systems in test_zeroshot")
-
-#     print("Extracting system data from test_zeroshot_z5_z10...")
-#     system_data_2 = extract_system_data_from_directory(test_zeroshot_z5_z10_dir)
-#     print(f"Found {len(system_data_2)} systems in test_zeroshot_z5_z10")
-
-#     # Combine system data (merge sample indices for systems that appear in both)
-#     combined_system_data = {}
-#     all_systems = set(system_data_1.keys()) | set(system_data_2.keys())
-
-#     for system in all_systems:
-#         indices_1 = system_data_1.get(system, set())
-#         indices_2 = system_data_2.get(system, set())
-#         combined_system_data[system] = indices_1 | indices_2
-
-#     print(f"Total unique systems: {len(combined_system_data)}")
-#     total_indices = sum(len(indices) for indices in combined_system_data.values())
-#     print(f"Total unique sample indices: {total_indices}")
-
-#     # Load successes data
-#     print("Loading successes.json...")
-#     with open(successes_file, "r") as f:
-#         successes_data = json.load(f)
-
-#     print(f"Original successes data has {len(successes_data)} systems")
-#     total_entries = sum(len(entries) for entries in successes_data.values())
-#     print(f"Original successes data has {total_entries} total entries")
-
-#     # Filter successes data
-#     print("Filtering successes data...")
-#     filtered_successes = filter_successes_by_systems_and_indices(
-#         successes_data, combined_system_data
-#     )
-
-#     print(f"Filtered successes data has {len(filtered_successes)} systems")
-#     filtered_entries = sum(len(entries) for entries in filtered_successes.values())
-#     print(f"Filtered successes data has {filtered_entries} total entries")
-
-#     # Save filtered data
-#     output_file = f"{base_dir}/parameters/test/filtered_params_dict.json"
-#     print(f"Saving filtered data to {output_file}...")
-#     with open(output_file, "w") as f:
-#         json.dump(filtered_successes, f, indent=4)
-
-#     print("Done!")
 
 
 if __name__ == "__main__":

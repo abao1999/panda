@@ -78,11 +78,9 @@ def evaluate_univariate_forecasting_model(
                 preds = preds[..., : horizon.shape[-1]]
 
             if scale_axis is not None:
-                breakpoint()
                 horizon = safe_standardize(horizon, context=context, axis=scale_axis)
                 preds = safe_standardize(preds, context=context[None, ...], axis=scale_axis)
                 context = safe_standardize(context, axis=scale_axis)
-            breakpoint()
 
             labels.append(horizon)
             predictions.append(preds)
@@ -122,7 +120,6 @@ def evaluate_univariate_forecasting_model(
                     include=metric_names,
                     batch_axis=0,
                 )
-                breakpoint()
 
         if return_predictions:
             system_predictions[system] = predictions.transpose(0, 2, 1)
