@@ -46,6 +46,10 @@ To install torch with ROCm, or for CUDA:
 uv sync --extra-index-url https://download.pytorch.org/whl/cuda12.9
 ```
 
+For the development setup, use:
+```
+uv sync --group dev
+```
 
 ## Dataset Generation
 Our dataset consists of parameter perturbations of base and skew systems. Each trajectory is a numerically integrated system of coupled ODEs that we filter according to the methodology outlined in our preprint. To run the data generation, see our scripts for [making trajectories from saved params](https://github.com/abao1999/panda/blob/main/scripts/make_dataset_from_params.py), [parameter perturbations of skew systems](https://github.com/abao1999/panda/blob/main/scripts/make_skew_systems.py), and [parameter perturbations of base systems](https://github.com/abao1999/panda/blob/main/scripts/make_dyst_data.py). For ease of use we have also provided an example data generation [bash script](https://github.com/abao1999/panda/blob/main/scripts/bash_scripts/run_data_generation.sh) that calls these scripts.

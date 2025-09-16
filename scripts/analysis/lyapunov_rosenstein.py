@@ -1,7 +1,7 @@
 import json
 import os
 from multiprocessing import Pool
-from typing import Any, Dict, Set
+from typing import Any
 
 from dysts.analysis import max_lyapunov_exponent
 from tqdm import tqdm
@@ -12,7 +12,7 @@ from panda.utils.dyst_utils import (
 )
 
 
-def extract_system_data_from_directory(directory: str) -> Dict[str, Set[int]]:
+def extract_system_data_from_directory(directory: str) -> dict[str, set[int]]:
     """Extract system names and their sample indices from the given directory."""
     system_data = {}
 
@@ -42,8 +42,8 @@ def extract_system_data_from_directory(directory: str) -> Dict[str, Set[int]]:
 
 
 def filter_successes_by_systems_and_indices(
-    successes_data: Dict[str, Any], system_data: Dict[str, Set[int]]
-) -> Dict[str, Any]:
+    successes_data: dict[str, Any], system_data: dict[str, set[int]]
+) -> dict[str, Any]:
     """Filter successes data to keep only systems and sample indices that exist in test directories."""
     filtered_data = {}
 
@@ -51,9 +51,7 @@ def filter_successes_by_systems_and_indices(
         # Only include systems that exist in the test directories
         if system_name in system_data:
             valid_indices = system_data[system_name]
-            filtered_entries = [
-                entry for entry in entries if entry.get("sample_idx") in valid_indices
-            ]
+            filtered_entries = [entry for entry in entries if entry.get("sample_idx") in valid_indices]
             if filtered_entries:
                 filtered_data[system_name] = filtered_entries
 
@@ -61,11 +59,7 @@ def filter_successes_by_systems_and_indices(
 
 
 def init_system(params_data: dict[str, Any], system_type: str = "base"):
-    init_fn = (
-        init_base_system_from_params
-        if system_type == "base"
-        else init_skew_system_from_params
-    )
+    init_fn = init_base_system_from_params if system_type == "base" else init_skew_system_from_params
     systems = {}
     for system_name, entries in params_data.items():
         print(f"\nInitializing {system_type} system: {system_name}")
@@ -112,14 +106,12 @@ def calculate_lyapunov_exponents_worker(args):
     return system_name, results
 
 
-def calculate_all_lyapunov_exponents(all_systems: Dict[str, Any]) -> Dict[str, list]:
+def calculate_all_lyapunov_exponents(all_systems: dict[str, Any]) -> dict[str, list]:
     """Calculate max Lyapunov exponents for all systems using multiprocessing."""
     print("Calculating max Lyapunov exponents...")
 
     # Prepare arguments for multiprocessing
-    args_list = [
-        (system_name, dynsys_list) for system_name, dynsys_list in all_systems.items()
-    ]
+    args_list = [(system_name, dynsys_list) for system_name, dynsys_list in all_systems.items()]
 
     # Use multiprocessing with progress bar
     with Pool() as pool:
@@ -132,9 +124,7 @@ def calculate_all_lyapunov_exponents(all_systems: Dict[str, Any]) -> Dict[str, l
         )
 
     # Convert results to dictionary
-    lyapunov_results = {
-        system_name: lyap_values for system_name, lyap_values in results
-    }
+    lyapunov_results = {system_name: lyap_values for system_name, lyap_values in results}
 
     return lyapunov_results
 
@@ -144,10 +134,10 @@ def main():
     base_params_file = f"{work_dir}/data/improved/final_base40/parameters/test/filtered_params_dict.json"
     skew_params_file = f"{work_dir}/data/improved/final_skew40/parameters/test_zeroshot/filtered_params_dict.json"
 
-    with open(base_params_file, "r") as f:
+    with open(base_params_file) as f:
         base_params = json.load(f)
 
-    with open(skew_params_file, "r") as f:
+    with open(skew_params_file) as f:
         skew_params = json.load(f)
 
     print(f"Loaded {len(base_params)} systems from base params")
@@ -168,9 +158,7 @@ def main():
     breakpoint()
     for system_name, lyap_values in lyapunov_results.items():
         valid_results = [lyap for lyap in lyap_values if lyap is not None]
-        print(
-            f"{system_name}: {len(valid_results)}/{len(lyap_values)} successful calculations"
-        )
+        print(f"{system_name}: {len(valid_results)}/{len(lyap_values)} successful calculations")
         if valid_results:
             print(f"  Mean max Lyapunov: {sum(valid_results) / len(valid_results):.4f}")
 
