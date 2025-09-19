@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # read debug flag
 DEBUG=0
 while getopts "d" flag; do
@@ -65,14 +67,14 @@ if [ "$DEBUG" -eq 0 ]; then
                 chronos.temperature=1.0 \
                 chronos.top_k=50 \
                 chronos.top_p=1.0 \
-                train.max_steps=400_000 \
+                train.max_steps=400000 \
                 train.save_steps=50_000 \
                 train.log_steps=1000 \
                 shuffle_buffer_length=100_000 \
-                train.per_device_train_batch_size=100 \
+                train.per_device_train_batch_size=16 \
                 train.warmup_ratio=0.05 \
                 train.torch_compile=true \
-                train.weight_decay=1e-4 \
+                train.weight_decay=0.0 \
                 train.output_dir=$WORK/checkpoints/ \
                 "$@"
 else  # this mode allows for breakpoints inside model code

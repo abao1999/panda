@@ -46,21 +46,21 @@ if [ "$DEBUG" -eq 0 ]; then
             shuffle_buffer_length=100_000 \
             train_data_dirs=$train_data_dirs_json \
             patchtst.mode=predict \
-            patchtst.use_dynamics_embedding=false \
+            patchtst.use_dynamics_embedding=true \
             patchtst.poly_degrees=2 \
-            patchtst.num_poly_feats=120 \
+            patchtst.num_poly_feats=156 \
             patchtst.rff_trainable=false \
             patchtst.rff_scale=1.0 \
-            patchtst.num_rff=256 \
+            patchtst.num_rff=312 \
             patchtst.pretrained_encoder_path=null \
             patchtst.context_length=512 \
             patchtst.prediction_length=128 \
             patchtst.patch_length=16 \
             patchtst.patch_stride=16 \
-            patchtst.num_hidden_layers=8 \
-            patchtst.num_attention_heads=8 \
-            patchtst.d_model=512 \
-            patchtst.ffn_dim=512 \
+            patchtst.num_hidden_layers=10 \
+            patchtst.num_attention_heads=10 \
+            patchtst.d_model=640 \
+            patchtst.ffn_dim=640 \
             patchtst.norm_type=rmsnorm \
             patchtst.channel_attention=true \
             patchtst.max_wavelength=500 \
@@ -74,7 +74,7 @@ if [ "$DEBUG" -eq 0 ]; then
             train.log_steps=1_000 \
             train.warmup_ratio=0.1 \
             train.torch_compile=true \
-            train.weight_decay=1e-4 \
+            train.weight_decay=0.0 \
             train.output_dir=$WORK/checkpoints/ \
             "$@"
 else  # this mode allows for breakpoints inside model code
