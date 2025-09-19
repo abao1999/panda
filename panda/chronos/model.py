@@ -41,10 +41,9 @@ class ChronosConfig:
     top_p: float
 
     def __post_init__(self):
-        assert (
-            self.pad_token_id < self.n_special_tokens
-            and self.eos_token_id < self.n_special_tokens
-        ), f"Special token id's must be smaller than {self.n_special_tokens=}"
+        assert self.pad_token_id < self.n_special_tokens and self.eos_token_id < self.n_special_tokens, (
+            f"Special token id's must be smaller than {self.n_special_tokens=}"
+        )
 
     def create_tokenizer(self) -> "ChronosTokenizer":
         module = importlib.import_module(__name__)
@@ -126,9 +125,7 @@ class ChronosTokenizer:
         """
         raise NotImplementedError()
 
-    def output_transform(
-        self, samples: torch.Tensor, tokenizer_state: Any
-    ) -> torch.Tensor:
+    def output_transform(self, samples: torch.Tensor, tokenizer_state: Any) -> torch.Tensor:
         """
         Turn a batch of sample token IDs into real values.
 
@@ -152,9 +149,7 @@ class ChronosTokenizer:
 
 
 class MeanScaleUniformBins(ChronosTokenizer):
-    def __init__(
-        self, low_limit: float, high_limit: float, config: ChronosConfig
-    ) -> None:
+    def __init__(self, low_limit: float, high_limit: float, config: ChronosConfig) -> None:
         self.config = config
         self.centers = torch.linspace(
             low_limit,
@@ -175,9 +170,7 @@ class MeanScaleUniformBins(ChronosTokenizer):
         attention_mask = ~torch.isnan(context)
 
         if scale is None:
-            scale = torch.nansum(
-                torch.abs(context) * attention_mask, dim=-1
-            ) / torch.nansum(attention_mask, dim=-1)
+            scale = torch.nansum(torch.abs(context) * attention_mask, dim=-1) / torch.nansum(attention_mask, dim=-1)
             scale[~(scale > 0)] = 1.0
 
         scaled_context = context / scale.unsqueeze(dim=-1)
@@ -206,9 +199,7 @@ class MeanScaleUniformBins(ChronosTokenizer):
 
         return token_ids, attention_mask
 
-    def context_input_transform(
-        self, context: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def context_input_transform(self, context: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         length = context.shape[-1]
 
         if length > self.config.context_length:
@@ -217,30 +208,22 @@ class MeanScaleUniformBins(ChronosTokenizer):
         token_ids, attention_mask, scale = self._input_transform(context=context)
 
         if self.config.use_eos_token and self.config.model_type == "seq2seq":
-            token_ids, attention_mask = self._append_eos_token(
-                token_ids=token_ids, attention_mask=attention_mask
-            )
+            token_ids, attention_mask = self._append_eos_token(token_ids=token_ids, attention_mask=attention_mask)
 
         return token_ids, attention_mask, scale
 
-    def label_input_transform(
-        self, label: torch.Tensor, scale: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def label_input_transform(self, label: torch.Tensor, scale: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         length = label.shape[-1]
 
         assert length == self.config.prediction_length
         token_ids, attention_mask, _ = self._input_transform(context=label, scale=scale)
 
         if self.config.use_eos_token:
-            token_ids, attention_mask = self._append_eos_token(
-                token_ids=token_ids, attention_mask=attention_mask
-            )
+            token_ids, attention_mask = self._append_eos_token(token_ids=token_ids, attention_mask=attention_mask)
 
         return token_ids, attention_mask
 
-    def output_transform(
-        self, samples: torch.Tensor, scale: torch.Tensor
-    ) -> torch.Tensor:
+    def output_transform(self, samples: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
         scale_unsqueezed = scale.unsqueeze(-1).unsqueeze(-1)
         indices = torch.clamp(
             samples - self.config.n_special_tokens - 1,
@@ -295,12 +278,8 @@ class ChronosModel(nn.Module):
             A tensor of encoder embeddings with shape
             (batch_size, sequence_length, d_model).
         """
-        assert self.config.model_type == "seq2seq", (
-            "Encoder embeddings are only supported for encoder-decoder models"
-        )
-        return self.model.encoder(
-            input_ids=input_ids, attention_mask=attention_mask
-        ).last_hidden_state
+        assert self.config.model_type == "seq2seq", "Encoder embeddings are only supported for encoder-decoder models"
+        return self.model.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
 
     def forward(
         self,
