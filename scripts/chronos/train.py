@@ -13,6 +13,10 @@ from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from gluonts.transform import LastValueImputation
 from omegaconf import OmegaConf
+from transformers.trainer import Trainer
+from transformers.training_args import TrainingArguments
+
+import wandb
 from panda.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
@@ -21,15 +25,17 @@ from panda.augmentations import (
     RandomTakensEmbedding,
     StandardizeTransform,
 )
-from panda.dataset import UnivariateTimeSeriesDataset
 from panda.chronos.model import ChronosConfig
-from panda.utils import train_utils
-from transformers import Trainer, TrainingArguments
-
-import wandb
-from panda.utils.train_utils import log_on_main
-from panda.utils.train_utils import is_main_process
-from panda.utils.train_utils import load_chronos_model
+from panda.dataset import UnivariateTimeSeriesDataset
+from panda.utils.train_utils import (
+    ensure_contiguous,
+    get_next_path,
+    has_enough_observations,
+    is_main_process,
+    load_chronos_model,
+    log_on_main,
+    save_training_info,
+)
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
@@ -53,37 +59,29 @@ def main(cfg):
 
     # set floating point precision
     use_tf32 = cfg.train.tf32
-    if use_tf32 and not (
-        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
-    ):
+    is_nvidia_gpu = torch.cuda.is_available() and torch.cuda.get_device_name().lower().find("nvidia") != -1
+    if use_tf32 and not (is_nvidia_gpu and torch.cuda.get_device_capability()[0] >= 8):
         # TF32 floating point format is available only on NVIDIA GPUs
         # with compute capability 8 and above. See link for details.
         # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
         log_on_main(
-            "TF32 format is only available on devices with compute capability >= 8. "
-            "Setting tf32 to False.",
+            "TF32 format is only available on NVIDIA GPUs with compute capability >= 8. Setting tf32 to False.",
             logger,
         )
         use_tf32 = False
 
     # set random seed
     log_on_main(f"Using SEED: {cfg.train.seed}", logger)
-    transformers.set_seed(seed=cfg.train.seed)
+    transformers.set_seed(seed=cfg.train.seed)  # type: ignore
 
     # get train data paths
     train_data_paths = []
     if cfg.train_data_dirs is not None:
         for train_data_dirs in cfg.train_data_dirs:
-            train_data_paths.extend(
-                list(
-                    filter(
-                        lambda file: file.is_file(), Path(train_data_dirs).rglob("*")
-                    )
-                )
-            )
+            train_data_paths.extend(list(filter(lambda file: file.is_file(), Path(train_data_dirs).rglob("*"))))
 
     # create a new output directory to save results
-    output_dir = train_utils.get_next_path(
+    output_dir = get_next_path(
         cfg.run_name if cfg.run_name else "run",
         base_dir=Path(cfg.train.output_dir),
         file_type="",
@@ -97,7 +95,7 @@ def main(cfg):
     train_datasets = [
         Filter(
             partial(
-                train_utils.has_enough_observations,
+                has_enough_observations,
                 min_length=cfg.min_past + cfg.chronos.prediction_length,
                 max_missing_prop=cfg.max_missing_prop,
             ),
@@ -118,8 +116,7 @@ def main(cfg):
     dataloader_num_workers = cfg.train.dataloader_num_workers
     if dataloader_num_workers > len(train_datasets):
         log_on_main(
-            f"Setting the number of data loader workers to {len(train_datasets)}, "
-            f"instead of {dataloader_num_workers}.",
+            f"Setting the number of data loader workers to {len(train_datasets)}, instead of {dataloader_num_workers}.",
             logger,
         )
         dataloader_num_workers = len(train_datasets)
@@ -185,13 +182,10 @@ def main(cfg):
         ),
     ]
     if cfg.augmentations.probabilities is None:
-        cfg.augmentations.probabilities = [1.0 / len(augmentations)] * len(
-            augmentations
-        )
+        cfg.augmentations.probabilities = [1.0 / len(augmentations)] * len(augmentations)
     else:  # ensure probabilities sum to 1
         cfg.augmentations.probabilities = [
-            prob / sum(cfg.augmentations.probabilities)
-            for prob in cfg.augmentations.probabilities
+            prob / sum(cfg.augmentations.probabilities) for prob in cfg.augmentations.probabilities
         ]
 
     log_on_main(
@@ -209,9 +203,7 @@ def main(cfg):
         prediction_length=cfg.chronos.prediction_length,
         min_past=cfg.min_past,
         model_type=cfg.chronos.model_type,
-        imputation_method=LastValueImputation()
-        if cfg.chronos.model_type == "causal"
-        else None,
+        imputation_method=LastValueImputation() if cfg.chronos.model_type == "causal" else None,
         mode="train",
         augmentations=augmentations,
         augmentation_rate=cfg.augmentations.augmentation_rate,
@@ -253,11 +245,9 @@ def main(cfg):
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.
     # This speeds up training and allows checkpoint saving by transformers Trainer
-    train_utils.ensure_contiguous(model)
+    ensure_contiguous(model)
 
-    trainer = Trainer(
-        model=model, args=training_args, train_dataset=shuffled_train_dataset
-    )
+    trainer = Trainer(model=model, args=training_args, train_dataset=shuffled_train_dataset)
 
     log_on_main("Training", logger)
     trainer.train(
@@ -266,8 +256,8 @@ def main(cfg):
 
     # save final model checkpoint and training info locally
     if is_main_process():
-        model.save_pretrained(output_dir / "checkpoint-final")
-        train_utils.save_training_info(
+        model.save_pretrained(output_dir / "checkpoint-final")  # type: ignore
+        save_training_info(
             output_dir / "checkpoint-final",
             model_config=vars(chronos_config),  # TODO: add model_id to this
             train_config=OmegaConf.to_container(cfg.train, resolve=True),  # type: ignore

@@ -6,13 +6,13 @@ from pathlib import Path
 import hydra
 import torch
 import transformers
-import wandb
 from gluonts.dataset.common import FileDataset
 from gluonts.itertools import Filter
 from omegaconf import OmegaConf
 from transformers.trainer import Trainer
 from transformers.training_args import TrainingArguments
 
+import wandb
 from panda.augmentations import (
     RandomAffineTransform,
     RandomConvexCombinationTransform,
@@ -97,18 +97,19 @@ def main(cfg):
 
     # set floating point precision
     use_tf32 = cfg.train.tf32
-    if use_tf32 and not (torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8):
+    is_nvidia_gpu = torch.cuda.is_available() and torch.cuda.get_device_name().lower().find("nvidia") != -1
+    if use_tf32 and not (is_nvidia_gpu and torch.cuda.get_device_capability()[0] >= 8):
         # TF32 floating point format is available only on NVIDIA GPUs
         # with compute capability 8 and above. See link for details.
         # https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capability-8-x
         log_on_main(
-            "TF32 format is only available on devices with compute capability >= 8. Setting tf32 to False.",
+            "TF32 format is only available on NVIDIA GPUs with compute capability >= 8. Setting tf32 to False.",
             logger,
         )
         use_tf32 = False
 
     log_on_main(f"Using SEED: {cfg.train.seed}", logger)
-    transformers.set_seed(seed=cfg.train.seed)
+    transformers.set_seed(seed=cfg.train.seed)  # type: ignore
 
     # get train data paths
     train_data_dir_lst = cfg.train_data_dirs
