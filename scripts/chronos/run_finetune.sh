@@ -71,7 +71,7 @@ if [ "$DEBUG" -eq 0 ]; then
                 train.save_steps=50_000 \
                 train.log_steps=1000 \
                 shuffle_buffer_length=100_000 \
-                train.per_device_train_batch_size=16 \
+                train.per_device_train_batch_size=32 \
                 train.warmup_ratio=0.05 \
                 train.torch_compile=true \
                 train.weight_decay=0.0 \

@@ -241,6 +241,7 @@ def main(cfg):
         ddp_backend=cfg.train.ddp_backend,
         seed=cfg.train.seed,
         resume_from_checkpoint=cfg.train.resume_from_checkpoint,
+        auto_find_batch_size=cfg.train.auto_find_batch_size
     )
 
     # check if model weights are contiguous in memory; if not, make them contiguous tensors.

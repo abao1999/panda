@@ -11,7 +11,8 @@ train:
   max_grad_norm: 1.0
   dataloader_num_workers: 32
   dataloader_prefetch_factor: 4
-  dataloader_persistent_workers: false
+  dataloader_persistent_workers: true
+  auto_find_batch_size: false
 
   tf32: true
   torch_compile: true

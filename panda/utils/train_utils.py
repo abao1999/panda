@@ -62,14 +62,23 @@ def get_training_job_info() -> dict:  # not currently used
     if torch.cuda.is_available():
         job_info["device_count"] = torch.cuda.device_count()
 
-        job_info["device_names"] = {
-            idx: torch.cuda.get_device_name(idx)
-            for idx in range(torch.cuda.device_count())
-        }
-        job_info["mem_info"] = {
-            idx: torch.cuda.mem_get_info(device=idx)
-            for idx in range(torch.cuda.device_count())
-        }
+        # Only query the current device to avoid spawning CUDA contexts on other GPUs
+        # which can OOM when other ranks already fully occupy those devices.
+        try:
+            current_device = torch.cuda.current_device()
+        except Exception:
+            current_device = 0
+
+        try:
+            job_info["device_names"] = {current_device: torch.cuda.get_device_name(current_device)}
+        except Exception as e:
+            job_info["device_names"] = {"error": str(e)}
+
+        try:
+            free, total = torch.cuda.mem_get_info()  # current device
+            job_info["mem_info"] = {current_device: (free, total)}
+        except Exception as e:
+            job_info["mem_info"] = {"error": str(e)}
 
     # DDP info
     job_info["torchelastic_launched"] = dist.is_torchelastic_launched()
@@ -88,9 +97,7 @@ def get_training_job_info() -> dict:  # not currently used
     return job_info
 
 
-def save_training_info(
-    ckpt_path: Path, model_config: dict, train_config: dict, all_config: dict
-):
+def save_training_info(ckpt_path: Path, model_config: dict, train_config: dict, all_config: dict):
     """
     Save info about this training job in a json file for documentation.
     """
@@ -132,14 +139,10 @@ def get_next_path(
             lambda x: re.match(f"^{base_fname}{separator}\\d+$", x.stem),
             base_dir.glob(f"*.{file_type}"),
         )
-    run_nums = list(
-        map(lambda x: int(x.stem.replace(base_fname + separator, "")), items)
-    ) + [-1]
+    run_nums = list(map(lambda x: int(x.stem.replace(base_fname + separator, "")), items)) + [-1]
 
     next_num = max(run_nums) + (0 if overwrite else 1)
-    fname = f"{base_fname}{separator}{next_num}" + (
-        f".{file_type}" if file_type != "" else ""
-    )
+    fname = f"{base_fname}{separator}{next_num}" + (f".{file_type}" if file_type != "" else "")
 
     return base_dir / fname
 
@@ -163,9 +166,7 @@ def load_chronos_model(
     of tokens.
     """
     assert model_type in ["seq2seq", "causal"]
-    AutoModelClass = (
-        AutoModelForSeq2SeqLM if model_type == "seq2seq" else AutoModelForCausalLM
-    )
+    AutoModelClass = AutoModelForSeq2SeqLM if model_type == "seq2seq" else AutoModelForCausalLM
     config = AutoConfig.from_pretrained(model_id)
     if chronos_config is not None:
         config.chronos_config = chronos_config.__dict__  # type: ignore
@@ -215,9 +216,7 @@ def load_patchtst_model(
         raise ValueError(f"Invalid mode: {mode}")
 
     if pretrained_encoder_path is not None and mode == "predict":
-        pretrained_model = PatchTSTForPretraining.from_pretrained(
-            pretrained_encoder_path
-        )
+        pretrained_model = PatchTSTForPretraining.from_pretrained(pretrained_encoder_path)
         # replace the current encoder with the pretrained encoder
         if hasattr(pretrained_model, "model"):
             pretained_trunk = getattr(pretrained_model, "model")
@@ -236,9 +235,7 @@ def load_patchtst_model(
     return model
 
 
-def has_enough_observations(
-    entry: dict, min_length: int = 0, max_missing_prop: float = 1.0
-) -> bool:
+def has_enough_observations(entry: dict, min_length: int = 0, max_missing_prop: float = 1.0) -> bool:
     """
     Check if the given entry has enough observations in the ``"target"`` attribute.
 
@@ -252,10 +249,7 @@ def has_enough_observations(
         The maximum proportion of missing data allowed in the ``"target"``
         attribute.
     """
-    if (
-        entry["target"].shape[-1] >= min_length
-        and np.isnan(entry["target"]).mean() <= max_missing_prop
-    ):
+    if entry["target"].shape[-1] >= min_length and np.isnan(entry["target"]).mean() <= max_missing_prop:
         return True
     return False
 
