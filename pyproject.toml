@@ -23,7 +23,7 @@ dependencies = [
     "torch>=2.2.0",
     "transformers",
     "accelerate",
-    "dysts[numba] @ git+https://github.com/williamgilpin/dysts@master",
+    "dysts[numba,extra] @ git+https://github.com/williamgilpin/dysts@master",
     "gluonts[arrow]",
     "scipy",
     "scikit-learn",
