@@ -31,7 +31,8 @@ dependencies = [
     "wandb",
     "matplotlib",
     "statsmodels",
-    "pandas"
+    "pandas",
+    "orjson"
 ]
 
 [dependency-groups]

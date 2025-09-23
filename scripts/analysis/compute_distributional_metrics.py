@@ -155,7 +155,7 @@ def _compute_metrics_worker(
 
     # Prediction vs Full Trajectory
     avg_hellinger_full_traj = safe_call(average_hellinger_distance, full_trajectory, predictions)
-    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions, sigma_scale=None)
+    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions, n_samples=20000, sigma_scale=None)
     # NOTE: this is redundant computation because it should be the same for every context window pkl file,
     # but we do this for convenience when running notebooks/plot_distributional_metrics.ipynb
     if compute_dataset_stats_flag:

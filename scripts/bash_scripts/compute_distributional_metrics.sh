@@ -60,6 +60,8 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 
+export PYTHONWARNINGS="ignore"
+
 window_start_times=(512 1024 1536 2048)
 for idx in "${!window_start_times[@]}"; do
     window_start_time="${window_start_times[$idx]}"
