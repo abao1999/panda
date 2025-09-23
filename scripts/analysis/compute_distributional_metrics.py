@@ -155,7 +155,7 @@ def _compute_metrics_worker(
 
     # Prediction vs Full Trajectory
     avg_hellinger_full_traj = safe_call(average_hellinger_distance, full_trajectory, predictions)
-    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions)
+    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions, sigma_scale=None)
     # NOTE: this is redundant computation because it should be the same for every context window pkl file,
     # but we do this for convenience when running notebooks/plot_distributional_metrics.ipynb
     if compute_dataset_stats_flag:
@@ -166,7 +166,7 @@ def _compute_metrics_worker(
     # Get the average integration dt for purpose of Lyapunov exponent computation
     full_traj_len = full_trajectory.shape[0]
     # we are keeping this fixed for now, but make adaptive in the future for mixed period datasets
-    num_periods = 40  
+    num_periods = 40
 
     system_name_without_pp = system_name.split("_pp")[0]
     is_skew = "_" in system_name_without_pp
