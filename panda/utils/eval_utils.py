@@ -25,22 +25,33 @@ def get_eval_data_dict(
     one_dim_target: bool = False,
 ) -> dict[str, list[FileDataset]]:  # type: ignore
     """
-    data_paths_lst: list of test data directories paths
-    num_subdirs: number of subdirectories to consider
-    num_samples_per_subdir: number of samples per subdirectory to consider
+    Get the all datasets indexed by system name.
+
+    For each input data path, the assumed file structure is:
+
+    data path
+    | system_1
+    | | traj_1.arrow
+    | | ...
+    | | traj_M.arrow
+    | ...
+
+    Args:
+        data_paths_lst: list of test data directories paths
+        num_subdirs: number of subdirectories to consider
+        num_samples_per_subdir: number of samples per subdirectory to consider
+    Returns:
+        dict of system name -> list of FileDataset objects
     """
-    # get test data paths
-    test_data_dirs_dict = defaultdict(list)  # maps subdirectory name to test data path
+    # create map: system name to subdirectory path
+    system2path = defaultdict(list)  # maps subdirectory name to test data path
     for test_data_dir in data_paths_lst:
         test_data_dir = os.path.expandvars(test_data_dir)
-        system_dirs = [d for d in Path(test_data_dir).iterdir() if d.is_dir()]
-        for subdir in system_dirs:
-            # can be either name of skew pair or name of the unique system (parameter perturbation)
-            subdir_name = subdir.name
-            test_data_dirs_dict[subdir_name].append(subdir)
+        for subdir in filter(lambda d: d.is_dir, Path(test_data_dir).iterdir()):
+            system2path[subdir.name].append(subdir)
 
     test_data_dict = {}
-    for subdir_name, subdirs in islice(test_data_dirs_dict.items(), num_subdirs):
+    for system_name, subdirs in islice(system2path.items(), num_subdirs):
         system_files = []
         for subdir in subdirs:
             system_files.extend(list(subdir.glob("*")))
@@ -52,7 +63,7 @@ def get_eval_data_dict(
             key=lambda x: int(x.stem.split("_")[0]),
         )[:num_samples_per_subdir]
 
-        test_data_dict[subdir_name] = [
+        test_data_dict[system_name] = [
             FileDataset(path=Path(file_path), freq="h", one_dim_target=one_dim_target)
             for file_path in system_files
             if file_path.is_file()
@@ -70,9 +81,7 @@ def left_pad_and_stack_1D(tensors: list[torch.Tensor]) -> torch.Tensor:
     for c in tensors:
         assert isinstance(c, torch.Tensor)
         assert c.ndim == 1
-        padding = torch.full(
-            size=(max_len - len(c),), fill_value=torch.nan, device=c.device
-        )
+        padding = torch.full(size=(max_len - len(c),), fill_value=torch.nan, device=c.device)
         padded.append(torch.concat((padding, c), dim=-1))
     return torch.stack(padded)
 
@@ -87,9 +96,7 @@ def left_pad_and_stack_multivariate(tensors: list[torch.Tensor]) -> torch.Tensor
     for c in tensors:
         assert isinstance(c, torch.Tensor)
         assert c.ndim == 2
-        padding = torch.full(
-            size=(max_len - len(c),), fill_value=torch.nan, device=c.device
-        )
+        padding = torch.full(size=(max_len - len(c),), fill_value=torch.nan, device=c.device)
         padded.append(torch.concat((padding, c), dim=-1))
     return torch.stack(padded)
 
@@ -115,18 +122,12 @@ def save_evaluation_results(
     """
     if metrics is not None:
         for forecast_length, metric_dict in metrics.items():
-            result_rows = [
-                {"system": system, **metric_dict[system]} for system in metric_dict
-            ]
+            result_rows = [{"system": system, **metric_dict[system]} for system in metric_dict]
             results_df = pd.DataFrame(result_rows)
             if metrics_metadata is not None:
                 for quantity_name in metrics_metadata:
-                    results_df[quantity_name] = results_df["system"].map(
-                        metrics_metadata[quantity_name]
-                    )
-            curr_metrics_fname = (
-                f"{metrics_fname or 'metrics'}_pred{forecast_length}.csv"
-            )
+                    results_df[quantity_name] = results_df["system"].map(metrics_metadata[quantity_name])
+            curr_metrics_fname = f"{metrics_fname or 'metrics'}_pred{forecast_length}.csv"
             metrics_save_path = os.path.join(metrics_save_dir, curr_metrics_fname)
             logger.info(f"Saving metrics to: {metrics_save_path}")
             os.makedirs(os.path.dirname(metrics_save_path), exist_ok=True)
@@ -158,9 +159,7 @@ def get_summary_metrics_dict(
         stds = []
         stes = []
         all_vals = []
-        for prediction_length in tqdm(
-            prediction_lengths, desc=f"Computing {metric_name} for {model_name}"
-        ):
+        for prediction_length in tqdm(prediction_lengths, desc=f"Computing {metric_name} for {model_name}"):
             metric_vals = np.array(metrics_dict[prediction_length][metric_name])
             if np.isnan(metric_vals).any():
                 has_nans[model_name] = True

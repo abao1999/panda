@@ -1,12 +1,12 @@
 import logging
 import os
 import time
+from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Any, Literal
-from collections.abc import Callable
 
 import numpy as np
 from dysts.systems import get_attractor_list  # type: ignore
@@ -44,12 +44,8 @@ def safe_standardize(
     # if no context is provided, use the array itself
     context = arr if context is None else context
 
-    assert arr.ndim == context.ndim, (
-        "arr and context must have the same num dims if context is provided"
-    )
-    assert axis < arr.ndim and axis >= -arr.ndim, (
-        "invalid axis specified for standardization"
-    )
+    assert arr.ndim == context.ndim, "arr and context must have the same num dims if context is provided"
+    assert axis < arr.ndim and axis >= -arr.ndim, "invalid axis specified for standardization"
     mean = np.nanmean(context, axis=axis, keepdims=True)
     std = np.nanstd(context, axis=axis, keepdims=True)
     std = np.where(std < epsilon, epsilon, std)
@@ -140,9 +136,9 @@ def convert_to_arrow(
     Input data can be either a list of 1D numpy arrays, or a single 2D
     numpy array of shape (num_series, time_length).
     """
-    assert isinstance(time_series, list) or (
-        isinstance(time_series, np.ndarray) and time_series.ndim == 2
-    ), "time_series must be a list of 1D numpy arrays or a 2D numpy array"
+    assert isinstance(time_series, list) or (isinstance(time_series, np.ndarray) and time_series.ndim == 2), (
+        "time_series must be a list of 1D numpy arrays or a 2D numpy array"
+    )
 
     # GluonTS requires this datetime format for reading arrow file
     start = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -181,9 +177,7 @@ def process_trajs(
     """
     for sys_name, trajectories in timeseries.items():
         if verbose:
-            print(
-                f"Processing trajectories of shape {trajectories.shape} for system {sys_name}"
-            )
+            print(f"Processing trajectories of shape {trajectories.shape} for system {sys_name}")
 
         system_folder = os.path.join(base_dir, sys_name)
         os.makedirs(system_folder, exist_ok=True)
@@ -201,20 +195,14 @@ def process_trajs(
             if trajectory.ndim == 1:
                 trajectory = np.expand_dims(trajectory, axis=0)
             if verbose:
-                print(
-                    f"Saving {sys_name} trajectory {curr_sample_idx} with shape {trajectory.shape}"
-                )
+                print(f"Saving {sys_name} trajectory {curr_sample_idx} with shape {trajectory.shape}")
 
-            path = os.path.join(
-                system_folder, f"{curr_sample_idx}_T-{trajectory.shape[-1]}.arrow"
-            )
+            path = os.path.join(system_folder, f"{curr_sample_idx}_T-{trajectory.shape[-1]}.arrow")
 
             convert_to_arrow(path, trajectory, split_coords=split_coords)
 
 
-def load_trajectory_from_arrow(
-    filepath: Path | str, one_dim_target: bool = False
-) -> tuple[np.ndarray, tuple[Any]]:
+def load_trajectory_from_arrow(filepath: Path | str, one_dim_target: bool = False) -> tuple[np.ndarray, tuple[Any]]:
     """Load a trajectory and metadata from an arrow file
 
     Args:
@@ -259,9 +247,7 @@ def get_system_filepaths(system_name: str, data_dir: str) -> list[Path]:
         raise Exception(f"Directory {dyst_dir} does not exist.")
 
     # NOTE: sorting by numerical order wrt sample index is very important for consistency
-    filepaths = sorted(
-        list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0])
-    )
+    filepaths = sorted(list(Path(dyst_dir).glob("*.arrow")), key=lambda x: int(x.stem.split("_")[0]))
     return filepaths
 
 
@@ -334,15 +320,11 @@ def make_ensemble_from_arrow_dir(
         and named with a numeric prefix (e.g., "1_T-1024.arrow").
     """
     if num_samples == 1:
-        print(
-            "num_samples is 1, only loading the default ensemble (filenames 0_T-1024.arrow)"
-        )
+        print("num_samples is 1, only loading the default ensemble (filenames 0_T-1024.arrow)")
 
     ensemble: dict[str, np.ndarray] = {}
     if dyst_names_lst is None:
-        dyst_names_lst = sorted(
-            [folder.name for folder in Path(data_dir).iterdir() if folder.is_dir()]
-        )
+        dyst_names_lst = sorted([folder.name for folder in Path(data_dir).iterdir() if folder.is_dir()])
 
     if num_systems is not None:
         assert num_systems <= len(dyst_names_lst), (
@@ -351,10 +333,7 @@ def make_ensemble_from_arrow_dir(
         dyst_names_lst = dyst_names_lst[:num_systems]
 
     # Prepare arguments for multiprocessing
-    args = [
-        (dyst_name, data_dir, one_dim_target, num_samples, transient_prop)
-        for dyst_name in dyst_names_lst
-    ]
+    args = [(dyst_name, data_dir, one_dim_target, num_samples, transient_prop) for dyst_name in dyst_names_lst]
 
     # Use multiprocessing to process each dyst_name
     with Pool(num_processes) as pool:
@@ -368,39 +347,3 @@ def make_ensemble_from_arrow_dir(
         ensemble[dyst_name] = dyst_coords_samples
 
     return ensemble
-
-
-def check_dict_match(d1: dict, d2: dict, path: str = "") -> None:
-    """
-    Recursively check if two dictionaries match in structure and values,
-    including handling of numpy arrays and lists.
-
-    Args:
-        d1 (dict): First dictionary to compare.
-        d2 (dict): Second dictionary to compare.
-        path (str, optional): String representing the current path in the nested dictionary for error reporting.
-
-    Raises:
-        AssertionError: If the dictionaries do not match in keys or values at any level.
-    """
-    if set(d1.keys()) != set(d2.keys()):
-        raise AssertionError(
-            f"Keys don't match at {path}. d1: {set(d1.keys())}, d2: {set(d2.keys())}"
-        )
-
-    for key in d1:
-        v1, v2 = d1[key], d2[key]
-        current_path = f"{path}.{key}" if path else key
-
-        if isinstance(v1, dict) and isinstance(v2, dict):
-            check_dict_match(v1, v2, current_path)
-        elif isinstance(v1, (list, np.ndarray)) and isinstance(v2, (list, np.ndarray)):
-            if not np.allclose(np.array(v1), np.array(v2)):
-                raise AssertionError(
-                    f"Values don't match at {current_path}. v1: {v1}, v2: {v2}"
-                )
-        else:
-            if v1 != v2:
-                raise AssertionError(
-                    f"Values don't match at {current_path}. v1: {v1}, v2: {v2}"
-                )

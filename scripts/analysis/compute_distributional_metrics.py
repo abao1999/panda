@@ -165,9 +165,8 @@ def _compute_metrics_worker(
 
     # Get the average integration dt for purpose of Lyapunov exponent computation
     full_traj_len = full_trajectory.shape[0]
-    num_periods = (
-        40  # TODO: we are keeping this fixed for now, but make adaptive in the future for mixed period datasets
-    )
+    # we are keeping this fixed for now, but make adaptive in the future for mixed period datasets
+    num_periods = 40  
 
     system_name_without_pp = system_name.split("_pp")[0]
     is_skew = "_" in system_name_without_pp
@@ -368,7 +367,7 @@ def get_model_prediction(
     return pred, elapsed_time
 
 
-@hydra.main(config_path="../config", config_name="config", version_base=None)
+@hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
     test_data_dict = get_eval_data_dict(
         cfg.eval.data_paths_lst,

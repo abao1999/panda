@@ -1,4 +1,4 @@
-
+#!/bin/bash
 ulimit -n 99999
 
 if [ $# -lt 2 ]; then
@@ -61,14 +61,12 @@ export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 
 window_start_times=(512 1024 1536 2048)
-# window_start_times=(512)
-# window_start_times=(1024 1536 2048)
 for idx in "${!window_start_times[@]}"; do
     window_start_time="${window_start_times[$idx]}"
     echo "Index: $idx, window_start_time: $window_start_time"
     compute_dataset_stats=$((idx == 0))
     echo "compute_dataset_stats: $compute_dataset_stats"
-    python scripts/compute_distributional_metrics.py \
+    python scripts/analysis/compute_distributional_metrics.py \
         eval.mode=predict \
         eval.model_type=$model_type \
         eval.checkpoint_path=$WORK/checkpoints/$run_name/checkpoint-final \
