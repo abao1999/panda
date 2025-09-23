@@ -65,8 +65,8 @@ if [ "$DEBUG" -eq 0 ]; then
             patchtst.pretrained_encoder_path=null \
             patchtst.context_length=512 \
             patchtst.prediction_length=128 \
-            patchtst.patch_length=4 \
-            patchtst.patch_stride=4 \
+            patchtst.patch_length=32 \
+            patchtst.patch_stride=32 \
             patchtst.num_hidden_layers=8 \
             patchtst.num_attention_heads=8 \
             patchtst.d_model=512 \
@@ -78,7 +78,7 @@ if [ "$DEBUG" -eq 0 ]; then
             patchtst.pooling_type=mean \
             patchtst.loss=mse \
             patchtst.distribution_output=null \
-            train.per_device_train_batch_size=256 \
+            train.per_device_train_batch_size=2048 \
             train.max_steps=100_000 \
             train.save_steps=20_000 \
             train.log_steps=1_000 \
