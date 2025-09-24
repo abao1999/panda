@@ -22,9 +22,9 @@ test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c 
 echo "test_data_dirs: $test_data_dirs_json"
 
 if [ "$model_type" = "panda" ]; then
-    run_name=pft_chattn_emb_w_poly-0
+    run_name=panda_nh10_dmodel640-1
 elif [ "$model_type" = "chronos" ]; then
-    chronos_model_size=mini
+    chronos_model_size=small
     run_name=chronos_${chronos_model_size}_zeroshot
 elif [ "$model_type" = "chronos_sft" ]; then
     model_type=chronos
