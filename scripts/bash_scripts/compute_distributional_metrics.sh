@@ -28,7 +28,7 @@ elif [ "$model_type" = "chronos" ]; then
     run_name=chronos_${chronos_model_size}_zeroshot
 elif [ "$model_type" = "chronos_sft" ]; then
     model_type=chronos
-    run_name=chronos_t5_mini_ft-0
+    run_name=chronos_small_ft_equalized-13
 else
     echo "Unknown model_type: $model_type"
     exit 1
@@ -53,12 +53,7 @@ fi
 
 echo "model_dir: $model_dir"
 
-
-# Limit threads for libraries that auto-parallelize
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export NUMEXPR_NUM_THREADS=1
+export PYTHONWARNINGS="ignore"
 
 export PYTHONWARNINGS="ignore"
 
@@ -66,9 +61,7 @@ window_start_times=(512 1024 1536 2048)
 for idx in "${!window_start_times[@]}"; do
     window_start_time="${window_start_times[$idx]}"
     echo "Index: $idx, window_start_time: $window_start_time"
-    compute_dataset_stats=$((idx == 0))
-    echo "compute_dataset_stats: $compute_dataset_stats"
-    python scripts/analysis/compute_distributional_metrics.py \
+    python scripts/analysis/distribution_metrics.py \
         eval.mode=predict \
         eval.model_type=$model_type \
         eval.checkpoint_path=$WORK/checkpoints/$run_name/checkpoint-final \
@@ -80,31 +73,14 @@ for idx in "${!window_start_times[@]}"; do
         eval.metrics_fname=distributional_metrics_window-$window_start_time \
         eval.save_forecasts=true \
         eval.save_full_trajectory=true \
-        eval.reload_saved_forecasts=true \
+        eval.reload_saved_forecasts=false \
         eval.num_processes=100 \
-        eval.window_start_time=$window_start_time \
+        eval.window_start=$window_start_time \
         eval.prediction_length=512 \
         eval.context_length=512 \
         eval.chronos.zero_shot=$zero_shot_flag \
         eval.metrics_fname_suffix=all \
-        eval.compute_dataset_stats=$compute_dataset_stats
+        eval.dataloader_num_workers=4 \
+        eval.batch_size=512
 done
 
-# python scripts/compute_distributional_metrics.py \
-#     eval.mode=predict \
-#     eval.model_type=$model_type \
-#     eval.checkpoint_path=$WORK/checkpoints/$run_name/checkpoint-final \
-#     eval.device=cuda:$cuda_device_id \
-#     eval.data_paths_lst=$test_data_dirs_json \
-#     eval.num_subdirs=null \
-#     eval.num_samples_per_subdir=null \
-#     eval.metrics_save_dir=$WORK/eval_results/$model_dir/$run_name/test_zeroshot \
-#     eval.metrics_fname=distributional_metrics_window-$window_start_time \
-#     eval.save_forecasts=true \
-#     eval.save_full_trajectory=true \
-#     eval.reload_saved_forecasts=false \
-#     eval.num_processes=25 \
-#     eval.window_start_time=$window_start_time \
-#     eval.prediction_length=512 \
-#     eval.context_length=512 \
-#     eval.chronos.zero_shot=$zero_shot_flag \

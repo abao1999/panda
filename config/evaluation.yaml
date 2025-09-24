@@ -2,13 +2,12 @@ eval:
   # for evaluating saved checkpoint
   mode: predict
   data_paths_lst: null
-    # - data_dir1
-    # - data_dir2
 
   checkpoint_path: null
   device: cuda:7
-  torch_dtype: float32 # bfloat16?
+  torch_dtype: float32
   batch_size: 32
+  dataloader_num_workers: 1
   num_subdirs: null
   num_samples_per_subdir: null
 
@@ -38,13 +37,12 @@ eval:
   metrics_save_dir: null
   metrics_fname: metrics
   metrics_fname_suffix: null
-  compute_dataset_stats: false
   overwrite: false
   seed: 1
 
   # for generating forecasts and getting test split
   num_samples: 1 # NOTE: this is only used in chronos/evaluate.py and scripts/compute_distributional_metrics.py
-  parallel_sample_reduction: mean
+  parallel_sample_reduction: median
   limit_prediction_length: true
   context_length: 512
   prediction_length: 64
@@ -55,11 +53,12 @@ eval:
   #   window_stride from each timeseries
   # (in this case, num_test_instances need not be specified - always number of sliding windows
   #  conditioned on window stride, namely (T - context_length - prediction_length) // window_stride + 1)
-  # single: takes single window of length context_length from the beginning of each timeseries
+  # single: takes single window of length context_length starting from `window_start` or 0 if not specified
   # (in this case, num_test_instances need not be specified - always 1)
   num_test_instances: 1 # number of context windows to use for evaluation
   window_style: sampled
   window_stride: 1
+  window_start: null
   split_coords: false
   verbose: false
 
@@ -76,8 +75,6 @@ eval:
     start_time: 0
     end_time: null
 
-  # NOTE: this is separate from the previous window args, this is for the compute_distributional_metrics.py script
-  window_start_time: 0
   model_type: panda
   save_full_trajectory: false
   reload_saved_forecasts: false

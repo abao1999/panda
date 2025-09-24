@@ -88,6 +88,7 @@ def main(cfg):
         batch_size=cfg.eval.batch_size,
         prediction_length=cfg.eval.prediction_length,
         metric_names=cfg.eval.metric_names,
+        system_dims=system_dims,
         return_predictions=True,
         return_contexts=True,
         return_labels=True,

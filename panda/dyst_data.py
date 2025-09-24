@@ -16,12 +16,12 @@ from multiprocessing import Manager, Pool
 
 import dysts.flows as flows  # type: ignore
 import numpy as np
-import wandb
 from dysts.base import BaseDyn  # type: ignore
 from dysts.sampling import BaseSampler  # type: ignore
 from dysts.systems import make_trajectory_ensemble  # type: ignore
 from tqdm import tqdm
 
+import wandb
 from panda.attractor import AttractorValidator
 from panda.sampling import OnAttractorInitCondSampler
 from panda.skew_system import SkewProduct
