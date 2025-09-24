@@ -8,9 +8,9 @@ Shared samplers and shuffle utilities are defined here.
 
 import itertools
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
 from functools import partial
-from collections.abc import Callable, Generator, Iterator
 
 import numpy as np
 import torch
@@ -55,18 +55,24 @@ class RegularWindowedSampler(InstanceSampler):
 
 class SingleContextSampler(InstanceSampler):
     """
-    Sample a single context window from the beginning of each series.
+    Sample a single context window from a specified start, or the beginning of the series
 
     Used for autoregressive prediction where the model should predict the
     rest of the entire timeseries.
     """
 
+    start: int | None = None
+
     def __call__(self, ts: np.ndarray) -> np.ndarray:
         a, b = self._get_bounds(ts)
         if a > b:
             return np.array([], dtype=int)
+        if self.start is None:
+            return np.array([a])
+        if self.start < a or self.start > b:
+            return np.array([], dtype=int)
 
-        return np.array([a])
+        return np.array([self.start])
 
 
 class NumInstanceSampler(InstanceSampler):
@@ -103,9 +109,7 @@ class PseudoShuffledIterableDataset(IterableDataset):
         for element in self.base_dataset:
             shuffle_buffer.append(element)
             if len(shuffle_buffer) >= self.shuffle_buffer_length:
-                idx = torch.randint(
-                    len(shuffle_buffer), size=(), generator=self.generator
-                )
+                idx = torch.randint(len(shuffle_buffer), size=(), generator=self.generator)
                 yield shuffle_buffer.pop(idx)
 
         while shuffle_buffer:
@@ -120,6 +124,17 @@ class ShuffleMixin:
 
 class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
     """Common windowing, splitting, and iteration logic for datasets."""
+
+    context_length: int
+    prediction_length: int
+    window_style: str
+    mode: str
+    probabilities: list[float]
+
+    # window sampling arguments
+    window_start: int | None = None
+    window_stride: int | None = None
+    num_test_instances: int | None = None
 
     @property
     @abstractmethod
@@ -138,12 +153,15 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
         assert mode in ["train", "test", "validation"]
         assert self.window_style in ["sampled", "rolling", "single"]
 
+        if self.window_stride == "rolling":
+            assert self.window_stride and self.window_stride > 0
+        elif self.window_style == "sampled":
+            assert self.num_test_instances and self.num_test_instances > 0
+
         window_sampler = {
-            "sampled": partial(
-                NumInstanceSampler, N=self.num_test_instances, rng=self.rng
-            ),
+            "sampled": partial(NumInstanceSampler, N=self.num_test_instances, rng=self.rng),
             "rolling": partial(RegularWindowedSampler, stride=self.window_stride),
-            "single": SingleContextSampler,
+            "single": partial(SingleContextSampler, start=self.window_start),
         }[self.window_style]
 
         instance_sampler = {
@@ -153,16 +171,12 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
                 min_past=self.context_length,
                 min_future=self.prediction_length,
             ),
-            "test": window_sampler(
-                min_past=self.context_length, min_future=self.prediction_length
-            ),
+            "test": window_sampler(min_past=self.context_length, min_future=self.prediction_length),
             "validation": ValidationSplitSampler(min_future=self.prediction_length),
         }[mode]
 
         prediction_length = (
-            MAX_PREDICTION_LENGTH
-            if mode == "test" and self.window_style == "single"
-            else self.prediction_length
+            MAX_PREDICTION_LENGTH if mode == "test" and self.window_style == "single" else self.prediction_length
         )
         return InstanceSplitter(
             target_field="target",
@@ -177,9 +191,7 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
 
     def create_training_data(self, data):
         data = Cyclic(data)
-        split_transform = self._create_instance_splitter(
-            "train"
-        ) + FilterTransformation(
+        split_transform = self._create_instance_splitter("train") + FilterTransformation(
             condition=lambda entry: (~np.isnan(entry["past_target"])).sum() > 0
         )
         return split_transform.apply(data, is_train=True)
@@ -198,9 +210,7 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
         elif self.mode == "test":
             iterables = [self.create_test_data(ds) for ds in preprocessed_datasets]
         else:
-            iterables = [
-                self.create_validation_data(ds) for ds in preprocessed_datasets
-            ]
+            iterables = [self.create_validation_data(ds) for ds in preprocessed_datasets]
 
         worker_info = get_worker_info()
         if worker_info is None:
@@ -209,9 +219,7 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
             worker_id = worker_info.id
             num_workers = worker_info.num_workers
             iterables = list(itertools.islice(iterables, worker_id, None, num_workers))
-            probs = list(
-                itertools.islice(self.probabilities, worker_id, None, num_workers)
-            )
+            probs = list(itertools.islice(self.probabilities, worker_id, None, num_workers))
 
         probs = [prob / sum(probs) for prob in probs]
 
@@ -259,6 +267,7 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
     np_dtype: np.dtype = np.dtype(np.float32)
     num_test_instances: int = 1
     window_style: str = "sampled"
+    window_start: int = 0
     window_stride: int = 1
     transforms: list[Callable] | None = None
     augmentations: list[Callable] | None = None
@@ -281,9 +290,7 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
 
         if self.augmentations is not None:
             if self.augmentation_probabilities is None:
-                self.augmentation_probabilities = [1.0 / len(self.augmentations)] * len(
-                    self.augmentations
-                )
+                self.augmentation_probabilities = [1.0 / len(self.augmentations)] * len(self.augmentations)
             assert len(self.augmentations) == len(self.augmentation_probabilities)
             assert sum(self.augmentation_probabilities) == 1.0
 
@@ -297,9 +304,7 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
 
             if mode == "train" and self.augmentations is not None:
                 if self.rng.random() < self.augmentation_rate:
-                    augmentation_idx = self.rng.choice(
-                        len(self.augmentations), p=self.augmentation_probabilities
-                    )
+                    augmentation_idx = self.rng.choice(len(self.augmentations), p=self.augmentation_probabilities)
                     target = self.augmentations[augmentation_idx](target)
 
             for transform in self.transforms or []:
@@ -339,9 +344,7 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
             obs_attention_mask = attention_mask[:, pad_start_idx:]
 
             input_ids = torch.cat([obs_input_ids, labels, padded_input_ids], dim=-1)
-            attention_mask = torch.cat(
-                [obs_attention_mask, labels_mask, padded_attention_mask], dim=-1
-            )
+            attention_mask = torch.cat([obs_attention_mask, labels_mask, padded_attention_mask], dim=-1)
             labels = input_ids.clone()
             input_ids[~attention_mask] = self.tokenizer.config.pad_token_id  # type: ignore
             labels[~attention_mask] = -100
@@ -364,10 +367,7 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
         }
 
     def _preprocessed_datasets(self) -> list:
-        return [
-            RestartableIteratorWrapper(self.preprocess_iter, dataset, self.mode)
-            for dataset in self.datasets
-        ]
+        return [RestartableIteratorWrapper(self.preprocess_iter, dataset, self.mode) for dataset in self.datasets]
 
     def _format_train(self, entry: dict) -> dict:
         return self.to_hf_format(entry)
@@ -387,6 +387,7 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
     np_dtype: np.dtype = np.dtype(np.float32)
     num_test_instances: int = 1
     window_style: str = "sampled"
+    window_start: int = 0
     window_stride: int = 1
     transforms: list[Callable] | None = None
     augmentations: list[Callable] | None = None
@@ -403,9 +404,7 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
             return
 
         if self.augmentation_probabilities is None:
-            self.augmentation_probabilities = [1.0 / len(self.augmentations)] * len(
-                self.augmentations
-            )
+            self.augmentation_probabilities = [1.0 / len(self.augmentations)] * len(self.augmentations)
 
         assert len(self.augmentations) == len(self.augmentation_probabilities)
         assert sum(self.augmentation_probabilities) == 1.0
@@ -420,9 +419,7 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
 
         if mode == "train" and self.augmentations is not None:
             if self.rng.random() < self.augmentation_rate:
-                augmentation_idx = self.rng.choice(
-                    len(self.augmentations), p=self.augmentation_probabilities
-                )
+                augmentation_idx = self.rng.choice(len(self.augmentations), p=self.augmentation_probabilities)
                 entry["target"] = self.augmentations[augmentation_idx](entry["target"])
 
         for transform in self.transforms or []:
@@ -440,10 +437,7 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
         return {"past_values": past_target, "future_values": future_target}
 
     def _preprocessed_datasets(self) -> list:
-        return [
-            Map(partial(self.preprocess_entry, mode=self.mode), dataset)
-            for dataset in self.datasets
-        ]
+        return [Map(partial(self.preprocess_entry, mode=self.mode), dataset) for dataset in self.datasets]
 
     def _format_train(self, entry: dict) -> dict:
         return self.to_hf_format(entry)

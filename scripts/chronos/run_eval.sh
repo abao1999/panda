@@ -15,7 +15,8 @@ test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c 
 echo "test_data_dirs: $test_data_dirs_json"
 
 chronos_model_size=mini
-run_name=chronos_${chronos_model_size}_zeroshot
+#run_name=chronos_${chronos_model_size}_zeroshot
+run_name=chronos_small_ft_equalized-13
 # run_name=chronos_t5_mini_ft-0 # newest chronos sft 300k iterations
 # run_name=chronos_small_ft-4
 
@@ -40,8 +41,8 @@ python scripts/chronos/evaluate.py \
     eval.data_paths_lst=$test_data_dirs_json \
     eval.num_subdirs=null \
     eval.num_test_instances=6 \
-    eval.num_samples=10 \
-    eval.parallel_sample_reduction=mean \
+    eval.num_samples=5 \
+    eval.parallel_sample_reduction=median \
     eval.window_style=sampled \
     eval.batch_size=32 \
     eval.chronos.deterministic=$use_deterministic \

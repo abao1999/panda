@@ -146,6 +146,7 @@ def main(cfg):
         parallel_sample_reduction_fn=parallel_sample_reduction_fn,
         prediction_kwargs=prediction_kwargs,
         eval_subintervals=[(0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)],
+        num_workers=cfg.eval.dataloader_num_workers
     )
     save_eval_results_fn(metrics)
 

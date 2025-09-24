@@ -31,7 +31,7 @@ def evaluate_univariate_forecasting_model(
     return_contexts: bool = False,
     return_labels: bool = False,
     prediction_kwargs: dict | None = None,
-    num_workers: int = 1,
+    num_workers: int = 2,
     scale_axis: int | None = -1,
 ) -> tuple[
     dict[str, np.ndarray] | None,
@@ -42,7 +42,7 @@ def evaluate_univariate_forecasting_model(
     system_predictions = {}
     system_contexts = {}
     system_labels = {}
-    system_metrics = defaultdict(dict)
+    system_metrics = defaultdict(lambda: defaultdict(dict))
     prediction_kwargs = prediction_kwargs or {}
 
     if eval_subintervals is None:
@@ -59,6 +59,8 @@ def evaluate_univariate_forecasting_model(
         num_sys = len(dataset.datasets)
         dim = system_dims[system]
         predictions, labels, contexts, future_values = [], [], [], []
+        context_length = dataset.context_length
+        num_windows = dataset.num_test_instances
 
         for batch in DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True):
             past_values, future_values = batch["past_values"], batch["future_values"]
@@ -69,7 +71,6 @@ def evaluate_univariate_forecasting_model(
                 **prediction_kwargs,
             }
             preds = pipeline.predict(**predict_args).transpose(0, 1).cpu().numpy()
-            num_samples = preds.shape[0]
 
             context = past_values.cpu().numpy()
             horizon = future_values.cpu().numpy()
@@ -87,46 +88,45 @@ def evaluate_univariate_forecasting_model(
             contexts.append(context)
 
         # if parallel_sample_reduction_fn is None, then predictions shape is:
-        # shape: (num_parallel_samples, num_systems*num_eval_windows, prediction_length, dim)
+        # shape: (num_parallel_samples, num_systems, num_eval_windows, prediction_length, dim)
         # otherwise, predictions shape is:
-        # shape: (num_systems*num_eval_windows, prediction_length, dim)
+        # shape: (num_systems, num_eval_windows, prediction_length, dim)
         predictions = (
             np.concatenate(predictions, axis=1)
-            .reshape(num_samples, num_sys, dim, -1, prediction_length)
+            .reshape(-1, num_sys, dim, num_windows, prediction_length)
             .transpose(0, 1, 3, 4, 2)
-            .reshape(num_samples, -1, prediction_length, dim)
         )
         predictions = parallel_sample_reduction_fn(predictions)
-        labels = (
-            np.concatenate(labels, axis=0)
-            .reshape(num_sys, dim, -1, prediction_length)
-            .transpose(0, 2, 3, 1)
-            .reshape(-1, prediction_length, dim)
-        )
+        labels = np.concatenate(labels, axis=0).reshape(num_sys, dim, -1, prediction_length).transpose(0, 2, 3, 1)
         # shape: (num_systems*num_eval_windows, context_length, dim)
-        contexts = (
-            np.concatenate(contexts, axis=0)
-            .reshape(num_sys, dim, -1, dataset.context_length)
-            .transpose(0, 2, 3, 1)
-            .reshape(-1, dataset.context_length, dim)
-        )
+        contexts = np.concatenate(contexts, axis=0).reshape(num_sys, dim, -1, context_length).transpose(0, 2, 3, 1)
 
         if metric_names is not None:
             assert all(start < prediction_length for start, _ in eval_subintervals)
             for start, end in eval_subintervals:
-                system_metrics[end - start][system] = compute_metrics(
-                    predictions[:, start:end, :],
-                    labels[:, start:end, :],
-                    include=metric_names,
-                    batch_axis=0,
-                )
+                per_system_metrics = defaultdict(list)
+                for i in range(num_sys):
+                    sys_metrics = compute_metrics(
+                        predictions[i, :, start:end, :],
+                        labels[i, :, start:end, :],
+                        include=metric_names,
+                        batch_axis=0,
+                    )
+                    for m, val in sys_metrics.items():
+                        per_system_metrics[m].append(val)
+                system_metrics[end - start][system] = dict(per_system_metrics)
 
+        # if parallel_sample_reduction_fn is None, then predictions shape is:
+        # shape: (num_parallel_samples, num_systems*num_eval_windows, prediction_length, dim)
+        # otherwise, predictions shape is:
+        # shape: (num_systems*num_eval_windows, prediction_length, dim)
         if return_predictions:
-            system_predictions[system] = predictions.transpose(0, 2, 1)
-        if return_contexts:
-            system_contexts[system] = contexts.transpose(0, 2, 1)
+            system_predictions[system] = predictions.reshape(-1, prediction_length, dim).transpose(0, 2, 1)
         if return_labels:
-            system_labels[system] = labels.transpose(0, 2, 1)
+            system_labels[system] = labels.reshape(-1, prediction_length, dim).transpose(0, 2, 1)
+        # shape: (num_systems*num_eval_windows, context_length, dim)
+        if return_contexts:
+            system_contexts[system] = contexts.reshape(-1, context_length, dim).transpose(0, 2, 1)
 
         pbar.set_postfix({"system": system, "num systems": num_sys})
 
@@ -144,6 +144,7 @@ def evaluate_multivariate_forecasting_model(
     batch_size: int,
     prediction_length: int,
     metric_names: list[str] | None = None,
+    system_dims: dict[str, int] | None = None,
     parallel_sample_reduction_fn: Callable | None = None,
     return_predictions: bool = False,
     return_contexts: bool = False,
@@ -162,7 +163,7 @@ def evaluate_multivariate_forecasting_model(
     system_predictions = {}
     system_contexts = {}
     system_labels = {}
-    system_metrics = defaultdict(dict)
+    system_metrics = defaultdict(lambda: defaultdict(dict))
     prediction_kwargs = prediction_kwargs or {}
 
     if eval_subintervals is None:
@@ -178,9 +179,15 @@ def evaluate_multivariate_forecasting_model(
         dataset = systems[system]
         num_sys = len(dataset.datasets)
         predictions, labels, contexts, future_values = [], [], [], []
+        num_windows = dataset.num_test_instances
+        context_length = dataset.context_length
+        dim = system_dims.get(system)
 
         for batch in DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True):
             past_values, future_values = batch["past_values"], batch["future_values"]
+
+            if dim is None:
+                dim = past_values.shape[-1]
 
             predict_args = {
                 "context": past_values,
@@ -204,27 +211,32 @@ def evaluate_multivariate_forecasting_model(
             predictions.append(preds)
             contexts.append(context)
 
-        predictions = np.concatenate(predictions, axis=1)
+        predictions = np.concatenate(predictions, axis=1).reshape(-1, num_sys, num_windows, prediction_length, dim)
         predictions = parallel_sample_reduction_fn(predictions)
-        labels = np.concatenate(labels, axis=0)
-        contexts = np.concatenate(contexts, axis=0)
+        labels = np.concatenate(labels, axis=0).reshape(num_sys, num_windows, prediction_length, dim)
+        contexts = np.concatenate(contexts, axis=0).reshape(num_sys, num_windows, context_length, dim)
 
         if metric_names is not None:
             assert all(start < prediction_length for start, _ in eval_subintervals)
             for start, end in eval_subintervals:
-                system_metrics[end - start][system] = compute_metrics(
-                    predictions[:, start:end, :],
-                    labels[:, start:end, :],
-                    include=metric_names,
-                    batch_axis=0,
-                )
+                per_system_metrics = defaultdict(list)
+                for i in range(num_sys):
+                    sys_metrics = compute_metrics(
+                        predictions[i, :, start:end, :],
+                        labels[i, :, start:end, :],
+                        include=metric_names,
+                        batch_axis=0,
+                    )
+                    for m, val in sys_metrics.items():
+                        per_system_metrics[m].append(val)
+                system_metrics[end - start][system] = dict(per_system_metrics)
 
         if return_predictions:
-            system_predictions[system] = predictions.transpose(0, 2, 1)
-        if return_contexts:
-            system_contexts[system] = contexts.transpose(0, 2, 1)
+            system_predictions[system] = predictions.reshape(-1, prediction_length, dim).transpose(0, 2, 1)
         if return_labels:
-            system_labels[system] = labels.transpose(0, 2, 1)
+            system_labels[system] = labels.reshape(-1, prediction_length, dim).transpose(0, 2, 1)
+        if return_contexts:
+            system_contexts[system] = contexts.reshape(-1, context_length, dim).transpose(0, 2, 1)
 
         pbar.set_postfix({"system": system, "num systems": num_sys})
 
