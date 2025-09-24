@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import numpy as np
@@ -7,8 +8,18 @@ from statsmodels.tsa.arima.model import ARIMA
 from panda.utils.data_utils import safe_standardize
 
 
+class Baseline(ABC):
+    @abstractmethod
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
+
+    def predict(self, x: torch.Tensor, _, **kwargs) -> torch.Tensor:
+        """Method to match the .predict API of the foundation models"""
+        return torch.from_numpy(self(x.numpy())).to(x.device)
+
+
 @dataclass
-class MeanBaseline:
+class MeanBaseline(Baseline):
     prediction_length: int
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
