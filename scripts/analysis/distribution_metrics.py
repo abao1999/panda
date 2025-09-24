@@ -232,7 +232,7 @@ def _compute_metrics_worker(
 
 
 def get_distributional_metrics(
-    forecast_dict: dict[str, dict[str, np.ndarray]],
+    forecast_dict: dict[str, dict[str, np.ndarray | float]],
     n_jobs: int | None = None,
 ) -> dict[str, dict[str, dict[str, float]]]:
     """
@@ -426,7 +426,7 @@ def main(cfg):
         if cfg.eval.model_type == "panda":
             preds, ctxs, lbls, _ = evaluate_multivariate_forecasting_model(
                 pipeline,
-                datasets,
+                datasets,  # type: ignore
                 batch_size=cfg.eval.batch_size,
                 prediction_length=prediction_length,
                 metric_names=None,
@@ -441,7 +441,7 @@ def main(cfg):
                     limit_prediction_length=False,
                     verbose=cfg.eval.verbose,
                 ),
-                num_workers=cfg.dataloader_num_workers,
+                num_workers=cfg.eval.dataloader_num_workers,
             )
         else:
             prediction_kwargs = {
@@ -455,7 +455,7 @@ def main(cfg):
             }
             preds, ctxs, lbls, _ = evaluate_univariate_forecasting_model(
                 pipeline,
-                datasets,
+                datasets,  # type: ignore
                 batch_size=cfg.eval.batch_size,
                 prediction_length=prediction_length,
                 metric_names=None,
