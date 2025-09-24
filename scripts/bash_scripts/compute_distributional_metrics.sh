@@ -80,7 +80,7 @@ for idx in "${!window_start_times[@]}"; do
         eval.context_length=512 \
         eval.chronos.zero_shot=$zero_shot_flag \
         eval.metrics_fname_suffix=all \
-        eval.dataloader_num_workers=4 \
+        eval.dataloader_num_workers=0 \
         eval.batch_size=512
 done
 

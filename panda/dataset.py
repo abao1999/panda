@@ -175,9 +175,6 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
             "validation": ValidationSplitSampler(min_future=self.prediction_length),
         }[mode]
 
-        prediction_length = (
-            MAX_PREDICTION_LENGTH if mode == "test" and self.window_style == "single" else self.prediction_length
-        )
         return InstanceSplitter(
             target_field="target",
             is_pad_field="is_pad",
@@ -185,7 +182,7 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
             forecast_start_field="forecast_start",
             instance_sampler=instance_sampler,
             past_length=self.context_length,
-            future_length=prediction_length,
+            future_length=self.prediction_length,
             dummy_value=np.nan,
         )
 
