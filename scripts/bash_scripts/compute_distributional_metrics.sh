@@ -43,7 +43,6 @@ else
     zero_shot_flag="false"
 fi
 
-
 num_samples_chronos=5
 if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
     model_dir="chronos_nondeterministic"
@@ -52,8 +51,6 @@ else
 fi
 
 echo "model_dir: $model_dir"
-
-export PYTHONWARNINGS="ignore"
 
 export PYTHONWARNINGS="ignore"
 

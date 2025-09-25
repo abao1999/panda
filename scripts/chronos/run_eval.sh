@@ -27,7 +27,7 @@ else
     zero_shot_flag="false"
 fi
 
-use_deterministic=false
+use_deterministic=true
 model_dirname="chronos"
 if [ "$use_deterministic" = false ]; then
     model_dirname="chronos_nondeterministic"
