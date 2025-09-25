@@ -57,7 +57,7 @@ export PYTHONWARNINGS="ignore"
 
 export PYTHONWARNINGS="ignore"
 
-window_start_times=(512 1024 1536 2048)
+window_start_times=(512)
 for idx in "${!window_start_times[@]}"; do
     window_start_time="${window_start_times[$idx]}"
     echo "Index: $idx, window_start_time: $window_start_time"
