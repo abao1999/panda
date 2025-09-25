@@ -305,23 +305,35 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
                 )
                 target = np.where(mask, np.nan, target)
 
-            prepro_entry = {"start": entry["start"], "target": target}
-            for prepro_item in self.splitter.apply([prepro_entry], is_train=self.mode == "train"):
-                past_target = prepro_item["past_target"]
-                future_target = prepro_item["future_target"]
+            if mode == "test":
+                prepro_entry = {"start": entry["start"], "target": target}
+                for prepro_item in self.splitter.apply([prepro_entry], is_train=self.mode == "train"):
+                    past_target = prepro_item["past_target"]
+                    future_target = prepro_item["future_target"]
 
-                for i in range(past_target.shape[1]):
-                    univariate_past = past_target[:, i]  # shape: (context_length,)
-                    univariate_future = future_target[:, i]  # shape: (prediction_length,)
-                    univariate_entry = {"past_target": univariate_past, "future_target": univariate_future}
+                    for i in range(past_target.shape[1]):
+                        univariate_past = past_target[:, i]  # shape: (context_length,)
+                        univariate_future = future_target[:, i]  # shape: (prediction_length,)
+                        univariate_entry = {"past_target": univariate_past, "future_target": univariate_future}
 
-                    if self.mode == "train":
-                        univariate_entry["past_is_pad"] = prepro_item["past_is_pad"]
+                        if self.mode == "train":
+                            univariate_entry["past_is_pad"] = prepro_item["past_is_pad"]
 
-                    yield univariate_entry
+                        yield univariate_entry
+            elif mode == "train":
+                for i in range(target.shape[0]):
+                    univariate_target = target[i]
+
+                    if self.model_type == "causal":
+                        univariate_target = self.imputation_method(univariate_target)  # type: ignore
+
+                    yield {"start": entry["start"], "target": univariate_target}
 
     def _preprocessed_datasets(self) -> list:
-        return [RestartableIterator(self.preprocess_iter, dataset, self.mode) for dataset in self.datasets]
+        prepro_datasets = [RestartableIterator(self.preprocess_iter, dataset, self.mode) for dataset in self.datasets]
+        if self.mode == "train":
+            return [self.create_training_data(ds) for ds in prepro_datasets]
+        return prepro_datasets
 
     def to_hf_format(self, entry: dict) -> dict:
         past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
@@ -420,12 +432,14 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
         for transform in self.transforms or []:
             entry["target"] = transform(entry["target"])
 
-        # there's only one preprocessed entry
-        for prepro_entry in self.splitter.apply([entry], is_train=self.mode == "train"):
-            return prepro_entry
+        return entry
 
     def _preprocessed_datasets(self) -> list:
-        return [Map(self.preprocess_entry, dataset) for dataset in self.datasets]
+        prepro_datasets = [Map(self.preprocess_entry, dataset) for dataset in self.datasets]
+        if self.mode == "train":
+            return [self.create_training_data(ds) for ds in prepro_datasets]
+        elif self.mode == "test":
+            return [self.create_test_data(ds) for ds in prepro_datasets]
 
     def to_hf_format(self, entry: dict) -> dict:
         past_target = torch.tensor(entry["past_target"], dtype=torch.float32)

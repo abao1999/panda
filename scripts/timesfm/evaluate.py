@@ -36,7 +36,7 @@ class TimesFMPipeline:
     @torch.no_grad()
     def predict(
         self,
-        seqs: torch.Tensor,
+        context: torch.Tensor,
         prediction_length: int = -1,
         num_samples: int = -1,
         limit_prediction_length: bool = True,
@@ -46,9 +46,9 @@ class TimesFMPipeline:
 
         Returns point forecasts and experimental quantile forecasts.
         """
-        assert seqs.ndim == 2, "seqs must be of shape (batch_size, seq_len)"
+        assert context.ndim == 2, "seqs must be of shape (batch_size, seq_len)"
 
-        point_forecast, quantile_forecast = self.model.forecast(seqs, normalize=True)  # type: ignore
+        point_forecast, quantile_forecast = self.model.forecast(context, normalize=True)  # type: ignore
         # unsqueeze to add sample dimension
         return torch.from_numpy(point_forecast).unsqueeze(1)
 

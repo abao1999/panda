@@ -27,7 +27,7 @@ else
     zero_shot_flag="false"
 fi
 
-use_deterministic=true
+use_deterministic=false
 model_dirname="chronos"
 if [ "$use_deterministic" = false ]; then
     model_dirname="chronos_nondeterministic"
@@ -52,8 +52,9 @@ python scripts/chronos/evaluate.py \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
     eval.device=cuda:1 \
-    eval.save_forecasts=false \
-    eval.save_labels=false \
+    eval.save_forecasts=true \
+    eval.save_labels=true \
     eval.chronos.zero_shot=$zero_shot_flag \
+    eval.dataloader_num_workers=4 \
     eval.seed=99 \
     "$@"
