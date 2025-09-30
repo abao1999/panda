@@ -233,7 +233,7 @@ def _compute_metrics_worker(
 
 def get_distributional_metrics(
     forecast_dict: dict[str, dict[str, np.ndarray | float]],
-    n_jobs: int | None = None,
+    n_proc: int | None = None,
 ) -> dict[str, dict[str, dict[str, float]]]:
     """
     Compute distributional metrics (average Hellinger distance and KL divergence)
@@ -251,7 +251,7 @@ def get_distributional_metrics(
                 - "groundtruth": np.ndarray, ground truth data of shape (d, T)
                 - "full_trajectory": np.ndarray, full trajectory data of shape (d, T)
             Additional keys may be present but are ignored by this function.
-        n_jobs (int | None, optional):
+        n_proc (int | None, optional):
             Number of worker processes to use for parallel computation.
             If None, uses all available CPU cores.
 
@@ -292,7 +292,7 @@ def get_distributional_metrics(
         print(f"pred_interval: {pred_interval}")
         print(f"rosenstein_traj_len: {current_rosenstein_traj_len}")
         # Use multiprocessing to compute dimensions in parallel
-        with Pool(processes=n_jobs) as pool:
+        with Pool(n_proc) as pool:
             results = list(
                 tqdm(
                     pool.imap_unordered(_compute_metrics_worker, worker_args),
@@ -514,7 +514,7 @@ def main(cfg):
             with open(forecasts_dict_path, "wb") as f:
                 pickle.dump(save_dict, f)
 
-    distributional_metrics = get_distributional_metrics(forecast_dict, n_jobs=cfg.eval.num_processes)
+    distributional_metrics = get_distributional_metrics(forecast_dict, n_proc=cfg.eval.num_processes)
 
     metrics_fname_suffix = f"_{cfg.eval.metrics_fname_suffix}" if cfg.eval.metrics_fname_suffix else ""
     metrics_fname = (

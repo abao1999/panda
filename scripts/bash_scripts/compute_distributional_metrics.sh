@@ -43,7 +43,6 @@ else
     zero_shot_flag="false"
 fi
 
-
 num_samples_chronos=5
 if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
     model_dir="chronos_nondeterministic"
@@ -55,9 +54,7 @@ echo "model_dir: $model_dir"
 
 export PYTHONWARNINGS="ignore"
 
-export PYTHONWARNINGS="ignore"
-
-window_start_times=(512 1024 1536 2048)
+window_start_times=(512)
 for idx in "${!window_start_times[@]}"; do
     window_start_time="${window_start_times[$idx]}"
     echo "Index: $idx, window_start_time: $window_start_time"
@@ -80,7 +77,7 @@ for idx in "${!window_start_times[@]}"; do
         eval.context_length=512 \
         eval.chronos.zero_shot=$zero_shot_flag \
         eval.metrics_fname_suffix=all \
-        eval.dataloader_num_workers=4 \
+        eval.dataloader_num_workers=0 \
         eval.batch_size=512
 done
 

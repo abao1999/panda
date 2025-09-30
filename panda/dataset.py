@@ -8,13 +8,14 @@ Shared samplers and shuffle utilities are defined here.
 
 import itertools
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
 
 import numpy as np
 import torch
-from gluonts.itertools import Cyclic, Filter, Map
+from gluonts.dataset.common import Dataset
+from gluonts.itertools import Cyclic, Map
 from gluonts.transform import (
     ExpectedNumInstanceSampler,
     FilterTransformation,
@@ -22,7 +23,6 @@ from gluonts.transform import (
     InstanceSplitter,
     LeavesMissingValues,
     MissingValueImputation,
-    ValidationSplitSampler,
 )
 from torch.utils.data import IterableDataset, get_worker_info
 
@@ -150,7 +150,7 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
     def _format_eval(self, entry: dict) -> dict: ...
 
     def _create_instance_splitter(self, mode: str):
-        assert mode in ["train", "test", "validation"]
+        assert mode in ["train", "test"]
         assert self.window_style in ["sampled", "rolling", "single"]
 
         if self.window_stride == "rolling":
@@ -172,12 +172,8 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
                 min_future=self.prediction_length,
             ),
             "test": window_sampler(min_past=self.context_length, min_future=self.prediction_length),
-            "validation": ValidationSplitSampler(min_future=self.prediction_length),
         }[mode]
 
-        prediction_length = (
-            MAX_PREDICTION_LENGTH if mode == "test" and self.window_style == "single" else self.prediction_length
-        )
         return InstanceSplitter(
             target_field="target",
             is_pad_field="is_pad",
@@ -185,7 +181,7 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
             forecast_start_field="forecast_start",
             instance_sampler=instance_sampler,
             past_length=self.context_length,
-            future_length=prediction_length,
+            future_length=self.prediction_length,
             dummy_value=np.nan,
         )
 
@@ -199,18 +195,8 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
     def create_test_data(self, data):
         return self._create_instance_splitter("test").apply(data, is_train=False)
 
-    def create_validation_data(self, data):
-        return self._create_instance_splitter("validation").apply(data, is_train=False)
-
     def __iter__(self) -> Iterator:
-        preprocessed_datasets = self._preprocessed_datasets()
-
-        if self.mode == "train":
-            iterables = [self.create_training_data(ds) for ds in preprocessed_datasets]
-        elif self.mode == "test":
-            iterables = [self.create_test_data(ds) for ds in preprocessed_datasets]
-        else:
-            iterables = [self.create_validation_data(ds) for ds in preprocessed_datasets]
+        iterables = self._preprocessed_datasets()
 
         worker_info = get_worker_info()
         if worker_info is None:
@@ -240,7 +226,7 @@ class BaseTimeSeriesDataset(IterableDataset, ShuffleMixin, ABC):
                 yield self._format_eval(entry)
 
 
-class RestartableIteratorWrapper:
+class RestartableIterator:
     def __init__(self, generator_func, *args, **kwargs):
         self.generator_func = generator_func
         self.args = args
@@ -281,12 +267,13 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
     def __post_init__(self):
         super().__init__()
         assert len(self.probabilities) == len(self.datasets)
-        assert self.mode in ("train", "validation", "test")
+        assert self.mode in ("train", "test")
         assert self.model_type in ("seq2seq", "causal")
         self.drop_prob = self.drop_prob if self.model_type == "seq2seq" else 0.0
         self.min_past = self.min_past or self.prediction_length
         self.imputation_method = self.imputation_method or LeavesMissingValues()
         self._rng = np.random.default_rng(self.random_seed)
+        self.splitter = self._create_instance_splitter(self.mode)
 
         if self.augmentations is not None:
             if self.augmentation_probabilities is None:
@@ -298,9 +285,9 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
     def rng(self) -> np.random.Generator:
         return self._rng
 
-    def preprocess_iter(self, entry: Filter, mode: str) -> Generator[dict, None, None]:
-        for item in entry:
-            target = np.asarray(item["target"], dtype=self.np_dtype)
+    def preprocess_iter(self, dataset: Dataset, mode: str) -> Iterator[dict]:
+        for entry in dataset:
+            target = np.asarray(entry["target"], dtype=self.np_dtype)
 
             if mode == "train" and self.augmentations is not None:
                 if self.rng.random() < self.augmentation_rate:
@@ -310,21 +297,43 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
             for transform in self.transforms or []:
                 target = transform(target)
 
-            for i in range(target.shape[0]):
-                univariate_target = target[i]
+            if mode == "train" and self.drop_prob > 0:
+                mask = self.rng.choice(
+                    [True, False],
+                    size=len(target),
+                    p=[self.drop_prob, 1 - self.drop_prob],
+                )
+                target = np.where(mask, np.nan, target)
 
-                if self.model_type == "causal":
-                    univariate_target = self.imputation_method(univariate_target)  # type: ignore
+            if mode == "test":
+                prepro_entry = {"start": entry["start"], "target": target}
+                for prepro_item in self.splitter.apply([prepro_entry], is_train=self.mode == "train"):
+                    past_target = prepro_item["past_target"]
+                    future_target = prepro_item["future_target"]
 
-                if mode == "train" and self.drop_prob > 0:
-                    mask = self.rng.choice(
-                        [True, False],
-                        size=len(univariate_target),
-                        p=[self.drop_prob, 1 - self.drop_prob],
-                    )
-                    univariate_target = np.where(mask, np.nan, univariate_target)
+                    for i in range(past_target.shape[1]):
+                        univariate_past = past_target[:, i]  # shape: (context_length,)
+                        univariate_future = future_target[:, i]  # shape: (prediction_length,)
+                        univariate_entry = {"past_target": univariate_past, "future_target": univariate_future}
 
-                yield {"start": item["start"], "target": univariate_target}
+                        if self.mode == "train":
+                            univariate_entry["past_is_pad"] = prepro_item["past_is_pad"]
+
+                        yield univariate_entry
+            elif mode == "train":
+                for i in range(target.shape[0]):
+                    univariate_target = target[i]
+
+                    if self.model_type == "causal":
+                        univariate_target = self.imputation_method(univariate_target)  # type: ignore
+
+                    yield {"start": entry["start"], "target": univariate_target}
+
+    def _preprocessed_datasets(self) -> list:
+        prepro_datasets = [RestartableIterator(self.preprocess_iter, dataset, self.mode) for dataset in self.datasets]
+        if self.mode == "train":
+            return [self.create_training_data(ds) for ds in prepro_datasets]
+        return prepro_datasets
 
     def to_hf_format(self, entry: dict) -> dict:
         past_target = torch.tensor(entry["past_target"]).unsqueeze(0)
@@ -366,9 +375,6 @@ class UnivariateTimeSeriesDataset(BaseTimeSeriesDataset):
             "future_values": future_target,
         }
 
-    def _preprocessed_datasets(self) -> list:
-        return [RestartableIteratorWrapper(self.preprocess_iter, dataset, self.mode) for dataset in self.datasets]
-
     def _format_train(self, entry: dict) -> dict:
         return self.to_hf_format(entry)
 
@@ -397,8 +403,9 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
 
     def __post_init__(self):
         assert len(self.probabilities) == len(self.datasets)
-        assert self.mode in ("train", "validation", "test")
+        assert self.mode in ("train", "test")
         self._rng = np.random.default_rng(self.random_seed)
+        self.splitter = self._create_instance_splitter(self.mode)
 
         if self.augmentations is None:
             return
@@ -413,11 +420,11 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
     def rng(self) -> np.random.Generator:
         return self._rng
 
-    def preprocess_entry(self, entry: dict, mode: str) -> dict:
+    def preprocess_entry(self, entry: dict) -> dict:
         entry = {f: entry[f] for f in ["start", "target"]}
         entry["target"] = np.asarray(entry["target"], dtype=self.np_dtype)
 
-        if mode == "train" and self.augmentations is not None:
+        if self.mode == "train" and self.augmentations is not None:
             if self.rng.random() < self.augmentation_rate:
                 augmentation_idx = self.rng.choice(len(self.augmentations), p=self.augmentation_probabilities)
                 entry["target"] = self.augmentations[augmentation_idx](entry["target"])
@@ -427,6 +434,13 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
 
         return entry
 
+    def _preprocessed_datasets(self) -> list:
+        prepro_datasets = [Map(self.preprocess_entry, dataset) for dataset in self.datasets]
+        if self.mode == "train":
+            return [self.create_training_data(ds) for ds in prepro_datasets]
+        elif self.mode == "test":
+            return [self.create_test_data(ds) for ds in prepro_datasets]
+
     def to_hf_format(self, entry: dict) -> dict:
         past_target = torch.tensor(entry["past_target"], dtype=torch.float32)
 
@@ -435,9 +449,6 @@ class MultivariateTimeSeriesDataset(BaseTimeSeriesDataset):
 
         future_target = torch.tensor(entry["future_target"], dtype=torch.float32)
         return {"past_values": past_target, "future_values": future_target}
-
-    def _preprocessed_datasets(self) -> list:
-        return [Map(partial(self.preprocess_entry, mode=self.mode), dataset) for dataset in self.datasets]
 
     def _format_train(self, entry: dict) -> dict:
         return self.to_hf_format(entry)

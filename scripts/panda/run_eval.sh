@@ -65,7 +65,7 @@ run_names_patch_ablations=(
 run_names=(
     # panda_nh12_dmodel768_mixedp-4
     # panda_nh10_dmodel640-1
-    ${run_names_patch_ablations[@]}
+    # ${run_names_patch_ablations[@]}
     # ${run_names_new[@]}
     # ${run_names_scalinglaw[@]}
     # ${run_names_univariate[@]}
@@ -74,6 +74,7 @@ run_names=(
     # ${run_names_multivariate_kernelemb_old[@]}
     # ${run_names_multivariate_kernelemb[@]}
     # ${run_names_multivariate_linattnpolyemb[@]}
+    pft_chattn_emb_w_poly-0
 )
 
 echo "run_names: ${run_names[@]}"
@@ -105,5 +106,7 @@ for run_name in ${run_names[@]}; do
         eval.overwrite=true \
         eval.device=cuda:0 \
         eval.save_labels=false \
-        eval.save_forecasts=false
+        eval.save_forecasts=false \
+        eval.seed=99 \
+        "$@"
 done
