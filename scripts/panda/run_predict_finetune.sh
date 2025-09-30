@@ -8,19 +8,29 @@ while getopts "d" flag; do
 done
 shift $((OPTIND - 1))
 
+# NOTE: all scaling up runs use the improved data (can be verified by checking wandb project configs)
+# train_data_dirs=(
+#     $WORK/data/improved/final_skew40/train
+#     $WORK/data/improved/final_skew40/train_z5_z10
+#     $WORK/data/improved/final_base40/train
+#     $WORK/data/improved/final_base40/train_z5_z10
+# )
+
 train_data_dirs=(
-    $WORK/data/final_skew40/train
-    $WORK/data/final_skew40/train_z5_z10
-    $WORK/data/final_base40/train
-    $WORK/data/final_base40/train_z5_z10
+    $WORK/data/improved/base_mixedp_ic16/train # ics 1-8
+    $WORK/data/improved/skew_mixedp_ic16/train # ics 1-8
+    $WORK/data/improved/base_mixedp_ic16/train_more # ics 9-16
+    $WORK/data/improved/skew_mixedp_ic16/train_more # ics 9-16
 )
 train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -c .)
+
+echo "train_data_dirs: $train_data_dirs_json"
 
 ulimit -n 999999
 if [ "$DEBUG" -eq 0 ]; then
 
-    CUDA_DEVICES=0,1,2,3
-    #CUDA_DEVICES=4,5,6,7
+    # CUDA_DEVICES=0,1,2,3
+    CUDA_DEVICES=4,5,6,7
     echo "CUDA Devices: $CUDA_DEVICES"
 
     NUM_DEVICES=$(echo "$CUDA_DEVICES" | tr -d ' ' | tr ',' '\n' | wc -l)
@@ -69,10 +79,10 @@ if [ "$DEBUG" -eq 0 ]; then
             patchtst.loss=mse \
             patchtst.distribution_output=null \
             train.per_device_train_batch_size=512 \
-            train.max_steps=100_000 \
-            train.save_steps=20_000 \
+            train.max_steps=1_000_000 \
+            train.save_steps=50_000 \
             train.log_steps=1_000 \
-            train.warmup_ratio=0.1 \
+            train.warmup_ratio=0.05 \
             train.torch_compile=true \
             train.weight_decay=0.0 \
             train.output_dir=$WORK/checkpoints/ \

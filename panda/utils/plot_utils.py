@@ -495,6 +495,8 @@ def _create_legend_handles(
         runs = [rf"{run}$^\dagger$" if has_nans[run] else run for run in runs]
 
     if isinstance(colors, dict):
+        # if run name in runs has a $^\\dagger$ suffix, remove it
+        runs = [run.replace("$^\\dagger$", "") for run in runs]
         return [mpatches.Patch(color=colors[run], label=run, alpha=alpha_val) for run in runs]
     else:
         return [mpatches.Patch(color=colors[i % len(colors)], label=run, alpha=alpha_val) for i, run in enumerate(runs)]
@@ -568,7 +570,7 @@ def make_box_plot(
     title: str | None = None,
     fig_kwargs: dict[str, Any] = {},
     title_kwargs: dict[str, Any] = {},
-    colors: list[str] = DEFAULT_COLORS,
+    colors: list[str] | dict[str, str] = DEFAULT_COLORS,
     sort_runs: bool = False,
     save_path: str | None = None,
     order_by_metric: str | None = None,
@@ -583,7 +585,7 @@ def make_box_plot(
     has_nans: dict[str, bool] | None = None,
     ignore_nans: bool = False,
 ) -> list[mpatches.Patch] | None:
-    """Create a box plot from unrolled metrics data."""
+    """Create a box plot from unrolled metrics data, associating each run with a color."""
     if fig_kwargs == {}:
         fig_kwargs = {"figsize": (3, 5)}
 
@@ -617,28 +619,33 @@ def make_box_plot(
     # Get metric title
     metric_title = _get_metric_title(metric_to_plot, use_inv_spearman)
 
-    # Draw box plots
-    _draw_box_plots(df, colors, alpha_val, box_width, box_percentile_range, whisker_percentile_range)
+    # Associate each run with a color
+    if isinstance(colors, dict):
+        color_dict = {run: colors[run] for run in df["Run"].unique()}
+    else:
+        # colors is a list; assign by order of appearance in df["Run"].unique()
+        unique_runs_list = list(df["Run"].unique())
+        color_dict = {run: colors[i % len(colors)] for i, run in enumerate(unique_runs_list)}
+
+    # Draw box plots, passing color_dict
+    _draw_box_plots(df, color_dict, alpha_val, box_width, box_percentile_range, whisker_percentile_range)
 
     # Set y-axis limits if specified
     if ylim:
         plt.ylim(ylim)
 
     # Setup labels and title
-    unique_runs = (
-        df["Run"].unique() if not isinstance(df["Run"].dtype, pd.CategoricalDtype) else df["Run"].cat.categories
-    )
+    if isinstance(df["Run"].dtype, pd.CategoricalDtype):
+        unique_runs = df["Run"].cat.categories.tolist()
+    else:
+        unique_runs = df["Run"].unique().tolist()
     _setup_plot_labels_and_title(metric_title, unique_runs, ylabel_fontsize, show_xlabel, title, title_kwargs)
 
     plt.tight_layout()
 
     # Create legend handles
-    if isinstance(df["Run"].dtype, pd.CategoricalDtype):
-        runs = df["Run"].cat.categories.tolist()
-    else:
-        runs = df["Run"].unique().tolist()
-
-    legend_handles = _create_legend_handles(runs, colors, has_nans, alpha_val, ignore_nans)
+    runs = unique_runs
+    legend_handles = _create_legend_handles(runs, color_dict, has_nans, alpha_val, ignore_nans)
 
     if show_legend:
         plt.legend(handles=legend_handles, **legend_kwargs)

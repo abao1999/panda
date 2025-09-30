@@ -54,8 +54,8 @@ run_names_new=(
 )
 
 run_names_patch_ablations=(
-    # panda21M_ps4_fixed-0
-    # panda21M_ps8_fixed-0
+    panda21M_ps4_fixed-0
+    panda21M_ps8_fixed-0
     panda_21M_ps12_fixed-1
     panda21M_ps24_fixed-1
     panda21M_ps32_fixed-1
