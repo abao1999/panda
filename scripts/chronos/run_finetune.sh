@@ -13,9 +13,7 @@ train_data_dirs=(
 #     $WORK/data/improved/base_mixedp_ic16/train
 #     $WORK/data/improved/skew_mixedp_ic16/train
     $WORK/data/improved/final_skew40/train
-    $WORK/data/improved/final_skew40/train_z5_z10
     $WORK/data/improved/final_base40/train
-    $WORK/data/improved/final_base40/train_z5_z10
 )
 train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "train_data_dirs: $train_data_dirs_json"

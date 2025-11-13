@@ -2,9 +2,8 @@
 
 # Define source and destination directories
 # Move directories from dirB to dirA
-z_split=""
-dirA="$WORK/data/final_skew80/train${z_split}"
-dirB="$WORK/data/final_skew80/extra_train${z_split}"
+dirA="$WORK/data/improved/final_base40/test_zeroshot"
+dirB="$WORK/data/improved/final_base40/test_zeroshot_z5_z10"
 echo "moving from $dirB to $dirA"
 
 # Ensure dirB exists
