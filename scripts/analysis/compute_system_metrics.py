@@ -22,7 +22,7 @@ def system_iterator(eval_dirs: list[str]) -> Iterator[tuple[str]]:
     for data_path in eval_dirs:
         for system_path in filter(lambda d: d.is_dir, Path(data_path).iterdir()):
             for traj_path in system_path.glob("*"):
-                yield (system_path.name, traj_path)
+                yield (system_path.name, traj_path)  # type: ignore
 
 
 def empirical_stiffness(traj: np.array, time_axis: int = -1) -> float:
@@ -90,9 +90,7 @@ def main():
     work_dir = os.environ.get("WORK", "/stor/work/AMDG_Gilpin_Summer2024")
     eval_dirs = [
         f"{work_dir}/data/improved/final_base40/test_zeroshot",
-        f"{work_dir}/data/improved/final_base40/test_zeroshot_z5_z10",
         f"{work_dir}/data/improved/final_skew40/test_zeroshot",
-        f"{work_dir}/data/improved/final_skew40/test_zeroshot_z5_z10",
     ]
     trajectories = system_iterator(eval_dirs)
     metrics = compute_system_metrics(trajectories)

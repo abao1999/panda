@@ -7,9 +7,7 @@ ulimit -n 99999
 run_name=timesfm-200m
 test_data_dirs=(
     $WORK/data/improved/final_base40/test_zeroshot
-    $WORK/data/improved/final_base40/test_zeroshot_z5_z10
     $WORK/data/improved/final_skew40/test_zeroshot
-    $WORK/data/improved/final_skew40/test_zeroshot_z5_z10
 )
 test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "test_data_dirs: $test_data_dirs_json"
