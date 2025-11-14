@@ -40,6 +40,7 @@ dev = [
     "ruff>=0.13.0",
     "ipykernel",
 ]
+benchmark = ["neuraloperator"]
 
 [tool.ruff]
 line-length = 120
