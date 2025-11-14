@@ -1,0 +1,7 @@
+dynamix:
+  model_name: dynamix-3d-alrnn-v1.0
+  device: ${eval.device}
+  torch_dtype: ${eval.torch_dtype}
+  preprocessing_method: delay_embedding
+  standardize: true
+  fit_nonstationary: false
