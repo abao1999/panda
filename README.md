@@ -34,16 +34,17 @@ We demonstrate a neural scaling law for differential equations, underscoring the
 
 We recommend using [uv](https://docs.astral.sh/uv/getting-started/installation/) to install the dependencies. After cloning, create a virtual environment:
 ```
-uv venv --python 3.13
+uv venv --python 3.11
 source .venv/bin/activate
 ```
-And simply run `uv sync` to install dependencies. To install torch for GPU run:
-```
-uv sync --extra-index-url https://download.pytorch.org/whl/rocm6.3
-```
-To install torch with ROCm, or for CUDA:
+And simply run `uv sync` to install dependencies. To install torch for GPU, run:
+(For CUDA)
 ```
 uv sync --extra-index-url https://download.pytorch.org/whl/cuda12.9
+```
+(For ROCm)
+```
+uv sync --extra-index-url https://download.pytorch.org/whl/rocm6.3
 ```
 
 For the development setup, use:
