@@ -159,6 +159,8 @@ def get_summary_metrics_dict(
         stds = []
         stes = []
         all_vals = []
+        p25 = []
+        p75 = []
         for prediction_length in tqdm(prediction_lengths, desc=f"Computing {metric_name} for {model_name}"):
             metric_vals = np.array(metrics_dict[prediction_length][metric_name])
             if np.isnan(metric_vals).any():
@@ -173,7 +175,8 @@ def get_summary_metrics_dict(
             stds.append(std)
             stes.append(ste)
             all_vals.append(metric_vals)
-
+            p25.append(np.nanpercentile(metric_vals, 25))
+            p75.append(np.nanpercentile(metric_vals, 75))
         if has_nans:
             print(f"NaNs in {model_name} for {metric_name}")
 
@@ -182,5 +185,6 @@ def get_summary_metrics_dict(
         summary_metrics_dict[model_name]["stds"] = stds
         summary_metrics_dict[model_name]["stes"] = stes
         summary_metrics_dict[model_name]["all_vals"] = all_vals
-
+        summary_metrics_dict[model_name]["p25"] = p25
+        summary_metrics_dict[model_name]["p75"] = p75
     return summary_metrics_dict, has_nans

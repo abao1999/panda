@@ -353,9 +353,9 @@ def _draw_custom_box(
     whisker_percentile_range: tuple[float, float],
 ) -> None:
     """Draw a custom box plot element."""
-    lower_box, upper_box = np.percentile(run_data, box_percentile_range)
-    lower_whisker, upper_whisker = np.percentile(run_data, whisker_percentile_range)
-    median_val = np.median(run_data)
+    lower_box, upper_box = np.nanpercentile(run_data, box_percentile_range)
+    lower_whisker, upper_whisker = np.nanpercentile(run_data, whisker_percentile_range)
+    median_val = np.nanmedian(run_data)
 
     box_half_width = box_width / 2
     whisker_cap_width = box_half_width * 0.5
@@ -677,7 +677,7 @@ def plot_all_metrics_by_prediction_length(
     model_names_to_exclude: list[str] = [],
     has_nans: dict[str, dict[str, bool]] | None = None,
     replace_nans_with_val: float | None = None,
-) -> list[plt.Line2D]:
+) -> dict[str, plt.Line2D]:
     """Plot multiple metrics across different prediction lengths for various models."""
     has_nans = has_nans or {}
     num_metrics = len(metric_names)
@@ -753,18 +753,19 @@ def plot_all_metrics_by_prediction_length(
 
                 if metric_name in metrics_to_show_envelope:
                     percentile_lower = [
-                        np.percentile(all_vals[idx], percentile_range[0]) for idx in range(len(all_vals))
+                        np.nanpercentile(all_vals[idx], percentile_range[0]) for idx in range(len(all_vals))
                     ]
                     percentile_upper = [
-                        np.percentile(all_vals[idx], percentile_range[1]) for idx in range(len(all_vals))
+                        np.nanpercentile(all_vals[idx], percentile_range[1]) for idx in range(len(all_vals))
                     ]
                     ax.fill_between(
                         metrics["prediction_lengths"], percentile_lower, percentile_upper, alpha=0.1, color=color
                     )
 
         if i == 0:
-            legend_handles = [
-                plt.Line2D(
+            legend_handles = {}
+            legend_handles = {
+                model_name: plt.Line2D(  # type: ignore
                     [0],
                     [0],
                     color=colors[j] if isinstance(colors, list) else colors[model_name],
@@ -779,9 +780,16 @@ def plot_all_metrics_by_prediction_length(
                     else colors[model_name],
                 )
                 for j, model_name in enumerate(metrics_dict.keys())
-            ]
+            }
+            # Reorder legend_handles to put Dynamix as the third key
+            legend_handles_reordered = {}
+            keys_order = ["Panda", "Chronos 20M SFT", "Dynamix", "Time MOE 50M", "Chronos 200M", "TimesFM 200M"]
+            for key in keys_order:
+                if key in legend_handles:
+                    legend_handles_reordered[key] = legend_handles[key]
+            legend_handles = legend_handles_reordered
             if show_legend:
-                legend_handles = ax.legend(handles=legend_handles, **legend_kwargs)
+                legend_handles = ax.legend(handles=list(legend_handles.values()), **legend_kwargs)
 
         ax.set_xlabel("Prediction Length", fontweight="bold", fontsize=12)
         ax.set_xticks(metrics["prediction_lengths"])
