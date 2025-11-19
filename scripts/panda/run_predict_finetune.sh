@@ -11,9 +11,7 @@ shift $((OPTIND - 1))
 # NOTE: all scaling up runs use the improved data (can be verified by checking wandb project configs)
 # train_data_dirs=(
 #     $WORK/data/improved/final_skew40/train
-#     $WORK/data/improved/final_skew40/train_z5_z10
 #     $WORK/data/improved/final_base40/train
-#     $WORK/data/improved/final_base40/train_z5_z10
 # )
 
 train_data_dirs=(
@@ -53,7 +51,7 @@ if [ "$DEBUG" -eq 0 ]; then
             --nproc-per-node $NUM_DEVICES \
             --standalone \
             scripts/panda/train.py \
-            shuffle_buffer_length=100_000 \
+            shuffle_buffer_length=10_000 \
             train_data_dirs=$train_data_dirs_json \
             patchtst.mode=predict \
             patchtst.use_dynamics_embedding=true \

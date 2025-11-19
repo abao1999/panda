@@ -16,9 +16,7 @@ shift $((OPTIND - 1))
 
 train_data_dirs=(
     $WORK/data/final_skew40/train
-    $WORK/data/final_skew40/train_z5_z10
     $WORK/data/final_base40/train
-    $WORK/data/final_base40/train_z5_z10
 )
 train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -c .)
 

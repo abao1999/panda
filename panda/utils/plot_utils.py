@@ -1,4 +1,6 @@
+import ast
 import os
+import re
 import warnings
 from typing import Any, Literal
 
@@ -6,7 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import patches as mpatches
-from matplotlib.patches import FancyArrowPatch
+from matplotlib.axes import Axes
+from matplotlib.patches import FancyArrowPatch, Rectangle
 from mpl_toolkits.mplot3d.proj3d import proj_transform
 from omegaconf import OmegaConf
 
@@ -14,6 +17,23 @@ from .data_utils import safe_standardize
 
 DEFAULT_COLORS = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
 DEFAULT_MARKERS = ["o", "s", "v", "D", "X", "P", "H", "h", "d", "p", "x"]
+
+
+def parse_list_string(val_str):
+    """Parse a string representation of a list, handling nan and inf values."""
+    # Replace nan, inf, -inf with None (which ast.literal_eval can handle)
+    val_fixed = re.sub(r"\bnan\b", "None", val_str)
+    val_fixed = re.sub(r"\binf\b", "None", val_fixed)
+    val_fixed = re.sub(r"-inf\b", "None", val_fixed)
+
+    # Parse with ast.literal_eval
+    parsed = ast.literal_eval(val_fixed)
+
+    # Convert None back to np.nan
+    if isinstance(parsed, list):
+        return [np.nan if v is None else v for v in parsed]
+    else:
+        return np.nan if parsed is None else parsed
 
 
 def apply_custom_style(config_path: str):
@@ -25,7 +45,7 @@ def apply_custom_style(config_path: str):
         plt.style.use(cfg.base_style)
 
         custom_rcparams = OmegaConf.to_container(cfg.matplotlib_style, resolve=True)
-        for category, settings in custom_rcparams.items():
+        for category, settings in custom_rcparams.items():  # type: ignore
             if isinstance(settings, dict):
                 for param, value in settings.items():
                     if isinstance(value, dict):
@@ -44,13 +64,13 @@ class Arrow3D(FancyArrowPatch):
 
     def draw(self, renderer):
         xs3d, ys3d, zs3d = self._verts3d
-        xs, ys, _ = proj_transform(xs3d, ys3d, zs3d, self.axes.get_proj())
+        xs, ys, _ = proj_transform(xs3d, ys3d, zs3d, self.axes.get_proj())  # type: ignore
         self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
         super().draw(renderer)
 
     def do_3d_projection(self):
         xs3d, ys3d, zs3d = self._verts3d
-        xs, ys, zs = proj_transform(xs3d, ys3d, zs3d, self.axes.get_proj())
+        xs, ys, zs = proj_transform(xs3d, ys3d, zs3d, self.axes.get_proj())  # type: ignore
         self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
         return np.min(zs)
 
@@ -343,7 +363,7 @@ def plot_grid_trajs_multivariate(
 
 
 def _draw_custom_box(
-    ax: plt.Axes,
+    ax: Axes,
     i: int,
     run_data: np.ndarray,
     color: str,
@@ -360,7 +380,7 @@ def _draw_custom_box(
     box_half_width = box_width / 2
     whisker_cap_width = box_half_width * 0.5
 
-    box = plt.Rectangle(
+    box = Rectangle(
         (i - box_half_width, lower_box),
         box_width,
         upper_box - lower_box,
@@ -387,7 +407,7 @@ def _process_metric_values(values: list[float], metric_to_plot: str, use_inv_spe
 
 
 def _extract_plot_data(
-    unrolled_metrics: dict[str, dict[int, dict[str, list[float]]]],
+    metrics_dict: dict[str, dict[int, dict[str, list[float]]]],
     prediction_length: int,
     metric_to_plot: str,
     run_names: list[str],
@@ -395,21 +415,21 @@ def _extract_plot_data(
     has_nans: dict[str, bool],
     verbose: bool = False,
 ) -> tuple[list[tuple[str, float]], dict[str, bool]]:
-    """Extract and process plot data from unrolled metrics."""
+    """Extract and process plot data from metrics_dict."""
     plot_data = []
     has_nans = has_nans or {}
 
     for run_name in run_names:
         try:
-            if prediction_length not in unrolled_metrics[run_name]:
+            if prediction_length not in metrics_dict[run_name]:
                 warnings.warn(f"Warning: prediction_length {prediction_length} not found for {run_name}")
                 continue
 
-            if metric_to_plot not in unrolled_metrics[run_name][prediction_length]:
+            if metric_to_plot not in metrics_dict[run_name][prediction_length]:
                 warnings.warn(f"Warning: metric '{metric_to_plot}' not found for {run_name}")
                 continue
 
-            values = unrolled_metrics[run_name][prediction_length][metric_to_plot]
+            values = metrics_dict[run_name][prediction_length][metric_to_plot]
             has_nans[run_name] = bool(np.isnan(values).any()) or has_nans.get(run_name, False)
 
             processed_values = _process_metric_values(values, metric_to_plot, use_inv_spearman)
@@ -427,7 +447,7 @@ def _extract_plot_data(
 
 
 def _get_ordering_data(
-    unrolled_metrics: dict[str, dict[int, dict[str, list[float]]]],
+    metrics_dict: dict[str, dict[int, dict[str, list[float]]]],
     prediction_length: int,
     order_by_metric: str,
     run_names: list[str],
@@ -438,8 +458,8 @@ def _get_ordering_data(
 
     for run_name in run_names:
         try:
-            if order_by_metric in unrolled_metrics[run_name][prediction_length]:
-                order_values = unrolled_metrics[run_name][prediction_length][order_by_metric]
+            if order_by_metric in metrics_dict[run_name][prediction_length]:
+                order_values = metrics_dict[run_name][prediction_length][order_by_metric]
                 processed_values = _process_metric_values(order_values, order_by_metric, use_inv_spearman)
 
                 if processed_values:
@@ -457,14 +477,14 @@ def _create_dataframe_with_ordering(
     sort_runs: bool,
 ) -> pd.DataFrame:
     """Create DataFrame with proper run ordering."""
-    df = pd.DataFrame(plot_data, columns=["Run", "Value"])
+    df = pd.DataFrame(plot_data, columns=["Run", "Value"])  # type: ignore
 
     if order_by_metric is not None and ordering_metric_data:
         run_order = [run for run, _ in sorted(ordering_metric_data.items(), key=lambda x: x[1])]
         run_order = [run for run in run_order if run in df["Run"].unique()]
         df["Run"] = pd.Categorical(df["Run"], categories=run_order, ordered=True)
     elif sort_runs:
-        median_by_run = df.groupby("Run")["Value"].median().sort_values()
+        median_by_run = df.groupby("Run")["Value"].median().sort_values()  # type: ignore
         run_order = median_by_run.index.tolist()
         df["Run"] = pd.Categorical(df["Run"], categories=run_order, ordered=True)
 
@@ -517,7 +537,7 @@ def _draw_box_plots(
     )
 
     for i, run in enumerate(unique_runs):
-        run_data = df[df["Run"] == run]["Value"].to_numpy()
+        run_data = df[df["Run"] == run]["Value"].to_numpy()  # type: ignore
         if len(run_data) == 0:
             continue
 
@@ -544,7 +564,7 @@ def _setup_plot_labels_and_title(
     if show_xlabel:
         plt.xticks(
             range(len(unique_runs)),
-            unique_runs.tolist(),
+            unique_runs.tolist(),  # type: ignore
             rotation=45,
             ha="right",
             fontsize=5,
@@ -559,7 +579,7 @@ def _setup_plot_labels_and_title(
 
 
 def make_box_plot(
-    unrolled_metrics: dict[str, dict[int, dict[str, list[float]]]],
+    metrics_dict: dict[str, dict[int, dict[str, list[float]]]],
     prediction_length: int,
     metric_to_plot: str = "smape",
     selected_run_names: list[str] | None = None,
@@ -585,12 +605,12 @@ def make_box_plot(
     has_nans: dict[str, bool] | None = None,
     ignore_nans: bool = False,
 ) -> list[mpatches.Patch] | None:
-    """Create a box plot from unrolled metrics data, associating each run with a color."""
+    """Create a box plot from metrics_dict data, associating each run with a color."""
     if fig_kwargs == {}:
         fig_kwargs = {"figsize": (3, 5)}
 
     if selected_run_names is None:
-        selected_run_names = list(unrolled_metrics.keys())
+        selected_run_names = list(metrics_dict.keys())
 
     run_names = [name for name in selected_run_names if name not in run_names_to_exclude]
     has_nans = has_nans or {}
@@ -603,14 +623,14 @@ def make_box_plot(
 
     # Extract and process plot data
     plot_data, has_nans = _extract_plot_data(
-        unrolled_metrics, prediction_length, metric_to_plot, run_names, use_inv_spearman, has_nans, verbose
+        metrics_dict, prediction_length, metric_to_plot, run_names, use_inv_spearman, has_nans, verbose
     )
 
     # Get ordering data if needed
     ordering_metric_data = {}
     if order_by_metric is not None and order_by_metric != metric_to_plot:
         ordering_metric_data = _get_ordering_data(
-            unrolled_metrics, prediction_length, order_by_metric, run_names, use_inv_spearman
+            metrics_dict, prediction_length, order_by_metric, run_names, use_inv_spearman
         )
 
     # Create DataFrame with proper ordering
@@ -693,7 +713,7 @@ def plot_all_metrics_by_prediction_length(
     elif hasattr(axes, "flatten"):
         axes = axes.flatten()
 
-    for i, (ax, metric_name) in enumerate(zip(axes, metric_names)):
+    for i, (ax, metric_name) in enumerate(zip(axes, metric_names)):  # type: ignore
         metrics_dict = all_metrics_dict[metric_name]
         nan_models = has_nans.get(metric_name, {})
         for j, (model_name, metrics) in enumerate(metrics_dict.items()):
@@ -707,7 +727,8 @@ def plot_all_metrics_by_prediction_length(
 
             if replace_nans_with_val is not None:
                 all_vals = [
-                    np.array([v if not np.isnan(v) else replace_nans_with_val for v in val]) for val in all_vals
+                    np.array([v if not np.isnan(v) else replace_nans_with_val for v in val])  # type: ignore
+                    for val in all_vals  # type: ignore
                 ]
                 mean_vals = np.array([np.mean(val) for val in all_vals])
                 median_vals = np.array([np.median(val) for val in all_vals])

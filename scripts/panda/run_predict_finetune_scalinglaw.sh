@@ -20,7 +20,6 @@ scalinglaw_data_dir=$WORK/data/improved/scalinglaw
 train_data_dirs=(
 #     $scalinglaw_data_dir/split_163-327_ic64/train
     $WORK/data/improved/final_skew40/train
-    $WORK/data/improved/final_skew40/train_z5_z10
 )
 train_data_dirs_json=$(printf '%s\n' "${train_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "train_data_dirs: $train_data_dirs_json"

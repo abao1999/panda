@@ -34,16 +34,17 @@ We demonstrate a neural scaling law for differential equations, underscoring the
 
 We recommend using [uv](https://docs.astral.sh/uv/getting-started/installation/) to install the dependencies. After cloning, create a virtual environment:
 ```
-uv venv --python 3.13
+uv venv --python 3.11
 source .venv/bin/activate
 ```
-And simply run `uv sync` to install dependencies. To install torch for GPU run:
-```
-uv sync --extra-index-url https://download.pytorch.org/whl/rocm6.3
-```
-To install torch with ROCm, or for CUDA:
+And simply run `uv sync` to install dependencies. To install torch for GPU, run:
+(For CUDA)
 ```
 uv sync --extra-index-url https://download.pytorch.org/whl/cuda12.9
+```
+(For ROCm)
+```
+uv sync --extra-index-url https://download.pytorch.org/whl/rocm6.3
 ```
 
 For the development setup, use:
@@ -55,13 +56,13 @@ uv sync --group dev
 Our dataset consists of parameter perturbations of base and skew systems. Each trajectory is a numerically integrated system of coupled ODEs that we filter according to the methodology outlined in our preprint. To run the data generation, see our scripts for [making trajectories from saved params](https://github.com/abao1999/panda/blob/main/scripts/make_dataset_from_params.py), [parameter perturbations of skew systems](https://github.com/abao1999/panda/blob/main/scripts/make_skew_systems.py), and [parameter perturbations of base systems](https://github.com/abao1999/panda/blob/main/scripts/make_dyst_data.py). For ease of use we have also provided an example data generation [bash script](https://github.com/abao1999/panda/blob/main/scripts/bash_scripts/run_data_generation.sh) that calls these scripts.
 
 ## Our Model
-![model schematic](data/model_schematic.png)
+![model schematic](assets/model_schematic.png)
 
 ## Training Our Model
 We provide example bash scripts to train our model, both for [forecasting](https://github.com/abao1999/panda/blob/main/scripts/patchtst/run_predict_finetune.sh) and for [MLM](https://github.com/abao1999/panda/blob/main/scripts/patchtst/run_pretrain.sh) (completions). Recall that it is possible to train an MLM checkpoint and use the encoder for prediction finetuning (SFT) for forecasting. See our [training script](https://github.com/abao1999/panda/blob/main/scripts/patchtst/train.py) for more details.
 
 ## Evaluation
-In [notebooks/load_model_from_hf.ipynb](https://github.com/abao1999/panda/blob/main/notebooks/load_model_from_hf.ipynb) we provide a minimal working example of loading our trained checkpoint from HuggingFace and running inference (generating forecasts). For reproducibility, we also provide a serialized [json file](https://github.com/abao1999/panda/blob/main/data/params_test_zeroshot/filtered_params_dict.json) (~ 10 MB) containing the parameters for some of our held-out skew systems. These parameters can then be loaded and used to generate trajectories from the corresponding systems.
+In [notebooks/load_model_from_hf.ipynb](https://github.com/abao1999/panda/blob/main/notebooks/load_model_from_hf.ipynb) we provide a minimal working example of loading our trained checkpoint from HuggingFace and running inference (generating forecasts). For reproducibility, we also provide a serialized [json file](https://github.com/abao1999/panda/blob/main/assets/params_test_zeroshot/filtered_params_dict.json) (~ 10 MB) containing the parameters for some of our held-out skew systems. These parameters can then be loaded and used to generate trajectories from the corresponding systems.
 
 For a more thorough evaluation, see our [evaluation script](https://github.com/abao1999/panda/blob/main/scripts/patchtst/evaluate.py), which we used to present the results in our preprint. A corresponding script exists for each of the baselines we evaluate on, within `scripts`.
 
