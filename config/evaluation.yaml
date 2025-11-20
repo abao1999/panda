@@ -21,6 +21,7 @@ eval:
   save_masks: false  # for mlm model eval
 
   num_processes: 10 # for multiprocessing
+  use_multiprocessing: true
 
   metric_names:
     - mse
@@ -61,6 +62,8 @@ eval:
   window_start: null
   split_coords: false
   verbose: false
+
+  compute_distributional_metrics: true
 
   baselines:
     baseline_model: fourier_arima

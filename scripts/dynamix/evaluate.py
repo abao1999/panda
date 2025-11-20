@@ -55,7 +55,7 @@ class DynaMixPipeline:
     mode: str = "predict"
 
     def __post_init__(self) -> None:
-        self.device = torch.device(self.device)
+        self.device = torch.device(self.device)  # type: ignore[assignment]
         self.model = load_hf_model(self.model_name)
         self.model = self.model.to(self.device, dtype=self.torch_dtype)
         self.model.eval()
@@ -100,6 +100,19 @@ log = partial(log_on_main, logger=logger)
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
+    save_forecasts = cfg.eval.save_forecasts
+    save_contexts = cfg.eval.save_contexts
+    save_labels = cfg.eval.save_labels
+
+    forecast_save_dir = cfg.eval.forecast_save_dir
+    labels_save_dir = cfg.eval.labels_save_dir
+
+    # NOTE: we fail loudly here so the user is aware that they need to specify the save directories if they want to save the forecasts or labels
+    if save_forecasts and forecast_save_dir is None:
+        raise ValueError("forecast_save_dir must be specified if save_forecasts is True")
+    if save_labels and labels_save_dir is None:
+        raise ValueError("labels_save_dir must be specified if save_labels is True")
+
     test_data_dict = get_eval_data_dict(
         cfg.eval.data_paths_lst,
         num_subdirs=cfg.eval.num_subdirs,
@@ -178,9 +191,9 @@ def main(cfg):
         prediction_length=cfg.eval.prediction_length,
         metric_names=cfg.eval.metric_names,
         system_dims=system_dims,
-        return_predictions=cfg.eval.save_forecasts,
-        return_contexts=cfg.eval.save_contexts,
-        return_labels=cfg.eval.save_labels,
+        return_predictions=save_forecasts,
+        return_contexts=save_contexts,
+        return_labels=save_labels,
         parallel_sample_reduction_fn=parallel_sample_reduction_fn,
         redo_normalization=False,
         prediction_kwargs={},
@@ -189,19 +202,33 @@ def main(cfg):
     )
     save_eval_results_fn(metrics)
 
-    if cfg.eval.save_forecasts and cfg.eval.save_contexts:
-        assert predictions is not None and contexts is not None
-        process_trajs_fn(
-            cfg.eval.forecast_save_dir,
-            {system: np.concatenate([contexts[system], predictions[system]], axis=2) for system in predictions},
-        )
+    if save_forecasts:
+        assert predictions is not None
+        if save_contexts:
+            assert contexts is not None
+            process_trajs_fn(
+                forecast_save_dir,
+                {system: np.concatenate([contexts[system], predictions[system]], axis=2) for system in predictions},
+            )
+        else:
+            process_trajs_fn(
+                forecast_save_dir,
+                {system: predictions[system] for system in predictions},
+            )
 
-    if cfg.eval.save_labels and cfg.eval.save_contexts:
-        assert labels is not None and contexts is not None
-        process_trajs_fn(
-            cfg.eval.labels_save_dir,
-            {system: np.concatenate([contexts[system], labels[system]], axis=2) for system in labels},
-        )
+    if save_labels:
+        assert labels is not None
+        if save_contexts:
+            assert contexts is not None
+            process_trajs_fn(
+                labels_save_dir,
+                {system: np.concatenate([contexts[system], labels[system]], axis=2) for system in labels},
+            )
+        else:
+            process_trajs_fn(
+                labels_save_dir,
+                {system: labels[system] for system in labels},
+            )
 
 
 if __name__ == "__main__":

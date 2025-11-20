@@ -17,6 +17,7 @@ figures/
 *.mplstyle
 *.nfs*
 *.pkl
+*_copy*.sh
 nohup.out
 tests/*.json
 tests/*.png

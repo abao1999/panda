@@ -16,6 +16,7 @@ Notes:
   This guarantees a 1:1 mapping between each forecast row and its source file.
 """
 
+import gc
 import json
 import logging
 import os
@@ -23,14 +24,9 @@ import pickle
 from functools import partial
 from multiprocessing import Pool
 
-import dysts.flows as flows  # type: ignore
 import hydra
 import numpy as np
 import torch
-from dysts.analysis import (  # type: ignore
-    gp_dim,
-    max_lyapunov_exponent_rosenstein_multivariate,
-)
 from dysts.metrics import (  # type: ignore
     average_hellinger_distance,
     estimate_kl_divergence,
@@ -58,7 +54,7 @@ def _compute_metrics_worker(
 ) -> tuple[str, dict[str, dict[str, float | None]]]:
     """
     Compute distributional metrics for a single system, including Hellinger distance between power spectra,
-    KL divergence, correlation dimension, and maximum Lyapunov exponents
+    KL divergence, correlation dimension
     for various combinations of context, predictions, ground truth, and full trajectory.
 
     Args:
@@ -71,30 +67,16 @@ def _compute_metrics_worker(
                 - "full_trajectory": np.ndarray, shape (d, T_full)
                 - "elapsed_time": float
             - pred_interval (int): Number of prediction steps to consider.
-            - rosenstein_traj_len (int): Trajectory length parameter for Lyapunov exponent estimation.
 
     Returns:
         tuple:
             (system_name, {
                 "prediction_horizon": {
                     "avg_hellinger_distance": float | None,
-                    "gpdim_gt": float | None,
-                    "gpdim_pred": float | None,
-                    "max_lyap_gt": float | None,
-                    "max_lyap_pred": float | None,
-                },
-                "pred_with_context": {
-                    "avg_hellinger_distance": float | None,
-                    "gpdim_gt_with_context": float | None,
-                    "gpdim_pred_with_context": float | None,
-                    "max_lyap_gt_with_context": float | None,
-                    "max_lyap_pred_with_context": float | None,
                 },
                 "full_trajectory": {
                     "avg_hellinger_distance": float | None,
                     "kl_divergence": float | None,
-                    "gpdim_full_traj": float | None,
-                    "max_lyap_full_traj": float | None,
                 },
                 "prediction_time": float,
             })
@@ -103,40 +85,29 @@ def _compute_metrics_worker(
         - All metrics may be None if computation fails for a given system.
         - All arrays are transposed to (T, d) shape before metric computation.
         - "prediction_horizon" compares predictions and ground truth over the forecast interval.
-        - "pred_with_context" compares (context + predictions) to (context + ground truth).
         - "full_trajectory" compares predictions to the full system trajectory.
         - "prediction_time" is the elapsed time for generating predictions.
-        - Lyapunov exponents are computed using the Rosenstein method with the provided trajectory length.
     """
     (
         system_name,
         data,
         pred_interval,
-        rosenstein_traj_len,
     ) = args
 
-    # Ensure (T, d) shape for all arrays
-    context, predictions, groundtruth, full_trajectory = (
-        data["context"].T,
-        data["predictions"].T,
-        data["groundtruth"].T,
-        data["full_trajectory"].T,
-    )
-
-    predictions = predictions[:pred_interval]
-    groundtruth = groundtruth[:pred_interval]
+    # Ensure (T, d) shape for all arrays - only load what we need
+    predictions = data["predictions"].T[:pred_interval]
+    groundtruth = data["groundtruth"].T[:pred_interval]
+    full_trajectory = data["full_trajectory"].T
 
     elapsed_time = data["elapsed_time"]
 
     if predictions.shape != groundtruth.shape:
         raise ValueError(
-            f"Shape mismatch: predictions {predictions.shape} vs groundtruth {groundtruth.shape} for {system_name}"
+            f"Shape mismatch for {system_name}: predictions {predictions.shape} vs groundtruth {groundtruth.shape}"
         )
-    if context.shape[0] != 512:
-        raise ValueError(f"Context length mismatch: {context.shape[0]} != 512 for {system_name}")
-    if context.shape[1] != predictions.shape[1] or predictions.shape[1] != groundtruth.shape[1]:
+    if predictions.shape[1] != groundtruth.shape[1]:
         raise ValueError(
-            f"Dimension mismatch: {context.shape[1]}, {predictions.shape[1]}, {groundtruth.shape[1]} for {system_name}"
+            f"Dimension mismatch for {system_name}: pred={predictions.shape[1]}, gt={groundtruth.shape[1]}"
         )
 
     def safe_call(fn, *args, **kwargs):
@@ -147,81 +118,18 @@ def _compute_metrics_worker(
             logger.warning(f"Error computing {fn.__name__} for {system_name}")
             return None
 
-    # (Context + GT) vs (Context + Preds)
-    pred_with_context = np.concatenate([context, predictions], axis=0)
-    gt_with_context = np.concatenate([context, groundtruth], axis=0)
-
-    avg_hellinger_pred_with_context = safe_call(average_hellinger_distance, gt_with_context, pred_with_context)
-    gpdim_gt_with_context = safe_call(gp_dim, gt_with_context)
-    gpdim_pred_with_context = safe_call(gp_dim, pred_with_context)
-
     # Prediction Horizon
     avg_hellinger_pred_horizon = safe_call(average_hellinger_distance, groundtruth, predictions)
-    gpdim_gt = safe_call(gp_dim, groundtruth)
-    gpdim_pred = safe_call(gp_dim, predictions)
+    kl_pred_horizon = safe_call(estimate_kl_divergence, groundtruth, predictions, n_samples=1000, sigma_scale=None)
 
     # Prediction vs Full Trajectory
     avg_hellinger_full_traj = safe_call(average_hellinger_distance, full_trajectory, predictions)
-    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions, n_samples=20000, sigma_scale=None)
-    # Get the average integration dt for purpose of Lyapunov exponent computation
-    full_traj_len = full_trajectory.shape[0]
-    # we are keeping this fixed for now, but make adaptive in the future for mixed period datasets
-    num_periods = 40
+    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions, n_samples=1000, sigma_scale=None)
 
-    system_name_without_pp = system_name.split("_pp")[0]
-    is_skew = "_" in system_name_without_pp
-    if is_skew:
-        driver_name, response_name = system_name_without_pp.split("_")
-        driver_system = getattr(flows, driver_name)()
-        response_system = getattr(flows, response_name)()
-        period = max(driver_system.period, response_system.period)
-        # NOTE: we can use either, but it seems that for average dt, using the period is better
-        # dt = min(driver_system.dt, response_system.dt)
-        avg_dt = (num_periods * period) / full_traj_len
-
-    else:
-        sys = getattr(flows, system_name_without_pp)()
-        avg_dt = (num_periods * sys.period) / full_traj_len
-
-    max_lyap_gt = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate,
-        groundtruth,
-        tau=avg_dt,
-        trajectory_len=rosenstein_traj_len,
-    )
-    max_lyap_pred = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate,
-        predictions,
-        tau=avg_dt,
-        trajectory_len=rosenstein_traj_len,
-    )
-    max_lyap_gt_with_context = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate,
-        gt_with_context,
-        tau=avg_dt,
-        trajectory_len=rosenstein_traj_len,
-    )
-    max_lyap_pred_with_context = safe_call(
-        max_lyapunov_exponent_rosenstein_multivariate,
-        pred_with_context,
-        tau=avg_dt,
-        trajectory_len=rosenstein_traj_len,
-    )
-
-    return system_name, {
+    result = {
         "prediction_horizon": {
             "avg_hellinger_distance": avg_hellinger_pred_horizon,
-            "gpdim_gt": gpdim_gt,
-            "gpdim_pred": gpdim_pred,
-            "max_lyap_gt": max_lyap_gt,
-            "max_lyap_pred": max_lyap_pred,
-        },
-        "pred_with_context": {
-            "avg_hellinger_distance": avg_hellinger_pred_with_context,
-            "gpdim_gt_with_context": gpdim_gt_with_context,
-            "gpdim_pred_with_context": gpdim_pred_with_context,
-            "max_lyap_gt_with_context": max_lyap_gt_with_context,
-            "max_lyap_pred_with_context": max_lyap_pred_with_context,
+            "kl_divergence": kl_pred_horizon,
         },
         "full_trajectory": {
             "avg_hellinger_distance": avg_hellinger_full_traj,
@@ -230,9 +138,17 @@ def _compute_metrics_worker(
         "prediction_time": elapsed_time,
     }
 
+    # Clean up large arrays before returning to free memory
+    del predictions, groundtruth, full_trajectory
+    gc.collect()
+
+    return system_name, result
+
 
 def get_distributional_metrics(
     forecast_dict: dict[str, dict[str, np.ndarray | float]],
+    pred_intervals: list[int],
+    use_multiprocessing: bool = True,
     n_proc: int | None = None,
 ) -> dict[str, dict[str, dict[str, float]]]:
     """
@@ -273,33 +189,47 @@ def get_distributional_metrics(
             raise ValueError(f"Missing required data for {system_name}: {required_keys}")
 
     results_all_pred_intervals = {}
-    # pred_intervals = [128, 192, 256, 320, 384, 448, 512]
-    pred_intervals = [128, 256, 512]
-    # NOTE: prediction length 128 is too short to use traj_len=64 for the rosenstein estimator implementation we consider.
-    rosenstein_traj_lens = [16, 64, 64]
 
-    for i, pred_interval in enumerate(pred_intervals):
-        current_rosenstein_traj_len = rosenstein_traj_lens[i]
+    for pred_interval in pred_intervals:
         worker_args = [
             (
                 system_name,
                 data,
                 pred_interval,
-                current_rosenstein_traj_len,
             )
             for system_name, data in forecast_dict.items()
         ]
         print(f"pred_interval: {pred_interval}")
-        print(f"rosenstein_traj_len: {current_rosenstein_traj_len}")
-        # Use multiprocessing to compute dimensions in parallel
-        with Pool(n_proc) as pool:
-            results = list(
-                tqdm(
-                    pool.imap_unordered(_compute_metrics_worker, worker_args),
+
+        if use_multiprocessing:
+            # Use multiprocessing to compute dimensions in parallel
+            # maxtasksperchild prevents memory buildup in worker processes
+            with Pool(n_proc, maxtasksperchild=10) as pool:
+                results = []
+                # Process results incrementally rather than accumulating all at once
+                for result in tqdm(
+                    pool.imap_unordered(_compute_metrics_worker, worker_args, chunksize=1),
                     total=len(worker_args),
                     desc="Computing distributional metrics",
-                )
-            )
+                ):
+                    results.append(result)
+
+            # Explicitly delete worker_args to free memory
+            del worker_args
+            gc.collect()
+        else:
+            print("Computing distributional metrics sequentially")
+            # Sequential (non-multiprocessed) version
+            results = []
+            for args in tqdm(worker_args, desc="Computing distributional metrics"):
+                result = _compute_metrics_worker(args)
+                results.append(result)
+                # Free memory after each computation
+                del args
+
+            del worker_args
+            gc.collect()
+
         results_all_pred_intervals[pred_interval] = results
 
     return results_all_pred_intervals
@@ -345,12 +275,11 @@ def main(cfg):
         prediction_length = cfg.eval.prediction_length
 
         # Initialize model/pipeline
-        checkpoint_path = cfg.eval.checkpoint_path
         if cfg.eval.model_type == "panda":
-            log(f"Using PatchTST checkpoint: {checkpoint_path}")
+            log(f"Using PatchTST checkpoint: {cfg.eval.checkpoint_path}")
             pipeline = PatchTSTPipeline.from_pretrained(
                 mode="predict",
-                pretrain_path=checkpoint_path,
+                pretrain_path=cfg.eval.checkpoint_path,
                 device_map=cfg.eval.device,
                 torch_dtype=getattr(torch, cfg.eval.torch_dtype, torch.float32),
             )
@@ -372,15 +301,9 @@ def main(cfg):
                 for system_name, file_datasets in test_data_dict.items()
             }
         elif cfg.eval.model_type == "chronos":
-            if not cfg.eval.chronos.zero_shot:
-                log(f"Using Chronos checkpoint: {checkpoint_path}")
-                model_id_or_path = checkpoint_path
-            else:
-                log(f"Evaluating Chronos Zeroshot: {cfg.chronos.model_id}")
-                model_id_or_path = cfg.chronos.model_id
-
+            log(f"Using Chronos checkpoint: {cfg.eval.checkpoint_path}")
             pipeline = ChronosPipeline.from_pretrained(
-                model_id_or_path,
+                cfg.eval.checkpoint_path,
                 device_map=cfg.eval.device,
                 torch_dtype=getattr(torch, cfg.eval.torch_dtype, torch.float32),
             )
@@ -514,16 +437,30 @@ def main(cfg):
             with open(forecasts_dict_path, "wb") as f:
                 pickle.dump(save_dict, f)
 
-    distributional_metrics = get_distributional_metrics(forecast_dict, n_proc=cfg.eval.num_processes)
+    # Compute the distributional metrics
+    if cfg.eval.compute_distributional_metrics:
+        log("Computing distributional metrics")
+        pred_intervals = [1024]
+        distributional_metrics = get_distributional_metrics(
+            forecast_dict,
+            pred_intervals,
+            use_multiprocessing=cfg.eval.use_multiprocessing,
+            n_proc=cfg.eval.num_processes,
+        )
 
-    metrics_fname_suffix = f"_{cfg.eval.metrics_fname_suffix}" if cfg.eval.metrics_fname_suffix else ""
-    metrics_fname = (
-        f"{cfg.eval.metrics_fname}{metrics_fname_suffix}" if cfg.eval.reload_saved_forecasts else cfg.eval.metrics_fname
-    )
-    metrics_path = os.path.join(metrics_save_dir, f"{metrics_fname}.json")
-    log(f"Saving metrics to {metrics_path}")
-    with open(metrics_path, "w") as f:
-        json.dump(distributional_metrics, f, indent=4)
+        metrics_fname_suffix = f"_{cfg.eval.metrics_fname_suffix}" if cfg.eval.metrics_fname_suffix else ""
+        metrics_fname = (
+            f"{cfg.eval.metrics_fname}{metrics_fname_suffix}"
+            if cfg.eval.reload_saved_forecasts
+            else cfg.eval.metrics_fname
+        )
+        metrics_path = os.path.join(metrics_save_dir, f"{metrics_fname}.json")
+        log(f"Saving metrics to {metrics_path}")
+        with open(metrics_path, "w") as f:
+            json.dump(distributional_metrics, f, indent=4)
+    else:
+        # We do this so we can parallelize the model inference and not worry about cpu usage bottleneck (computing these metrics is very cpu intensive)
+        log(f"Skipping distributional metrics computation, only saved forecasts, to {forecasts_dict_path}")
 
 
 if __name__ == "__main__":
