@@ -33,7 +33,9 @@ from dysts.metrics import (  # type: ignore
 )
 from gluonts.transform import LastValueImputation
 from tqdm import tqdm
+from transformers import set_seed
 
+from panda.baselines.fm_baselines import DynaMixPipeline
 from panda.chronos.pipeline import ChronosPipeline
 from panda.dataset import MultivariateTimeSeriesDataset, UnivariateTimeSeriesDataset
 from panda.evaluation import (
@@ -47,6 +49,9 @@ from panda.utils.train_utils import log_on_main
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
+
+UNIVARIATE_MODELS = ["chronos"]
+MULTIVARIATE_MODELS = ["panda", "dynamix"]
 
 
 def _compute_metrics_worker(
@@ -273,7 +278,9 @@ def main(cfg):
             forecast_dict = pickle.load(f)
     else:
         prediction_length = cfg.eval.prediction_length
+        context_length = None  # to be set below
 
+        log("Initializing model/pipeline...")
         # Initialize model/pipeline
         if cfg.eval.model_type == "panda":
             log(f"Using PatchTST checkpoint: {cfg.eval.checkpoint_path}")
@@ -287,6 +294,45 @@ def main(cfg):
             model_config = dict(vars(pipeline.model.config))
             context_length = model_config["context_length"]
 
+        elif cfg.eval.model_type == "dynamix":
+            torch_dtype = getattr(torch, cfg.dynamix.torch_dtype)
+            assert isinstance(torch_dtype, torch.dtype)
+            log(f"Using Dynamix model (cfg.dynamix.model_name): {cfg.dynamix.model_name}")
+            pipeline = DynaMixPipeline(
+                model_name=cfg.dynamix.model_name,
+                device=cfg.dynamix.device,
+                torch_dtype=torch_dtype,
+                preprocessing_method=cfg.dynamix.preprocessing_method,
+                standardize=cfg.dynamix.standardize,
+                fit_nonstationary=cfg.dynamix.fit_nonstationary,
+            )
+
+            train_config = dict(cfg.train)
+            rseed = train_config.get("seed", cfg.train.seed)
+            log(f"Using SEED: {rseed}")
+            set_seed(seed=rseed)
+
+            context_length = cfg.chronos.context_length
+
+        elif cfg.eval.model_type == "chronos":
+            log(f"Using Chronos checkpoint: {cfg.eval.checkpoint_path}")
+            pipeline = ChronosPipeline.from_pretrained(
+                cfg.eval.checkpoint_path,
+                device_map=cfg.eval.device,
+                torch_dtype=getattr(torch, cfg.eval.torch_dtype, torch.float32),
+            )
+            pipeline.model.eval()
+            model_config = dict(vars(pipeline.model.config))
+            context_length = model_config["context_length"]
+
+        else:
+            raise NotImplementedError(
+                f"Batched distributional metrics only supports model_type in {{'panda','chronos'}}, got {cfg.eval.model_type}"
+            )
+
+        log("Loading datasets...")
+        log("Context length: {context_length}")
+        if cfg.eval.model_type in MULTIVARIATE_MODELS:
             datasets = {
                 system_name: MultivariateTimeSeriesDataset(
                     datasets=file_datasets,
@@ -300,17 +346,7 @@ def main(cfg):
                 )
                 for system_name, file_datasets in test_data_dict.items()
             }
-        elif cfg.eval.model_type == "chronos":
-            log(f"Using Chronos checkpoint: {cfg.eval.checkpoint_path}")
-            pipeline = ChronosPipeline.from_pretrained(
-                cfg.eval.checkpoint_path,
-                device_map=cfg.eval.device,
-                torch_dtype=getattr(torch, cfg.eval.torch_dtype, torch.float32),
-            )
-            pipeline.model.eval()
-            model_config = dict(vars(pipeline.model.config))
-            context_length = model_config["context_length"]
-
+        elif cfg.eval.model_type in UNIVARIATE_MODELS:
             datasets = {
                 system_name: UnivariateTimeSeriesDataset(
                     datasets=file_datasets,
@@ -328,11 +364,6 @@ def main(cfg):
                 for system_name, file_datasets in test_data_dict.items()
             }
 
-        else:
-            raise NotImplementedError(
-                f"Batched distributional metrics only supports model_type in {{'panda','chronos'}}, got {cfg.eval.model_type}"
-            )
-
         system_dims = {
             system_name: get_dim_from_dataset(test_data_dict[system_name][0]) for system_name in test_data_dict
         }
@@ -346,7 +377,7 @@ def main(cfg):
         }[cfg.eval.parallel_sample_reduction]
 
         # Run batched prediction
-        if cfg.eval.model_type == "panda":
+        if cfg.eval.model_type in MULTIVARIATE_MODELS:
             preds, ctxs, lbls, _ = evaluate_multivariate_forecasting_model(
                 pipeline,
                 datasets,  # type: ignore

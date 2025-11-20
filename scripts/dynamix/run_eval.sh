@@ -22,6 +22,8 @@ python "$main_dir/scripts/dynamix/evaluate.py" \
     eval.prediction_length=512 \
     eval.limit_prediction_length=false \
     eval.metrics_save_dir="$WORK/eval_results/dynamix/test_zeroshot" \
+    eval.forecast_save_dir="$WORK/eval_results/dynamix/test_zeroshot/forecasts" \
+    eval.labels_save_dir="$WORK/eval_results/dynamix/test_zeroshot/labels" \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
     eval.device=cuda:0 \

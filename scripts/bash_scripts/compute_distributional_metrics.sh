@@ -32,6 +32,11 @@ elif [ "$model_type" = "chronos_sft" ]; then
     model_type=chronos
     run_name=chronos_t5_mini_ft-0
     checkpoint_path=$WORK/checkpoints/$run_name/checkpoint-final
+
+elif [ "$model_type" = "dynamix" ]; then
+    run_name=dynamix
+    checkpoint_path=null
+
 else
     echo "Unknown model_type: $model_type"
     exit 1
@@ -50,11 +55,11 @@ echo "model_dir: $model_dir"
 
 export PYTHONWARNINGS="ignore"
 
-window_start_times=(512 1024 1536 2048)
+window_start_times=(1536 2048)
 for idx in "${!window_start_times[@]}"; do
     window_start_time="${window_start_times[$idx]}"
     echo "Index: $idx, window_start_time: $window_start_time"
-    python scripts/analysis/distribution_metrics.py \
+    python scripts/analysis/distribution_metrics_combined.py \
         eval.mode=predict \
         eval.model_type=$model_type \
         eval.checkpoint_path=$checkpoint_path \
@@ -66,6 +71,7 @@ for idx in "${!window_start_times[@]}"; do
         eval.metrics_fname=distributional_metrics_window-$window_start_time \
         eval.save_forecasts=true \
         eval.save_full_trajectory=true \
+        eval.compute_distributional_metrics=true \
         eval.reload_saved_forecasts=true \
         eval.num_processes=10 \
         eval.window_start=$window_start_time \
