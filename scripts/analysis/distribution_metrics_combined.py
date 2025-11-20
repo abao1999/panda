@@ -2,8 +2,7 @@
 Batched distributional metrics computation using Panda's evaluation utilities.
 
 This script mirrors the model-aware dataset construction and batched prediction
-flow used by the main evaluate scripts, and then computes the same
-distributional metrics produced by compute_distributional_metrics.py.
+flow used by the main evaluate scripts.
 
 Notes:
 - Uses UnivariateTimeSeriesDataset for Chronos models and MultivariateTimeSeriesDataset
@@ -21,12 +20,18 @@ import json
 import logging
 import os
 import pickle
+from collections.abc import Callable
 from functools import partial
 from multiprocessing import Pool
+from typing import Literal
 
+import dysts.flows as flows  # type: ignore
 import hydra
 import numpy as np
 import torch
+from dysts.analysis import (  # type: ignore
+    max_lyapunov_exponent_rosenstein_multivariate,
+)
 from dysts.metrics import (  # type: ignore
     average_hellinger_distance,
     estimate_kl_divergence,
@@ -52,6 +57,141 @@ log = partial(log_on_main, logger=logger)
 
 UNIVARIATE_MODELS = ["chronos"]
 MULTIVARIATE_MODELS = ["panda", "dynamix"]
+
+
+def safe_call(fn: Callable, system_name: str, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:
+        print(e)
+        logger.warning(f"Error computing {fn.__name__} for {system_name}")
+        return None
+
+
+def _compute_lyap_worker(
+    args,
+    rosenstein_traj_len: int = 64,
+    compute_for_full_traj: bool = False,
+) -> tuple[str, dict[str, dict[str, float | None]]]:
+    """
+    Compute distributional metrics for a single system, including Hellinger distance between power spectra,
+    KL divergence, correlation dimension, and maximum Lyapunov exponents
+    for various combinations of context, predictions, ground truth, and full trajectory.
+
+    Args:
+        args: Tuple containing:
+            - system_name (str): Name of the dynamical system.
+            - data (dict): Dictionary with the following keys:
+                - "context": np.ndarray, shape (d, T)
+                - "predictions": np.ndarray, shape (d, T)
+                - "groundtruth": np.ndarray, shape (d, T)
+                - "full_trajectory": np.ndarray, shape (d, T_full)
+                - "elapsed_time": float
+            - pred_interval (int): Number of prediction steps to consider.
+        rosenstein_traj_len (int): Trajectory length parameter for Lyapunov exponent estimation (Default: 64)
+        compute_for_full_traj (bool): Whether to compute lyapunov exponents for the full trajectory (Default: False)
+    Returns:
+        tuple:
+            (system_name, {
+                "prediction_horizon": {
+                    "max_lyap_gt": float | None,
+                    "max_lyap_pred": float | None,
+                },
+                "prediction_time": float,
+            })
+
+    Notes:
+        - All metrics may be None if computation fails for a given system.
+        - All arrays are transposed to (T, d) shape before metric computation.
+        - "prediction_horizon" compares predictions and ground truth over the forecast interval.
+        - "full_trajectory" compares predictions to the full system trajectory.
+        - "prediction_time" is the elapsed time for generating predictions.
+        - Lyapunov exponents are computed using the Rosenstein method with the provided trajectory length.
+    """
+    (
+        system_name,
+        data,
+        pred_interval,
+    ) = args
+
+    # Ensure (T, d) shape for all arrays
+    _, predictions, groundtruth, full_trajectory = (
+        data["context"].T,
+        data["predictions"].T,
+        data["groundtruth"].T,
+        data["full_trajectory"].T,
+    )
+
+    predictions = predictions[:pred_interval]
+    groundtruth = groundtruth[:pred_interval]
+
+    elapsed_time = data["elapsed_time"]
+
+    if predictions.shape != groundtruth.shape:
+        raise ValueError(
+            f"Shape mismatch for {system_name}: predictions {predictions.shape} vs groundtruth {groundtruth.shape}"
+        )
+    if predictions.shape[1] != groundtruth.shape[1]:
+        raise ValueError(
+            f"Dimension mismatch for {system_name}: pred={predictions.shape[1]}, gt={groundtruth.shape[1]}"
+        )
+
+    # Get the average integration dt for purpose of Lyapunov exponent computation
+    full_traj_len = full_trajectory.shape[0]
+    # we are keeping this fixed for now, but make adaptive in the future for mixed period datasets
+    num_periods = 40
+
+    system_name_without_pp = system_name.split("_pp")[0]
+    is_skew = "_" in system_name_without_pp
+    if is_skew:
+        driver_name, response_name = system_name_without_pp.split("_")
+        driver_system = getattr(flows, driver_name)()
+        response_system = getattr(flows, response_name)()
+        period = max(driver_system.period, response_system.period)
+        # NOTE: we can use either, but it seems that for average dt, using the period is better
+        # dt = min(driver_system.dt, response_system.dt)
+        avg_dt = (num_periods * period) / full_traj_len
+
+    else:
+        sys = getattr(flows, system_name_without_pp)()
+        avg_dt = (num_periods * sys.period) / full_traj_len
+
+    max_lyap_gt = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate,
+        system_name,
+        groundtruth,
+        tau=avg_dt,
+        trajectory_len=rosenstein_traj_len,
+    )
+    max_lyap_pred = safe_call(
+        max_lyapunov_exponent_rosenstein_multivariate,
+        system_name,
+        predictions,
+        tau=avg_dt,
+        trajectory_len=rosenstein_traj_len,
+    )
+
+    result_dict = {
+        "prediction_horizon": {
+            "max_lyap_gt": max_lyap_gt,
+            "max_lyap_pred": max_lyap_pred,
+        },
+        "prediction_time": elapsed_time,
+    }
+
+    if compute_for_full_traj:
+        max_lyap_full_traj = safe_call(
+            max_lyapunov_exponent_rosenstein_multivariate,
+            system_name,
+            full_trajectory,
+            tau=avg_dt,
+            trajectory_len=rosenstein_traj_len,
+        )
+        result_dict["full_trajectory"] = {
+            "max_lyap_full_traj": max_lyap_full_traj,
+        }
+
+    return system_name, result_dict
 
 
 def _compute_metrics_worker(
@@ -153,6 +293,7 @@ def _compute_metrics_worker(
 def get_distributional_metrics(
     forecast_dict: dict[str, dict[str, np.ndarray | float]],
     pred_intervals: list[int],
+    metrics_group: Literal["fdiv", "lyap"],
     use_multiprocessing: bool = True,
     n_proc: int | None = None,
 ) -> dict[str, dict[str, dict[str, float]]]:
@@ -195,6 +336,14 @@ def get_distributional_metrics(
 
     results_all_pred_intervals = {}
 
+    worker_fn = None
+    if metrics_group == "fdiv":
+        worker_fn = _compute_metrics_worker
+    elif metrics_group == "lyap":
+        worker_fn = _compute_lyap_worker
+    else:
+        raise ValueError(f"Invalid metrics group: {metrics_group}")
+
     for pred_interval in pred_intervals:
         worker_args = [
             (
@@ -213,7 +362,7 @@ def get_distributional_metrics(
                 results = []
                 # Process results incrementally rather than accumulating all at once
                 for result in tqdm(
-                    pool.imap_unordered(_compute_metrics_worker, worker_args, chunksize=1),
+                    pool.imap_unordered(worker_fn, worker_args, chunksize=1),
                     total=len(worker_args),
                     desc="Computing distributional metrics",
                 ):
@@ -227,7 +376,7 @@ def get_distributional_metrics(
             # Sequential (non-multiprocessed) version
             results = []
             for args in tqdm(worker_args, desc="Computing distributional metrics"):
-                result = _compute_metrics_worker(args)
+                result = worker_fn(args)
                 results.append(result)
                 # Free memory after each computation
                 del args
@@ -471,20 +620,29 @@ def main(cfg):
     # Compute the distributional metrics
     if cfg.eval.compute_distributional_metrics:
         log("Computing distributional metrics")
-        pred_intervals = [1024]
+        pred_intervals = cfg.eval.distributional_metrics_predlengths
+        if not pred_intervals:
+            raise ValueError("cfg.eval.distributional_metrics_predlengths must be specified")
+        pred_intervals_str = "-".join(map(str, pred_intervals))
+        metrics_group = cfg.eval.distributional_metrics_group
+
+        log(f"Computing metrics group (cfg.eval.distributional_metrics_group): {metrics_group}")
+        log(f"Pred intervals: {pred_intervals}")
+        log(f"pred_intervals_str: {pred_intervals_str}")
+        log(f"Use multiprocessing: {cfg.eval.use_multiprocessing}")
+        log(f"Number of processes: {cfg.eval.num_processes}")
+
         distributional_metrics = get_distributional_metrics(
             forecast_dict,
             pred_intervals,
+            metrics_group=metrics_group,
             use_multiprocessing=cfg.eval.use_multiprocessing,
             n_proc=cfg.eval.num_processes,
         )
 
+        metrics_group_suffix = f"_{metrics_group}" if metrics_group else ""
         metrics_fname_suffix = f"_{cfg.eval.metrics_fname_suffix}" if cfg.eval.metrics_fname_suffix else ""
-        metrics_fname = (
-            f"{cfg.eval.metrics_fname}{metrics_fname_suffix}"
-            if cfg.eval.reload_saved_forecasts
-            else cfg.eval.metrics_fname
-        )
+        metrics_fname = f"{cfg.eval.metrics_fname}{metrics_group_suffix}{metrics_fname_suffix}_{pred_intervals_str}"
         metrics_path = os.path.join(metrics_save_dir, f"{metrics_fname}.json")
         log(f"Saving metrics to {metrics_path}")
         with open(metrics_path, "w") as f:

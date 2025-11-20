@@ -38,6 +38,8 @@ eval:
   metrics_save_dir: null
   metrics_fname: metrics
   metrics_fname_suffix: null
+  distributional_metrics_group: fdiv
+  distributional_metrics_predlengths: [1024]
   overwrite: false
   seed: 1
 

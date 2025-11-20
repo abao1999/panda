@@ -55,6 +55,10 @@ echo "model_dir: $model_dir"
 
 export PYTHONWARNINGS="ignore"
 
+compute_metrics_intervals=(1024)
+compute_metrics_intervals_json=$(printf '%s\n' "${compute_metrics_intervals[@]}" | jq -R . | jq -s -c .)
+echo "compute_metrics_intervals: $compute_metrics_intervals_json"
+
 window_start_times=(1536 2048)
 for idx in "${!window_start_times[@]}"; do
     window_start_time="${window_start_times[$idx]}"
@@ -72,6 +76,7 @@ for idx in "${!window_start_times[@]}"; do
         eval.save_forecasts=true \
         eval.save_full_trajectory=true \
         eval.compute_distributional_metrics=true \
+        eval.distributional_metrics_predlengths=$compute_metrics_intervals_json \
         eval.reload_saved_forecasts=true \
         eval.num_processes=10 \
         eval.window_start=$window_start_time \
