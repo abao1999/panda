@@ -65,4 +65,3 @@ python scripts/analysis/compute_gpdims.py \
     eval.completions.start_time=0 \
     eval.completions.end_time=null \
     eval.seed=$rseed
-    

@@ -18,6 +18,8 @@ figures/
 *.nfs*
 *.pkl
 *_copy*.sh
+*_copy*.ipynb
+*_copy*.py
 nohup.out
 tests/*.json
 tests/*.png

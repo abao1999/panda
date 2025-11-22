@@ -804,12 +804,6 @@ def plot_all_metrics_by_prediction_length(
                 for j, model_name in enumerate(metrics_dict.keys())
             }
             # Reorder legend_handles to put Dynamix as the third key
-            legend_handles_reordered = {}
-            keys_order = ["Panda", "Chronos 20M SFT", "Dynamix", "Time MOE 50M", "Chronos 200M", "TimesFM 200M"]
-            for key in keys_order:
-                if key in legend_handles:
-                    legend_handles_reordered[key] = legend_handles[key]
-            legend_handles = legend_handles_reordered
             if show_legend:
                 legend_handles = ax.legend(handles=list(legend_handles.values()), **legend_kwargs)
 
