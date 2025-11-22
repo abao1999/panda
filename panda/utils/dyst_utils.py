@@ -7,7 +7,6 @@ from typing import Any
 import dysts.flows as flows  # type: ignore
 import numpy as np
 from dysts.base import DynSys  # type: ignore
-from scipy.spatial.distance import pdist
 
 from panda.coupling_maps import RandomAdditiveCouplingMap
 from panda.skew_system import SkewProduct
@@ -287,58 +286,3 @@ def run_zero_one_sweep(
 
     K_vals = np.array(K_vals)
     return K_vals
-
-
-def compute_gp_dimension(
-    points: np.ndarray,
-    num_r: int = 50,
-    scaling_range_idx: tuple[int, int] | slice | None = None,
-    verbose: bool = False,
-) -> float:
-    """
-    Parameters:
-        points (ndarray): Array of points with shape (T, dim).
-        num_r (int): Number of r values to consider in the logarithmically spaced range.
-        scaling_range_idx (tuple or slice): Indices to select the scaling region for the linear fit.
-                                           If None, a default middle 50% region is used.
-
-    NOTE: this is slightly different from the dysts implementation, remains to be seen which one to prefer
-    Returns:
-        D2 (float): Estimated correlation (GP) dimension.
-    """
-    # Define the range of r values based on the pairwise distances
-    # We use the min and max distance from the data to set our range.
-    distances = pdist(points, metric="euclidean")
-    N_pairs = len(distances)
-
-    r_min = np.min(distances)
-    r_max = np.max(distances)
-    if verbose:
-        print(f"r_min: {r_min}, r_max: {r_max}")
-    r_min = max(r_min, 1e-10)
-    # Generate logarithmically spaced r values
-    r_vals = np.logspace(np.log10(r_min), np.log10(r_max), num_r)
-
-    # Compute the correlation integral C(r)
-    # Compute all pairwise distances (for N points, there are N*(N-1)/2 distances)
-    # For each r value, count the number of pairs with distance < r
-    C = np.array([np.sum(distances < r) / N_pairs for r in r_vals])
-
-    # Compute logarithms (safely to avoid log(0))
-    log_r = np.log10(r_vals)  # r_vals are already guaranteed to be > 0 from r_min = max(r_min, 1e-10)
-    # Ensure C values are positive before taking log
-    C_safe = np.maximum(C, 1e-10)  # Add small epsilon to avoid log(0)
-    log_C = np.log10(C_safe)
-
-    # Select a scaling region for the linear fit
-    # Here, if not provided, we choose the middle 50% of the r-range.
-    if scaling_range_idx is None:
-        scaling_range = slice(num_r // 4, 3 * num_r // 4)
-    else:
-        scaling_range = scaling_range_idx
-
-    # Fit a line (using least squares) over the selected scaling region
-    slope, _ = np.polyfit(log_r[scaling_range], log_C[scaling_range], 1)
-    D2 = slope  # The slope corresponds to the correlation dimension D2
-
-    return D2

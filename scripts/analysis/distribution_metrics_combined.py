@@ -29,6 +29,7 @@ import dysts.flows as flows  # type: ignore
 import hydra
 import numpy as np
 import torch
+import transformers
 from dysts.analysis import (  # type: ignore
     max_lyapunov_exponent_rosenstein_multivariate,
 )
@@ -38,7 +39,6 @@ from dysts.metrics import (  # type: ignore
 )
 from gluonts.transform import LastValueImputation
 from tqdm import tqdm
-from transformers import set_seed
 
 from panda.baselines.fm_baselines import DynaMixPipeline
 from panda.chronos.pipeline import ChronosPipeline
@@ -459,7 +459,7 @@ def main(cfg):
             train_config = dict(cfg.train)
             rseed = train_config.get("seed", cfg.train.seed)
             log(f"Using SEED: {rseed}")
-            set_seed(seed=rseed)
+            transformers.set_seed(seed=rseed)
 
             context_length = cfg.chronos.context_length
 
@@ -625,12 +625,22 @@ def main(cfg):
             raise ValueError("cfg.eval.distributional_metrics_predlengths must be specified")
         pred_intervals_str = "-".join(map(str, pred_intervals))
         metrics_group = cfg.eval.distributional_metrics_group
+        if not metrics_group:
+            raise ValueError("cfg.eval.distributional_metrics_group must be specified")
 
         log(f"Computing metrics group (cfg.eval.distributional_metrics_group): {metrics_group}")
         log(f"Pred intervals: {pred_intervals}")
         log(f"pred_intervals_str: {pred_intervals_str}")
         log(f"Use multiprocessing: {cfg.eval.use_multiprocessing}")
         log(f"Number of processes: {cfg.eval.num_processes}")
+
+        metrics_group_suffix = f"_{metrics_group}"
+        metrics_fname_suffix = f"_{cfg.eval.metrics_fname_suffix}" if cfg.eval.metrics_fname_suffix else ""
+        metrics_fname = f"{cfg.eval.metrics_fname}{metrics_group_suffix}{metrics_fname_suffix}_{pred_intervals_str}"
+        metrics_path = os.path.join(metrics_save_dir, metrics_group, f"{metrics_fname}.json")
+        os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
+
+        log(f"This script will save the computed metrics to: {metrics_path}")
 
         distributional_metrics = get_distributional_metrics(
             forecast_dict,
@@ -640,10 +650,6 @@ def main(cfg):
             n_proc=cfg.eval.num_processes,
         )
 
-        metrics_group_suffix = f"_{metrics_group}" if metrics_group else ""
-        metrics_fname_suffix = f"_{cfg.eval.metrics_fname_suffix}" if cfg.eval.metrics_fname_suffix else ""
-        metrics_fname = f"{cfg.eval.metrics_fname}{metrics_group_suffix}{metrics_fname_suffix}_{pred_intervals_str}"
-        metrics_path = os.path.join(metrics_save_dir, f"{metrics_fname}.json")
         log(f"Saving metrics to {metrics_path}")
         with open(metrics_path, "w") as f:
             json.dump(distributional_metrics, f, indent=4)

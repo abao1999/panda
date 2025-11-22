@@ -195,7 +195,7 @@ def main(cfg):
         return_contexts=save_contexts,
         return_labels=save_labels,
         parallel_sample_reduction_fn=parallel_sample_reduction_fn,
-        redo_normalization=False,
+        redo_normalization=True,
         prediction_kwargs={},
         eval_subintervals=[(0, i + 64) for i in range(0, cfg.eval.prediction_length, 64)],
         num_workers=cfg.eval.dataloader_num_workers,

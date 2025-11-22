@@ -90,8 +90,8 @@ for idx in "${!window_start_times[@]}"; do
         eval.metrics_fname=distributional_metrics_window-$window_start_time \
         eval.save_forecasts=true \
         eval.save_full_trajectory=true \
-        eval.compute_distributional_metrics=false \
-        eval.reload_saved_forecasts=false \
+        eval.compute_distributional_metrics=true \
+        eval.reload_saved_forecasts=true \
         eval.distributional_metrics_predlengths=$compute_metrics_intervals_json \
         eval.distributional_metrics_group=fdiv \
         eval.num_processes=10 \

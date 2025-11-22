@@ -6,9 +6,7 @@ main_dir=$(cd "$(dirname "$0")/../.." && pwd)
 
 test_data_dirs=(
     $WORK/data/improved/final_base40/test_zeroshot
-    $WORK/data/improved/final_base40/test_zeroshot_z5_z10
     $WORK/data/improved/final_skew40/test_zeroshot
-    $WORK/data/improved/final_skew40/test_zeroshot_z5_z10
 )
 test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c .)
 
@@ -26,7 +24,7 @@ python "$main_dir/scripts/dynamix/evaluate.py" \
     eval.labels_save_dir="$WORK/eval_results/dynamix/test_zeroshot/labels" \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
-    eval.device=cuda:0 \
+    eval.device=cuda:2 \
     eval.save_forecasts=true \
     eval.save_labels=true \
     eval.seed=99 \

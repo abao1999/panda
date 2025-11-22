@@ -1,3 +1,5 @@
+import gc
+import json
 import logging
 import os
 import pickle
@@ -7,11 +9,11 @@ from multiprocessing import Pool
 import hydra
 import numpy as np
 import torch
+import transformers
 from dysts.analysis import gp_dim  # type: ignore
 from tqdm import tqdm
 
 from panda.patchtst.pipeline import PatchTSTPipeline
-from panda.utils.dyst_utils import compute_gp_dimension
 from panda.utils.eval_utils import get_eval_data_dict
 from panda.utils.train_utils import log_on_main
 
@@ -21,22 +23,26 @@ log = partial(log_on_main, logger=logger)
 
 def _compute_gp_dims_worker(args) -> tuple[str, dict[str, float]]:
     """Worker function to compute GP dimensions for a single system"""
-    dyst_name, data, use_custom_method = args
-    dimension_func = compute_gp_dimension if use_custom_method else gp_dim
+    dyst_name, data = args
 
     # Transpose arrays once
     completions_T = data["completions"].T
     groundtruth_T = data["processed_context"].T
+    # timestep_mask = data["timestep_mask"]
 
-    return dyst_name, {
-        "groundtruth": dimension_func(groundtruth_T),
-        "completions": dimension_func(completions_T),
+    result = {
+        "groundtruth": gp_dim(groundtruth_T),
+        "completions": gp_dim(completions_T),
     }
+
+    del completions_T, groundtruth_T
+    gc.collect()
+
+    return dyst_name, result
 
 
 def get_gp_dims(
     completions_dict: dict[str, dict[str, np.ndarray]],
-    use_custom_method: bool = False,
     n_jobs: int | None = None,
 ) -> dict[str, dict[str, float]]:
     """
@@ -44,7 +50,6 @@ def get_gp_dims(
 
     Args:
         completions_dict: Dictionary containing completions and processed_context for each system
-        use_custom_method: Whether to use custom GP dimension computation method
         n_jobs: Number of processes to use. If None, uses all available CPU cores
 
     Returns:
@@ -56,17 +61,22 @@ def get_gp_dims(
             raise ValueError(f"Missing required data for {dyst_name}")
 
     # Prepare arguments for parallel processing
-    worker_args = [(dyst_name, data, use_custom_method) for dyst_name, data in completions_dict.items()]
+    worker_args = [(dyst_name, data) for dyst_name, data in completions_dict.items()]
 
     # Use multiprocessing to compute dimensions in parallel
-    with Pool(processes=n_jobs) as pool:
+    # maxtasksperchild prevents memory buildup in worker processes
+    with Pool(processes=n_jobs, maxtasksperchild=10) as pool:
         results = list(
             tqdm(
-                pool.imap(_compute_gp_dims_worker, worker_args),
+                pool.imap_unordered(_compute_gp_dims_worker, worker_args, chunksize=1),
                 total=len(worker_args),
                 desc="Computing GP dimensions",
             )
         )
+
+    # Explicitly delete worker_args to free memory
+    del worker_args
+    gc.collect()
 
     # Convert results list back to dictionary
     return dict(results)
@@ -138,7 +148,7 @@ def get_model_completion(
     return completions, processed_context, timestep_mask
 
 
-@hydra.main(config_path="../config", config_name="config", version_base=None)
+@hydra.main(config_path="../../config", config_name="config", version_base=None)
 def main(cfg):
     test_data_dict = get_eval_data_dict(
         cfg.eval.data_paths_lst,
@@ -150,13 +160,15 @@ def main(cfg):
     # Load MLM checkpoint
     checkpoint_path = cfg.eval.checkpoint_path
     log(f"Using checkpoint: {checkpoint_path}")
-    # torch_dtype = getattr(torch, cfg.eval.torch_dtype)
-    # assert isinstance(torch_dtype, torch.dtype)
+    rseed = cfg.eval.seed
+    log(f"Using SEED: {rseed}")
+    transformers.set_seed(seed=rseed)
+
     model_pipeline = PatchTSTPipeline.from_pretrained(
-        mode=cfg.eval.mode,
+        mode="pretrain",
         pretrain_path=checkpoint_path,
         device_map=cfg.eval.device,
-        # torch_dtype=torch_dtype,
+        torch_dtype=getattr(torch, cfg.eval.torch_dtype, torch.float32),
     )
 
     start_time = cfg.eval.completions.start_time
@@ -194,18 +206,24 @@ def main(cfg):
     gp_dims = get_gp_dims(completions_dict, n_jobs=cfg.eval.num_processes)
 
     metrics_save_dir = cfg.eval.metrics_save_dir
-    metrics_fname = f"{cfg.eval.metrics_fname}.pkl"
-    os.makedirs(metrics_save_dir, exist_ok=True)
-    with open(os.path.join(metrics_save_dir, metrics_fname), "wb") as f:
-        pickle.dump(gp_dims, f)
+    metrics_fname = f"{cfg.eval.metrics_fname}"
+    metrics_path = os.path.join(metrics_save_dir, f"{metrics_fname}_start{start_time}_end{end_time}_rseed{rseed}.json")
+    os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
+
+    log(f"Saving GP dimensions to {metrics_path}")
+    with open(metrics_path, "w") as f:
+        json.dump(gp_dims, f, indent=4)
 
     if cfg.eval.save_completions:
-        log(f"Saving completions to {metrics_save_dir}")  # instead of cfg.eval.completions_save_dir
-        with open(
-            os.path.join(metrics_save_dir, f"{cfg.eval.metrics_fname}_completions.pkl"),
-            "wb",
-        ) as f:
+        completions_save_path = os.path.join(
+            metrics_save_dir, f"{metrics_fname}_completions_start{start_time}_end{end_time}_rseed{rseed}.pkl"
+        )
+        os.makedirs(os.path.dirname(completions_save_path), exist_ok=True)
+
+        log(f"Saving completions to {completions_save_path}")
+        with open(completions_save_path, "wb") as f:
             pickle.dump(completions_dict, f)
+        log(f"Saved completions to {completions_save_path}")
 
 
 if __name__ == "__main__":
