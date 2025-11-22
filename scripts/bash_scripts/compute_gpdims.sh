@@ -9,6 +9,7 @@ fi
 # Parse command line arguments
 cuda_device_id=$1  # GPU device ID to use for evaluation
 model_type=$2      # Model type: 'panda', 'chronos', or 'chronos_sft'
+rseed=$3           # Random seed
 
 echo "cuda_device_id: $cuda_device_id"
 echo "model_type: $model_type"
@@ -42,6 +43,7 @@ fi
 model_dir="$model_type"
 echo "model_dir: $model_dir"
 echo "run_name: $run_name"
+echo "rseed: $rseed"
 
 export PYTHONWARNINGS="ignore"
 
@@ -54,7 +56,13 @@ python scripts/analysis/compute_gpdims.py \
     eval.metrics_save_dir=$WORK/eval_results_mlm/$model_dir/$run_name/test_zeroshot \
     eval.metrics_fname=gpdims \
     eval.save_completions=true \
+    eval.reload_saved_completions=true \
+    eval.compute_naive_interpolations=true \
+    eval.naive_interpolation_method=polynomial \
+    eval.naive_interpolation_polynomial_degree=3 \
+    eval.compute_gp_dims=true \
     eval.num_processes=10 \
     eval.completions.start_time=0 \
     eval.completions.end_time=null \
-    eval.seed=99
+    eval.seed=$rseed
+    

@@ -4,6 +4,7 @@ import re
 import warnings
 from typing import Any, Literal
 
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -840,3 +841,117 @@ def plot_all_metrics_by_prediction_length(
         plt.show()
 
     return legend_handles
+
+
+def plot_model_completion(
+    completions: np.ndarray,
+    processed_context: np.ndarray,
+    timestep_mask: np.ndarray,
+    figsize: tuple[int, int] = (6, 8),
+    save_path: str | None = None,
+):
+    n_timesteps = processed_context.shape[1]
+    assert n_timesteps == completions.shape[1] == processed_context.shape[1]
+
+    # Create figure with grid layout
+    fig = plt.figure(figsize=figsize)
+    gs = gridspec.GridSpec(4, 1, height_ratios=[3, 1, 1, 1])
+
+    # Create axes
+    ax_3d = fig.add_subplot(gs[0], projection="3d")
+    axes_2d = [fig.add_subplot(gs[i]) for i in range(1, 4)]
+
+    # Plot completions in 3D
+    ax_3d.plot(
+        processed_context[0, :],
+        processed_context[1, :],
+        processed_context[2, :],
+        alpha=0.5,
+        color="black",
+        linewidth=2,
+    )
+    # ax_3d.set_title("Completions", y=0.94, fontweight="bold")
+    ax_3d.axis("off")
+    ax_3d.grid(False)
+
+    # Plot masked segments in 3D
+    mask_bool = timestep_mask.astype(bool)
+    for dim in range(3):
+        # Find contiguous blocks in mask
+        change_indices = np.where(np.diff(np.concatenate(([False], mask_bool[dim], [False]))))[0]
+
+        # Plot each contiguous block
+        for i in range(0, len(change_indices), 2):
+            if i + 1 < len(change_indices):
+                start_idx, end_idx = change_indices[i], change_indices[i + 1]
+                # Plot masked parts in red
+                ax_3d.plot(
+                    completions[0, start_idx:end_idx],
+                    completions[1, start_idx:end_idx],
+                    completions[2, start_idx:end_idx],
+                    alpha=1,
+                    color="red",
+                    linewidth=2,
+                    zorder=10,
+                )
+                # Plot masked parts in red
+                ax_3d.plot(
+                    processed_context[0, start_idx:end_idx],
+                    processed_context[1, start_idx:end_idx],
+                    processed_context[2, start_idx:end_idx],
+                    alpha=1,
+                    color="black",
+                    linewidth=2,
+                )
+
+    # Plot univariate series for each dimension
+    for dim, ax in enumerate(axes_2d):
+        mask_bool_dim = timestep_mask[dim, :].astype(bool)
+
+        # Plot context
+        ax.plot(processed_context[dim, :], alpha=0.5, color="black", linewidth=2)
+
+        # Find segments where mask changes
+        diffs = np.diff(mask_bool_dim.astype(int))
+        change_indices = np.where(diffs)[0]
+        if not mask_bool_dim[0]:
+            change_indices = np.concatenate(([0], change_indices))
+        segment_indices = np.concatenate((change_indices, [n_timesteps]))
+
+        # Plot completions for masked segments
+        segments = zip(segment_indices[:-1], segment_indices[1:])
+        masked_segments = [idx for i, idx in enumerate(segments) if (i + 1) % 2 == 1]
+        for start, end in masked_segments:
+            if end < n_timesteps - 1:
+                end += 1
+            ax.plot(
+                range(start, end),
+                completions[dim, start:end],
+                alpha=1,
+                color="red",
+                linewidth=2,
+                zorder=10,
+            )
+            ax.plot(
+                range(start, end),
+                processed_context[dim, start:end],
+                alpha=1,
+                color="black",
+                linewidth=2,
+            )
+
+        # Fill between completions and context
+        ax.fill_between(
+            range(n_timesteps),
+            processed_context[dim, :],
+            completions[dim, :],
+            where=~mask_bool_dim,
+            alpha=0.2,
+        )
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches="tight")
+    plt.show()

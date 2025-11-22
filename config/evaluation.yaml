@@ -66,6 +66,10 @@ eval:
   verbose: false
 
   compute_distributional_metrics: true
+  compute_gp_dims: true
+  compute_naive_interpolations: false
+  naive_interpolation_method: polynomial
+  naive_interpolation_polynomial_degree: 3
 
   baselines:
     baseline_model: fourier_arima
@@ -82,8 +86,10 @@ eval:
 
   model_type: panda
   save_full_trajectory: false
-  reload_saved_forecasts: false
   
+  reload_saved_forecasts: false
+  reload_saved_completions: false
+
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:
   wandb_run_id: null

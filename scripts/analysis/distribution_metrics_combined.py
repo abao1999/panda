@@ -417,8 +417,9 @@ def main(cfg):
 
     # Metrics io config
     metrics_save_dir = cfg.eval.metrics_save_dir
+    metrics_fname = cfg.eval.metrics_fname
     os.makedirs(metrics_save_dir, exist_ok=True)
-    forecasts_dict_path = os.path.join(metrics_save_dir, f"{cfg.eval.metrics_fname}_forecasts.pkl")
+    forecasts_dict_path = os.path.join(metrics_save_dir, f"{metrics_fname}_forecasts.pkl")
 
     # If reloading forecasts, skip prediction
     if cfg.eval.reload_saved_forecasts:
@@ -636,7 +637,7 @@ def main(cfg):
 
         metrics_group_suffix = f"_{metrics_group}"
         metrics_fname_suffix = f"_{cfg.eval.metrics_fname_suffix}" if cfg.eval.metrics_fname_suffix else ""
-        metrics_fname = f"{cfg.eval.metrics_fname}{metrics_group_suffix}{metrics_fname_suffix}_{pred_intervals_str}"
+        metrics_fname = f"{metrics_fname}{metrics_group_suffix}{metrics_fname_suffix}_{pred_intervals_str}"
         metrics_path = os.path.join(metrics_save_dir, metrics_group, f"{metrics_fname}.json")
         os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
 
