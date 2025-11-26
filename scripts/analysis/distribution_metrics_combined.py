@@ -48,7 +48,7 @@ from panda.evaluation import (
     evaluate_univariate_forecasting_model,
 )
 from panda.patchtst.pipeline import PatchTSTPipeline
-from panda.utils.data_utils import get_dim_from_dataset
+from panda.utils.data_utils import get_dim_from_dataset, safe_standardize
 from panda.utils.eval_utils import get_eval_data_dict
 from panda.utils.train_utils import log_on_main
 
@@ -131,10 +131,6 @@ def _compute_lyap_worker(
         raise ValueError(
             f"Shape mismatch for {system_name}: predictions {predictions.shape} vs groundtruth {groundtruth.shape}"
         )
-    if predictions.shape[1] != groundtruth.shape[1]:
-        raise ValueError(
-            f"Dimension mismatch for {system_name}: pred={predictions.shape[1]}, gt={groundtruth.shape[1]}"
-        )
 
     # Get the average integration dt for purpose of Lyapunov exponent computation
     full_traj_len = full_trajectory.shape[0]
@@ -194,8 +190,9 @@ def _compute_lyap_worker(
     return system_name, result_dict
 
 
-def _compute_metrics_worker(
+def _compute_fdiv_worker(
     args,
+    horizons_lst: list[Literal["prediction_horizon", "full_trajectory"]],
 ) -> tuple[str, dict[str, dict[str, float | None]]]:
     """
     Compute distributional metrics for a single system, including Hellinger distance between power spectra,
@@ -212,7 +209,7 @@ def _compute_metrics_worker(
                 - "full_trajectory": np.ndarray, shape (d, T_full)
                 - "elapsed_time": float
             - pred_interval (int): Number of prediction steps to consider.
-
+        horizons_lst (list[Literal["prediction_horizon", "full_trajectory"]]): List of horizons to compute metrics for.
     Returns:
         tuple:
             (system_name, {
@@ -242,7 +239,6 @@ def _compute_metrics_worker(
     # Ensure (T, d) shape for all arrays - only load what we need
     predictions = data["predictions"].T[:pred_interval]
     groundtruth = data["groundtruth"].T[:pred_interval]
-    full_trajectory = data["full_trajectory"].T
 
     elapsed_time = data["elapsed_time"]
 
@@ -250,41 +246,42 @@ def _compute_metrics_worker(
         raise ValueError(
             f"Shape mismatch for {system_name}: predictions {predictions.shape} vs groundtruth {groundtruth.shape}"
         )
-    if predictions.shape[1] != groundtruth.shape[1]:
-        raise ValueError(
-            f"Dimension mismatch for {system_name}: pred={predictions.shape[1]}, gt={groundtruth.shape[1]}"
-        )
 
-    def safe_call(fn, *args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:
-            print(e)
-            logger.warning(f"Error computing {fn.__name__} for {system_name}")
-            return None
+    avg_hellinger_pred_horizon = None
+    kl_pred_horizon = None
+    avg_hellinger_full_traj = None
+    kl_full_traj = None
 
     # Prediction Horizon
-    avg_hellinger_pred_horizon = safe_call(average_hellinger_distance, groundtruth, predictions)
-    kl_pred_horizon = safe_call(estimate_kl_divergence, groundtruth, predictions, n_samples=1000, sigma_scale=None)
+    if "prediction_horizon" in horizons_lst:
+        context = data["context"].T[:pred_interval]
+        predictions = safe_standardize(predictions, context=context, axis=0)
+        groundtruth = safe_standardize(groundtruth, context=context, axis=0)
+        avg_hellinger_pred_horizon = safe_call(average_hellinger_distance, system_name, groundtruth, predictions)
+        kl_pred_horizon = safe_call(
+            estimate_kl_divergence, system_name, groundtruth, predictions, n_samples=1000, sigma_scale=None
+        )
+        del context
 
     # Prediction vs Full Trajectory
-    avg_hellinger_full_traj = safe_call(average_hellinger_distance, full_trajectory, predictions)
-    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions, n_samples=1000, sigma_scale=None)
+    if "full_trajectory" in horizons_lst:
+        full_trajectory = data["full_trajectory"].T
+        predictions = safe_standardize(predictions, context=full_trajectory, axis=0)
+        full_trajectory = safe_standardize(full_trajectory, axis=0)
+        avg_hellinger_full_traj = safe_call(average_hellinger_distance, system_name, full_trajectory, predictions)
+        kl_full_traj = safe_call(
+            estimate_kl_divergence, system_name, full_trajectory, predictions, n_samples=1000, sigma_scale=None
+        )
+        del full_trajectory
 
     result = {
-        "prediction_horizon": {
-            "avg_hellinger_distance": avg_hellinger_pred_horizon,
-            "kl_divergence": kl_pred_horizon,
-        },
-        "full_trajectory": {
-            "avg_hellinger_distance": avg_hellinger_full_traj,
-            "kl_divergence": kl_full_traj,
-        },
+        "prediction_horizon": {"avg_hellinger_distance": avg_hellinger_pred_horizon, "kl_divergence": kl_pred_horizon},
+        "full_trajectory": {"avg_hellinger_distance": avg_hellinger_full_traj, "kl_divergence": kl_full_traj},
         "prediction_time": elapsed_time,
     }
 
     # Clean up large arrays before returning to free memory
-    del predictions, groundtruth, full_trajectory
+    del predictions, groundtruth
     gc.collect()
 
     return system_name, result
@@ -294,6 +291,7 @@ def get_distributional_metrics(
     forecast_dict: dict[str, dict[str, np.ndarray | float]],
     pred_intervals: list[int],
     metrics_group: Literal["fdiv", "lyap"],
+    horizons_lst: list[Literal["prediction_horizon", "full_trajectory"]],
     use_multiprocessing: bool = True,
     n_proc: int | None = None,
 ) -> dict[str, dict[str, dict[str, float]]]:
@@ -338,9 +336,17 @@ def get_distributional_metrics(
 
     worker_fn = None
     if metrics_group == "fdiv":
-        worker_fn = _compute_metrics_worker
+        log(f"Computing f-divergence metrics for horizons: {horizons_lst}")
+        worker_fn = partial[tuple[str, dict[str, dict[str, float | None]]]](
+            _compute_fdiv_worker, horizons_lst=horizons_lst
+        )
     elif metrics_group == "lyap":
-        worker_fn = _compute_lyap_worker
+        log(
+            "Computing Lyapunov metrics for horizon: prediction_horizon (NOTE: ignoring horizons_lst, since there is only one option for lyapunov metrics)"
+        )
+        worker_fn = partial[tuple[str, dict[str, dict[str, float | None]]]](
+            _compute_lyap_worker, compute_for_full_traj=False, rosenstein_traj_len=64
+        )
     else:
         raise ValueError(f"Invalid metrics group: {metrics_group}")
 
@@ -426,6 +432,10 @@ def main(cfg):
         log(f"Reloading forecasts from {forecasts_dict_path}")
         with open(forecasts_dict_path, "rb") as f:
             forecast_dict = pickle.load(f)
+        if cfg.eval.num_subdirs is not None:
+            # get just the first num_subdirs keys from forecast_dict
+            forecast_dict = dict(list(forecast_dict.items())[: cfg.eval.num_subdirs])
+            log(f"Loaded {len(forecast_dict)} forecasts from {forecasts_dict_path}")
     else:
         prediction_length = cfg.eval.prediction_length
         context_length = None  # to be set below
@@ -539,7 +549,7 @@ def main(cfg):
                 return_contexts=True,
                 return_labels=True,
                 parallel_sample_reduction_fn=parallel_sample_reduction_fn,
-                redo_normalization=True,
+                redo_normalization=False,
                 prediction_kwargs=dict(
                     sliding_context=False,
                     limit_prediction_length=False,
@@ -567,6 +577,7 @@ def main(cfg):
                 return_predictions=True,
                 return_contexts=True,
                 return_labels=True,
+                scale_axis=None,
                 parallel_sample_reduction_fn=parallel_sample_reduction_fn,
                 prediction_kwargs=prediction_kwargs,
                 num_workers=cfg.eval.dataloader_num_workers,
@@ -620,7 +631,7 @@ def main(cfg):
 
     # Compute the distributional metrics
     if cfg.eval.compute_distributional_metrics:
-        log("Computing distributional metrics")
+        log(f"Computing distributional metrics for horizons: {cfg.eval.horizons_lst}")
         pred_intervals = cfg.eval.distributional_metrics_predlengths
         if not pred_intervals:
             raise ValueError("cfg.eval.distributional_metrics_predlengths must be specified")
@@ -647,6 +658,7 @@ def main(cfg):
             forecast_dict,
             pred_intervals,
             metrics_group=metrics_group,
+            horizons_lst=cfg.eval.horizons_lst,
             use_multiprocessing=cfg.eval.use_multiprocessing,
             n_proc=cfg.eval.num_processes,
         )
