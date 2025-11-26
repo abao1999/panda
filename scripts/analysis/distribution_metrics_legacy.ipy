@@ -242,7 +242,7 @@ def _compute_metrics_worker(
     # Ensure (T, d) shape for all arrays - only load what we need
     predictions = data["predictions"].T[:pred_interval]
     groundtruth = data["groundtruth"].T[:pred_interval]
-    full_trajectory = data["full_trajectory"].T
+    # full_trajectory = data["full_trajectory"].T
 
     elapsed_time = data["elapsed_time"]
 
@@ -267,9 +267,9 @@ def _compute_metrics_worker(
     avg_hellinger_pred_horizon = safe_call(average_hellinger_distance, groundtruth, predictions)
     kl_pred_horizon = safe_call(estimate_kl_divergence, groundtruth, predictions, n_samples=1000, sigma_scale=None)
 
-    # Prediction vs Full Trajectory
-    avg_hellinger_full_traj = safe_call(average_hellinger_distance, full_trajectory, predictions)
-    kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions, n_samples=1000, sigma_scale=None)
+    # # Prediction vs Full Trajectory
+    # avg_hellinger_full_traj = safe_call(average_hellinger_distance, full_trajectory, predictions)
+    # kl_full_traj = safe_call(estimate_kl_divergence, full_trajectory, predictions, n_samples=1000, sigma_scale=None)
 
     result = {
         "prediction_horizon": {
@@ -277,14 +277,14 @@ def _compute_metrics_worker(
             "kl_divergence": kl_pred_horizon,
         },
         "full_trajectory": {
-            "avg_hellinger_distance": avg_hellinger_full_traj,
-            "kl_divergence": kl_full_traj,
+            "avg_hellinger_distance": None,
+            "kl_divergence": None,
         },
         "prediction_time": elapsed_time,
     }
 
     # Clean up large arrays before returning to free memory
-    del predictions, groundtruth, full_trajectory
+    del predictions, groundtruth  # , full_trajectory
     gc.collect()
 
     return system_name, result
