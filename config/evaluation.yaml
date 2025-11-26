@@ -72,6 +72,7 @@ eval:
   compute_naive_interpolations: false
   naive_interpolation_method: polynomial
   naive_interpolation_polynomial_degree: 3
+  debug_mode: false
 
   baselines:
     baseline_model: fourier_arima

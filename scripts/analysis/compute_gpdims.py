@@ -313,7 +313,12 @@ def get_naive_interpolation(
         "polynomial": partial(polynomial_interpolation, degree=polynomial_degree),
         "linear": linear_interpolation,
     }[interpolation_method]
-    log(f"Using {interpolation_method} interpolation with degree {polynomial_degree}")
+    if interpolation_method == "polynomial":
+        log(f"Using polynomial interpolation with degree {polynomial_degree}")
+    elif interpolation_method == "linear":
+        log("Using linear interpolation")
+    else:
+        raise ValueError(f"Invalid interpolation method: {interpolation_method}")
 
     # Validate all data upfront
     for dyst_name, data in completions_dict.items():
@@ -429,7 +434,11 @@ def main(cfg):
             f"{metrics_fname}_naive_{naive_interp_str}_start{start_time}_end{end_time}_rseed{rseed}.pkl",
         )
         log(f"Computing naive interpolations and saving to {naive_interpolations_dict_path}")
-        naive_interpolations_dict = get_naive_interpolation(completions_dict)
+        naive_interpolations_dict = get_naive_interpolation(
+            completions_dict,
+            interpolation_method=interpolation_method,
+            polynomial_degree=polynomial_degree,
+        )
         with open(naive_interpolations_dict_path, "wb") as f:
             pickle.dump(naive_interpolations_dict, f)
         log(f"Saved naive interpolations to {naive_interpolations_dict_path}")
@@ -444,36 +453,40 @@ def main(cfg):
                     "timestep_mask": completions_dict[system_name]["timestep_mask"],
                 }
 
-            # plot the first 10 systems of the naive interpolations. For each plot, plot the completions, the processed_context, and the naive interpolations. Plot each dimension in a separate subplot.
-            system_names = list(naive_interpolations_dict.keys())[:10] + list(naive_interpolations_dict.keys())[-10:]
-            fig_save_dir = os.path.join("figures", naive_interp_str)
-            os.makedirs(fig_save_dir, exist_ok=True)
-            for system_name in tqdm(system_names, desc="Plotting naive interpolations"):
-                # Get the data for this system
-                processed_context_sys = naive_interpolations_dict_full[system_name]["processed_context"]
-                completions_sys = completions_dict[system_name]["completions"]
-                naive_interp_sys = naive_interpolations_dict[system_name]
-                timestep_mask_sys = naive_interpolations_dict_full[system_name]["timestep_mask"]
-                print(f"processed_context_sys shape: {processed_context_sys.shape}")
-                print(f"completions_sys shape: {completions_sys.shape}")
-                print(f"naive_interp_sys shape: {naive_interp_sys.shape}")
-                print(f"timestep_mask_sys shape: {timestep_mask_sys.shape}")
-
-                # Plot completions
-                plot_model_completion(
-                    completions=completions_sys,
-                    processed_context=processed_context_sys,
-                    timestep_mask=timestep_mask_sys,
-                    save_path=os.path.join(fig_save_dir, f"{naive_interp_str}_completions_plot_{system_name}.pdf"),
+            if cfg.eval.debug_mode:
+                log("Plotting example naive interpolations (debug mode enabled)")
+                # plot the first 10 systems of the naive interpolations. For each plot, plot the completions, the processed_context, and the naive interpolations. Plot each dimension in a separate subplot.
+                system_names = (
+                    list(naive_interpolations_dict.keys())[:10] + list(naive_interpolations_dict.keys())[-10:]
                 )
+                fig_save_dir = os.path.join("figures", naive_interp_str)
+                os.makedirs(fig_save_dir, exist_ok=True)
+                for system_name in tqdm(system_names, desc="Plotting naive interpolations"):
+                    # Get the data for this system
+                    processed_context_sys = naive_interpolations_dict_full[system_name]["processed_context"]
+                    completions_sys = completions_dict[system_name]["completions"]
+                    naive_interp_sys = naive_interpolations_dict[system_name]
+                    timestep_mask_sys = naive_interpolations_dict_full[system_name]["timestep_mask"]
+                    print(f"processed_context_sys shape: {processed_context_sys.shape}")
+                    print(f"completions_sys shape: {completions_sys.shape}")
+                    print(f"naive_interp_sys shape: {naive_interp_sys.shape}")
+                    print(f"timestep_mask_sys shape: {timestep_mask_sys.shape}")
 
-                # Plot naive interpolation
-                plot_model_completion(
-                    completions=naive_interp_sys,
-                    processed_context=processed_context_sys,
-                    timestep_mask=timestep_mask_sys,
-                    save_path=os.path.join(fig_save_dir, f"{naive_interp_str}_naive_interp_plot_{system_name}.pdf"),
-                )
+                    # Plot completions
+                    plot_model_completion(
+                        completions=completions_sys,
+                        processed_context=processed_context_sys,
+                        timestep_mask=timestep_mask_sys,
+                        save_path=os.path.join(fig_save_dir, f"{naive_interp_str}_completions_plot_{system_name}.pdf"),
+                    )
+
+                    # Plot naive interpolation
+                    plot_model_completion(
+                        completions=naive_interp_sys,
+                        processed_context=processed_context_sys,
+                        timestep_mask=timestep_mask_sys,
+                        save_path=os.path.join(fig_save_dir, f"{naive_interp_str}_naive_interp_plot_{system_name}.pdf"),
+                    )
             del completions_dict
 
             log(f"Computing GP dimensions for naive interpolations: {naive_interp_str}")
