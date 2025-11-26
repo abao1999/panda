@@ -43,7 +43,8 @@ dev = [
     "ruff>=0.13.0",
     "ipykernel",
 ]
-benchmark = ["neuraloperator", "deepxde"]
+pde-benchmark = ["neuraloperator", "deepxde"]
+tsfm-benchmark = ["chronos-forecasting", "timesfm"]
 
 [tool.ruff]
 line-length = 120

@@ -176,8 +176,15 @@ def main(cfg):
 
         elapsed_time_dict[subdir_name] = elapsed_times
 
+    # NOTE: we remove the first time estimate because it is skewed by loadiing the checkpoint and I/O overhead
+    elapsed_time_dict[list(elapsed_time_dict.keys())[0]].pop(0)
     log(f"Elapsed time dictionary: {elapsed_time_dict}")
     log(f"Saving elapsed time dictionary to {metrics_save_dir}")
+    all_elapsed_times = [elapsed_time for subdir_name in elapsed_time_dict.values() for elapsed_time in subdir_name]
+    average_elapsed_time = np.mean(all_elapsed_times)
+    std_elapsed_time = np.std(all_elapsed_times)
+    log(f"Average elapsed time (over {len(all_elapsed_times)} values): {average_elapsed_time}")
+    log(f"Standard deviation of elapsed time (over {len(all_elapsed_times)} values): {std_elapsed_time}")
     inference_times_fname = cfg.eval.metrics_fname + f"_predlength{prediction_length}.json"
     with open(os.path.join(metrics_save_dir, inference_times_fname), "w") as f:
         json.dump(elapsed_time_dict, f)

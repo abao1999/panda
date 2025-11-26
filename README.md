@@ -72,7 +72,7 @@ In [notebooks/load_mlm_from_hf.ipynb](https://github.com/abao1999/panda/blob/mai
 
 To run the FNO and DeepONet PDE benchmarks, install the necessary additional dependencies via:
 ```
-uv sync --group benchmark
+uv sync --group pde-benchmark
 ```
 
 ## Citation

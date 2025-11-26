@@ -48,14 +48,6 @@ elif [ "$model_type" = "chronos_base" ]; then
     run_name=chronos_base_zeroshot
     checkpoint_path=amazon/chronos-t5-base
 
-elif [ "$model_type" = "timesfm" ]; then
-    run_name=timesfm
-    checkpoint_path=google/timesfm-1.0-200m-pytorch
-
-elif [ "$model_type" = "timemoe" ]; then
-    run_name=timemoe
-    checkpoint_path=Maple728/TimeMoE-50M
-
 elif [ "$model_type" = "dynamix" ]; then
     run_name=dynamix
     checkpoint_path=null
@@ -67,7 +59,7 @@ fi
 
 echo "run_name: $run_name"
 
-num_samples_chronos=1
+num_samples_chronos=5
 if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
     model_dir="chronos_nondeterministic"
 else
@@ -78,21 +70,35 @@ echo "model_dir: $model_dir"
 
 export PYTHONWARNINGS="ignore"
 
-window_start_times=(512)
+compute_metrics_intervals=(3200)
+compute_metrics_intervals_json=$(printf '%s\n' "${compute_metrics_intervals[@]}" | jq -R 'tonumber' | jq -s -c .)
+echo "compute_metrics_intervals: $compute_metrics_intervals_json"
+
+window_start_times=(512 640 768 896)
 for idx in "${!window_start_times[@]}"; do
     window_start_time="${window_start_times[$idx]}"
     echo "Index: $idx, window_start_time: $window_start_time"
-    python scripts/analysis/inference_timer.py \
+    python scripts/analysis/distribution_metrics_legacy.py \
         eval.mode=predict \
         eval.model_type=$model_type \
         eval.checkpoint_path=$checkpoint_path \
         eval.device=cuda:$cuda_device_id \
         eval.data_paths_lst=$test_data_dirs_json \
-        eval.num_subdirs=300 \
-        eval.num_samples_per_subdir=4 \
-        eval.metrics_save_dir=$WORK/timer_debug/$model_dir/$run_name \
-        eval.metrics_fname=inference_times-start$window_start_time \
+        eval.num_subdirs=null \
+        eval.num_samples_per_subdir=null \
+        eval.metrics_save_dir=$WORK/eval_results_distributional_longest/$model_dir/$run_name/test_zeroshot \
+        eval.metrics_fname=distributional_metrics_window-$window_start_time \
+        eval.save_forecasts=true \
+        eval.save_full_trajectory=true \
+        eval.compute_distributional_metrics=true \
+        eval.reload_saved_forecasts=true \
+        eval.distributional_metrics_predlengths=$compute_metrics_intervals_json \
+        eval.distributional_metrics_group=fdiv \
+        eval.num_processes=10 \
         eval.window_start=$window_start_time \
-        eval.prediction_length=512 \
-        eval.context_length=3200
+        eval.prediction_length=3200 \
+        eval.context_length=512 \
+        eval.metrics_fname_suffix=all \
+        eval.dataloader_num_workers=0 \
+        eval.batch_size=512
 done
