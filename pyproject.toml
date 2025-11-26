@@ -20,7 +20,7 @@ requires-python = ">=3.10"
 dependencies = [
     "hydra-core",
     "numpy<2",
-    "torch>=2.2.0",
+    "torch",
     "transformers==4.40.2",
     "accelerate",
     "dysts[numba,extra] @ git+https://github.com/williamgilpin/dysts@master",
@@ -43,7 +43,7 @@ dev = [
     "ruff>=0.13.0",
     "ipykernel",
 ]
-benchmark = ["neuraloperator"]
+benchmark = ["neuraloperator", "deepxde"]
 
 [tool.ruff]
 line-length = 120

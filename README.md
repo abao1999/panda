@@ -68,6 +68,13 @@ For a more thorough evaluation, see our [evaluation script](https://github.com/a
 
 In [notebooks/load_mlm_from_hf.ipynb](https://github.com/abao1999/panda/blob/main/notebooks/load_mlm_from_hf.ipynb) we provide a minimal working example of loading our trained MLM checkpoint from HuggingFace and generating completions.
 
+### PDE Benchmarks
+
+To run the FNO and DeepONet PDE benchmarks, install the necessary additional dependencies via:
+```
+uv sync --group benchmark
+```
+
 ## Citation
 If you use this codebase or otherwise find our work valuable, please cite us:
 ```
