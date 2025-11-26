@@ -842,6 +842,7 @@ def plot_model_completion(
     processed_context: np.ndarray,
     timestep_mask: np.ndarray,
     figsize: tuple[int, int] = (6, 8),
+    linewidth: float = 2,
     save_path: str | None = None,
 ):
     n_timesteps = processed_context.shape[1]
@@ -862,7 +863,7 @@ def plot_model_completion(
         processed_context[2, :],
         alpha=0.5,
         color="black",
-        linewidth=2,
+        linewidth=linewidth,
     )
     # ax_3d.set_title("Completions", y=0.94, fontweight="bold")
     ax_3d.axis("off")
@@ -885,7 +886,7 @@ def plot_model_completion(
                     completions[2, start_idx:end_idx],
                     alpha=1,
                     color="red",
-                    linewidth=2,
+                    linewidth=linewidth,
                     zorder=10,
                 )
                 # Plot masked parts in red
@@ -895,7 +896,7 @@ def plot_model_completion(
                     processed_context[2, start_idx:end_idx],
                     alpha=1,
                     color="black",
-                    linewidth=2,
+                    linewidth=linewidth,
                 )
 
     # Plot univariate series for each dimension
@@ -923,7 +924,7 @@ def plot_model_completion(
                 completions[dim, start:end],
                 alpha=1,
                 color="red",
-                linewidth=2,
+                linewidth=linewidth,
                 zorder=10,
             )
             ax.plot(
@@ -931,7 +932,7 @@ def plot_model_completion(
                 processed_context[dim, start:end],
                 alpha=1,
                 color="black",
-                linewidth=2,
+                linewidth=linewidth,
             )
 
         # Fill between completions and context
@@ -941,8 +942,10 @@ def plot_model_completion(
             completions[dim, :],
             where=~mask_bool_dim,
             alpha=0.2,
+            color="red",
         )
-        ax.set_xticks([])
+        # ax.set_xticks([])
+        ax.set_xticks(np.arange(0, n_timesteps + 512, 512))
         ax.set_yticks([])
 
     plt.tight_layout()

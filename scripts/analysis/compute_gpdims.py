@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import transformers
 from dysts.analysis import gp_dim  # type: ignore
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, make_interp_spline
 from tqdm import tqdm
 
 from panda.patchtst.pipeline import PatchTSTPipeline
@@ -204,8 +204,8 @@ def polynomial_interpolation(
     for dim in range(d):
         # Get indices of known (unmasked) and unknown (masked) timesteps for this dimension
         dim_mask = timestep_mask[:, dim]
-        known_indices = np.where(~dim_mask)[0]
-        unknown_indices = np.where(dim_mask)[0]
+        known_indices = np.where(dim_mask)[0]
+        unknown_indices = np.where(~dim_mask)[0]
 
         # Copy known values directly
         result[known_indices, dim] = processed_context[known_indices, dim]
@@ -242,8 +242,8 @@ def linear_interpolation(
     Args:
         processed_context: Array of shape (T, d) containing the time series data,
                           where T is the number of timesteps and d is the number of dimensions.
-        timestep_mask: Boolean array of shape (T, d) indicating which values to interpolate.
-                      True values will be interpolated from False (known) values.
+        timestep_mask: Boolean array of shape (T, d) indicating which values to are known.
+                      True values are known, False values are masked.
 
     Returns:
         Array of shape (T, d) with interpolated values at masked timesteps.
@@ -269,8 +269,8 @@ def linear_interpolation(
     for dim in range(d):
         # Get indices of known (unmasked) and unknown (masked) timesteps for this dimension
         dim_mask = timestep_mask[:, dim]
-        known_indices = np.where(~dim_mask)[0]
-        unknown_indices = np.where(dim_mask)[0]
+        known_indices = np.where(dim_mask)[0]
+        unknown_indices = np.where(~dim_mask)[0]
 
         # Copy known values directly
         result[known_indices, dim] = processed_context[known_indices, dim]
@@ -291,10 +291,82 @@ def linear_interpolation(
     return result
 
 
+def piecewise_spline_interpolation(
+    processed_context: np.ndarray,
+    timestep_mask: np.ndarray,
+    k: int = 3,
+) -> np.ndarray:
+    """
+    Perform piecewise spline interpolation on masked timesteps for each dimension independently.
+
+    For each dimension, this function identifies which timesteps are masked (True in timestep_mask)
+    and interpolates their values using spline interpolation from the unmasked timesteps.
+    This allows different dimensions to have different masked timesteps.
+
+    Args:
+        processed_context: Array of shape (T, d) containing the time series data,
+                          where T is the number of timesteps and d is the number of dimensions.
+        timestep_mask: Boolean array of shape (T, d) indicating which values to are known.
+                      True values are known, False values are masked.
+        k: Degree of the spline interpolation. Default is 3 (cubic spline).
+           Must have at least k+1 known points to fit a spline of degree k.
+
+    Returns:
+        Array of shape (T, d) with interpolated values at masked timesteps.
+        Known (unmasked) values are preserved from the input.
+
+    Notes:
+        - Uses scipy.interpolate.make_interp_spline for spline fitting.
+        - Extrapolation is enabled for timesteps outside the range of known values.
+        - If there are fewer than k+1 known points in a dimension, the degree
+          is automatically reduced to max(len(known_indices) - 1, 1).
+        - If all timesteps in a dimension are masked, the function will fail.
+        - If only one timestep is unmasked in a dimension, linear extrapolation
+          (constant value) is used.
+    """
+    if processed_context.shape != timestep_mask.shape:
+        raise ValueError(
+            f"Shape mismatch: processed_context has shape {processed_context.shape}, "
+            f"but timestep_mask has shape {timestep_mask.shape}. Both should be (T, d)."
+        )
+
+    T, d = processed_context.shape
+    result = np.zeros_like(processed_context)
+
+    # Interpolate each dimension independently
+    for dim in range(d):
+        # Get indices of known (unmasked) and unknown (masked) timesteps for this dimension
+        dim_mask = timestep_mask[:, dim]
+        known_indices = np.where(dim_mask)[0]
+        unknown_indices = np.where(~dim_mask)[0]
+
+        # Copy known values directly
+        result[known_indices, dim] = processed_context[known_indices, dim]
+
+        # Interpolate unknown values if there are any
+        if len(unknown_indices) > 0 and len(known_indices) > 0:
+            # Determine appropriate spline degree based on available points
+            # Need at least k+1 points for degree k spline
+            effective_k = min(k, len(known_indices) - 1)
+            effective_k = max(effective_k, 1)  # At least linear
+
+            # Create spline interpolation
+            spline = make_interp_spline(
+                known_indices, processed_context[known_indices, dim], k=effective_k, bc_type="natural"
+            )
+            result[unknown_indices, dim] = spline(unknown_indices)
+        elif len(unknown_indices) > 0 and len(known_indices) == 0:
+            # All values are masked for this dimension - cannot interpolate
+            raise ValueError(f"All timesteps are masked for dimension {dim}. Cannot interpolate.")
+
+    return result
+
+
 def get_naive_interpolation(
     completions_dict: dict[str, dict[str, np.ndarray]],
     interpolation_method: str = "polynomial",
     polynomial_degree: int = 3,
+    piecewise_spline_degree: int = 3,
 ) -> dict[str, np.ndarray]:
     """
     Compute naive interpolations for multiple systems, using the timestep_mask and context from the completions_dict
@@ -312,13 +384,8 @@ def get_naive_interpolation(
     interpolation_fn = {
         "polynomial": partial(polynomial_interpolation, degree=polynomial_degree),
         "linear": linear_interpolation,
+        "piecewise_spline": partial(piecewise_spline_interpolation, k=piecewise_spline_degree),
     }[interpolation_method]
-    if interpolation_method == "polynomial":
-        log(f"Using polynomial interpolation with degree {polynomial_degree}")
-    elif interpolation_method == "linear":
-        log("Using linear interpolation")
-    else:
-        raise ValueError(f"Invalid interpolation method: {interpolation_method}")
 
     # Validate all data upfront
     for dyst_name, data in completions_dict.items():
@@ -423,7 +490,17 @@ def main(cfg):
     if cfg.eval.compute_naive_interpolations:
         interpolation_method = cfg.eval.naive_interpolation_method
         polynomial_degree = cfg.eval.naive_interpolation_polynomial_degree
-        naive_interp_str = f"polynomial{polynomial_degree}" if interpolation_method == "polynomial" else "linear"
+        piecewise_spline_degree = cfg.eval.naive_interpolation_piecewise_spline_degree
+        # naive_interp_str = f"polynomial{polynomial_degree}" if interpolation_method == "polynomial" else "linear"
+        naive_interp_str = interpolation_method
+        if interpolation_method == "piecewise_spline":
+            naive_interp_str += f"_k{piecewise_spline_degree}"
+        elif interpolation_method == "polynomial":
+            naive_interp_str += f"_degree{polynomial_degree}"
+        elif interpolation_method == "linear":
+            naive_interp_str = "linear"
+        else:
+            raise ValueError(f"Invalid interpolation method: {interpolation_method}")
         log(f"Using {interpolation_method}")
         if interpolation_method == "polynomial":
             log(f"Using polynomial degree: {polynomial_degree}")
@@ -444,6 +521,7 @@ def main(cfg):
         log(f"Saved naive interpolations to {naive_interpolations_dict_path}")
 
         if cfg.eval.compute_gp_dims:
+            log(f"Computing GP dimensions for naive interpolations: {naive_interp_str}")
             # now create a new naive_interpolations_dict_full that contains the "groundtruth" from completions_dict, and replace the "completions" from completions_dict with the values from naive_interpolations_dict
             naive_interpolations_dict_full = {}
             for system_name in completions_dict.keys():
@@ -455,10 +533,10 @@ def main(cfg):
 
             if cfg.eval.debug_mode:
                 log("Plotting example naive interpolations (debug mode enabled)")
-                # plot the first 10 systems of the naive interpolations. For each plot, plot the completions, the processed_context, and the naive interpolations. Plot each dimension in a separate subplot.
-                system_names = (
-                    list(naive_interpolations_dict.keys())[:10] + list(naive_interpolations_dict.keys())[-10:]
-                )
+                # plot 20 randomly chosen systems of the naive interpolations. For each plot, plot the completions, the processed_context, and the naive interpolations. Plot each dimension in a separate subplot.
+                all_system_names = list(naive_interpolations_dict.keys())
+                rng = np.random.default_rng(rseed)
+                system_names = rng.choice(all_system_names, size=min(30, len(all_system_names)), replace=False).tolist()
                 fig_save_dir = os.path.join("figures", naive_interp_str)
                 os.makedirs(fig_save_dir, exist_ok=True)
                 for system_name in tqdm(system_names, desc="Plotting naive interpolations"):
@@ -477,7 +555,10 @@ def main(cfg):
                         completions=completions_sys,
                         processed_context=processed_context_sys,
                         timestep_mask=timestep_mask_sys,
-                        save_path=os.path.join(fig_save_dir, f"{naive_interp_str}_completions_plot_{system_name}.pdf"),
+                        save_path=os.path.join(
+                            fig_save_dir,
+                            f"{naive_interp_str}_completions_plot_{system_name}_start{start_time}_end{end_time}.pdf",
+                        ),
                     )
 
                     # Plot naive interpolation
@@ -485,7 +566,10 @@ def main(cfg):
                         completions=naive_interp_sys,
                         processed_context=processed_context_sys,
                         timestep_mask=timestep_mask_sys,
-                        save_path=os.path.join(fig_save_dir, f"{naive_interp_str}_naive_interp_plot_{system_name}.pdf"),
+                        save_path=os.path.join(
+                            fig_save_dir,
+                            f"{naive_interp_str}_naive_interp_plot_{system_name}_start{start_time}_end{end_time}.pdf",
+                        ),
                     )
             del completions_dict
 

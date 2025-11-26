@@ -58,10 +58,12 @@ python scripts/analysis/compute_gpdims.py \
     eval.save_completions=true \
     eval.reload_saved_completions=true \
     eval.compute_naive_interpolations=true \
-    eval.naive_interpolation_method=linear \
+    eval.naive_interpolation_method=piecewise_spline \
     eval.naive_interpolation_polynomial_degree=3 \
+    eval.naive_interpolation_piecewise_spline_degree=3 \
     eval.compute_gp_dims=true \
     eval.num_processes=50 \
     eval.completions.start_time=0 \
     eval.completions.end_time=null \
+    eval.debug_mode=false \
     eval.seed=$rseed
