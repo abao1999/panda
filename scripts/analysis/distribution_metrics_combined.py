@@ -543,8 +543,8 @@ def main(cfg):
                 datasets,  # type: ignore
                 batch_size=cfg.eval.batch_size,
                 prediction_length=prediction_length,
-                metric_names=None,
                 system_dims=system_dims,
+                metric_names=None,
                 return_predictions=True,
                 return_contexts=True,
                 return_labels=True,
@@ -668,7 +668,11 @@ def main(cfg):
             json.dump(distributional_metrics, f, indent=4)
     else:
         # We do this so we can parallelize the model inference and not worry about cpu usage bottleneck (computing these metrics is very cpu intensive)
-        log(f"Skipping distributional metrics computation, only saved forecasts, to {forecasts_dict_path}")
+        if cfg.eval.save_forecasts:
+            traj_msg = " and full trajectories" if cfg.eval.save_full_trajectory else ""
+            log(f"Skipping distributional metrics computation, only saved forecasts{traj_msg} to {forecasts_dict_path}")
+        else:
+            log("Skipping distributional metrics computation, and no forecasts saved")
 
 
 if __name__ == "__main__":
