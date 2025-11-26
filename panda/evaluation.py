@@ -149,7 +149,7 @@ def evaluate_multivariate_forecasting_model(
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
-    redo_normalization: bool = False,
+    redo_normalization: bool = True,  # to match the default behavior of evaluate_univariate_forecasting_model
     prediction_kwargs: dict | None = None,
     eval_subintervals: list[tuple[int, int]] | None = None,
     num_workers: int = 4,

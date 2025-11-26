@@ -86,7 +86,7 @@ for idx in "${!window_start_times[@]}"; do
         eval.data_paths_lst=$test_data_dirs_json \
         eval.num_subdirs=null \
         eval.num_samples_per_subdir=null \
-        eval.metrics_save_dir=$WORK/eval_results_distributional_longest/$model_dir/$run_name/test_zeroshot \
+        eval.metrics_save_dir=$WORK/eval_results_distributional_3200/$model_dir/$run_name/test_zeroshot \
         eval.metrics_fname=distributional_metrics_window-$window_start_time \
         eval.save_forecasts=true \
         eval.save_full_trajectory=true \

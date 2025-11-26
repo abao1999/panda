@@ -40,6 +40,8 @@ eval:
   metrics_fname_suffix: null
   distributional_metrics_group: fdiv
   distributional_metrics_predlengths: [1024]
+  horizons_lst: ["prediction_horizon", "full_trajectory"]
+
   overwrite: false
   seed: 1
 
