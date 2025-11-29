@@ -59,7 +59,7 @@ fi
 
 echo "run_name: $run_name"
 
-num_samples_chronos=5
+num_samples_chronos=0
 if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
     model_dir="chronos_nondeterministic"
 else
@@ -70,35 +70,32 @@ echo "model_dir: $model_dir"
 
 export PYTHONWARNINGS="ignore"
 
-compute_metrics_intervals=(3200)
-compute_metrics_intervals_json=$(printf '%s\n' "${compute_metrics_intervals[@]}" | jq -R 'tonumber' | jq -s -c .)
-echo "compute_metrics_intervals: $compute_metrics_intervals_json"
+# Comma-separated values enable Hydra multirun (edit here if you want multiple starts)
+window_starts="512"
+echo "window_starts: $window_starts"
 
-window_start_times=(512 640 768 896)
-for idx in "${!window_start_times[@]}"; do
-    window_start_time="${window_start_times[$idx]}"
-    echo "Index: $idx, window_start_time: $window_start_time"
-    python scripts/analysis/distribution_metrics_legacy.py \
-        eval.mode=predict \
-        eval.model_type=$model_type \
-        eval.checkpoint_path=$checkpoint_path \
-        eval.device=cuda:$cuda_device_id \
-        eval.data_paths_lst=$test_data_dirs_json \
-        eval.num_subdirs=null \
-        eval.num_samples_per_subdir=null \
-        eval.metrics_save_dir=$WORK/eval_results_distributional_longest/$model_dir/$run_name/test_zeroshot \
-        eval.metrics_fname=distributional_metrics_window-$window_start_time \
-        eval.save_forecasts=true \
-        eval.save_full_trajectory=true \
-        eval.compute_distributional_metrics=false \
-        eval.reload_saved_forecasts=false \
-        eval.distributional_metrics_predlengths=$compute_metrics_intervals_json \
-        eval.distributional_metrics_group=fdiv \
-        eval.num_processes=10 \
-        eval.window_start=$window_start_time \
-        eval.prediction_length=3200 \
-        eval.context_length=512 \
-        eval.metrics_fname_suffix=all \
-        eval.dataloader_num_workers=0 \
-        eval.batch_size=512
-done
+python scripts/analysis/compute_invariants.py \
+    -m \
+    eval.mode=predict \
+    eval.model_type=$model_type \
+    eval.checkpoint_path=$checkpoint_path \
+    eval.device=cuda:$cuda_device_id \
+    eval.data_paths_lst=$test_data_dirs_json \
+    eval.num_subdirs=null \
+    eval.num_samples_per_subdir=null \
+    eval.metrics_save_dir=$WORK/eval_results_distributional_long/$model_dir/$run_name/test_zeroshot \
+    'eval.metrics_fname=distributional_metrics_window-${eval.window_start}' \
+    eval.save_forecasts=true \
+    eval.save_full_trajectory=true \
+    eval.compute_distributional_metrics=true \
+    eval.recompute_forecasts=false \
+    'eval.distributional_metrics_predlengths=[1024,2048,3072,3584]' \
+    eval.distributional_metrics_group=fdiv \
+    eval.num_processes=96 \
+    eval.use_multiprocessing=true \
+    eval.window_start=$window_starts \
+    eval.prediction_length=3584 \
+    eval.context_length=512 \
+    eval.metrics_fname_suffix=all \
+    eval.dataloader_num_workers=0 \
+    eval.batch_size=512

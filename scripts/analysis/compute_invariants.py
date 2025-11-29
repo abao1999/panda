@@ -35,7 +35,7 @@ from dysts.analysis import (  # type: ignore
 )
 from dysts.metrics import (  # type: ignore
     average_hellinger_distance,
-    estimate_kl_divergence,
+    geometrical_misalignment,
 )
 from gluonts.transform import LastValueImputation
 from tqdm import tqdm
@@ -252,26 +252,20 @@ def _compute_fdiv_worker(
     avg_hellinger_full_traj = None
     kl_full_traj = None
 
-    # Prediction Horizon
     if "prediction_horizon" in horizons_lst:
         context = data["context"].T[:pred_interval]
         predictions = safe_standardize(predictions, context=context, axis=0)
         groundtruth = safe_standardize(groundtruth, context=context, axis=0)
-        avg_hellinger_pred_horizon = safe_call(average_hellinger_distance, system_name, groundtruth, predictions)
-        kl_pred_horizon = safe_call(
-            estimate_kl_divergence, system_name, groundtruth, predictions, n_samples=1000, sigma_scale=None
-        )
+        avg_hellinger_pred_horizon = average_hellinger_distance(groundtruth, predictions)
+        kl_pred_horizon = geometrical_misalignment(groundtruth, predictions)
         del context
 
-    # Prediction vs Full Trajectory
     if "full_trajectory" in horizons_lst:
         full_trajectory = data["full_trajectory"].T
         predictions = safe_standardize(predictions, context=full_trajectory, axis=0)
         full_trajectory = safe_standardize(full_trajectory, axis=0)
-        avg_hellinger_full_traj = safe_call(average_hellinger_distance, system_name, full_trajectory, predictions)
-        kl_full_traj = safe_call(
-            estimate_kl_divergence, system_name, full_trajectory, predictions, n_samples=1000, sigma_scale=None
-        )
+        avg_hellinger_full_traj = average_hellinger_distance(full_trajectory, predictions)
+        kl_full_traj = geometrical_misalignment(full_trajectory, predictions)
         del full_trajectory
 
     result = {
@@ -280,7 +274,6 @@ def _compute_fdiv_worker(
         "prediction_time": elapsed_time,
     }
 
-    # Clean up large arrays before returning to free memory
     del predictions, groundtruth
     gc.collect()
 
@@ -427,9 +420,9 @@ def main(cfg):
     os.makedirs(metrics_save_dir, exist_ok=True)
     forecasts_dict_path = os.path.join(metrics_save_dir, f"{metrics_fname}_forecasts.pkl")
 
-    # If reloading forecasts, skip prediction
-    if cfg.eval.reload_saved_forecasts:
-        log(f"Reloading forecasts from {forecasts_dict_path}")
+    # Load saved forecasts if present and not forcing recompute
+    if (not cfg.eval.recompute_forecasts) and os.path.exists(forecasts_dict_path):
+        log(f"Found saved forecasts at {forecasts_dict_path}; loading saved forecasts")
         with open(forecasts_dict_path, "rb") as f:
             forecast_dict = pickle.load(f)
         if cfg.eval.num_subdirs is not None:
@@ -491,7 +484,6 @@ def main(cfg):
             )
 
         log("Loading datasets...")
-        log("Context length: {context_length}")
         if cfg.eval.model_type in MULTIVARIATE_MODELS:
             datasets = {
                 system_name: MultivariateTimeSeriesDataset(
@@ -642,7 +634,6 @@ def main(cfg):
 
         log(f"Computing metrics group (cfg.eval.distributional_metrics_group): {metrics_group}")
         log(f"Pred intervals: {pred_intervals}")
-        log(f"pred_intervals_str: {pred_intervals_str}")
         log(f"Use multiprocessing: {cfg.eval.use_multiprocessing}")
         log(f"Number of processes: {cfg.eval.num_processes}")
 
@@ -652,7 +643,7 @@ def main(cfg):
         metrics_path = os.path.join(metrics_save_dir, metrics_group, f"{metrics_fname}.json")
         os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
 
-        log(f"This script will save the computed metrics to: {metrics_path}")
+        log(f"Saved computed metrics to: {metrics_path}")
 
         distributional_metrics = get_distributional_metrics(
             forecast_dict,

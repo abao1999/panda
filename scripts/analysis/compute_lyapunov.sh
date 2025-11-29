@@ -70,11 +70,11 @@ echo "model_dir: $model_dir"
 
 export PYTHONWARNINGS="ignore"
 
-compute_metrics_intervals=(512 1024 2048 3200)
+compute_metrics_intervals=(512)
 compute_metrics_intervals_json=$(printf '%s\n' "${compute_metrics_intervals[@]}" | jq -R 'tonumber' | jq -s -c .)
 echo "compute_metrics_intervals: $compute_metrics_intervals_json"
 
-horizons_lst=(full_trajectory)
+horizons_lst=(prediction_horizon)
 horizons_lst_json=$(printf '%s\n' "${horizons_lst[@]}" | jq -R . | jq -s -c .)
 echo "horizons_lst: $horizons_lst_json"
 
@@ -82,7 +82,7 @@ window_start_times=(512 640 768 896)
 for idx in "${!window_start_times[@]}"; do
     window_start_time="${window_start_times[$idx]}"
     echo "Index: $idx, window_start_time: $window_start_time"
-    python scripts/analysis/distribution_metrics_combined.py \
+    python scripts/analysis/compute_invariants.py \
         eval.mode=predict \
         eval.model_type=$model_type \
         eval.checkpoint_path=$checkpoint_path \
@@ -95,15 +95,15 @@ for idx in "${!window_start_times[@]}"; do
         eval.save_forecasts=true \
         eval.save_full_trajectory=true \
         eval.compute_distributional_metrics=true \
-        eval.reload_saved_forecasts=true \
+        eval.recompute_forecasts=false \
         eval.distributional_metrics_predlengths=$compute_metrics_intervals_json \
-        eval.distributional_metrics_group=fdiv \
+        eval.distributional_metrics_group=lyap \
         eval.horizons_lst=$horizons_lst_json \
         eval.window_start=$window_start_time \
         eval.prediction_length=3200 \
         eval.context_length=512 \
         eval.use_multiprocessing=true \
-        eval.num_processes=100 \
+        eval.num_processes=20 \
         eval.dataloader_num_workers=0 \
         eval.batch_size=64
 done

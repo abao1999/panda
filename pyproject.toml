@@ -35,7 +35,6 @@ dependencies = [
     "orjson",
     "huggingface_hub>=0.19",
     "safetensors>=0.4"
-
 ]
 
 [dependency-groups]
