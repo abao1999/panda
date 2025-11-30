@@ -70,7 +70,7 @@ echo "model_dir: $model_dir"
 
 export PYTHONWARNINGS="ignore"
 
-compute_metrics_intervals=(3200)
+compute_metrics_intervals=(1024 2048 3072)
 compute_metrics_intervals_json=$(printf '%s\n' "${compute_metrics_intervals[@]}" | jq -R 'tonumber' | jq -s -c .)
 echo "compute_metrics_intervals: $compute_metrics_intervals_json"
 
@@ -94,11 +94,11 @@ for idx in "${!window_start_times[@]}"; do
         eval.reload_saved_forecasts=true \
         eval.distributional_metrics_predlengths=$compute_metrics_intervals_json \
         eval.distributional_metrics_group=fdiv \
-        eval.num_processes=10 \
+        eval.num_processes=40 \
         eval.window_start=$window_start_time \
         eval.prediction_length=3200 \
         eval.context_length=512 \
         eval.metrics_fname_suffix=all \
         eval.dataloader_num_workers=0 \
-        eval.batch_size=512
+        eval.batch_size=128
 done
