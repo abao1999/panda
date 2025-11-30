@@ -53,6 +53,7 @@ logs/
 **/runs*
 **/*.log
 *ckpt*
+**/multirun/**
 
 # run outputs
 *.log

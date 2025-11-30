@@ -40,7 +40,7 @@ eval:
   metrics_fname_suffix: null
   distributional_metrics_group: fdiv
   distributional_metrics_predlengths: [1024]
-  horizons_lst: ["prediction_horizon", "full_trajectory"]
+  horizons_lst: ["prediction_horizon"]
 
   overwrite: false
   seed: 1
@@ -91,7 +91,7 @@ eval:
   model_type: panda
   save_full_trajectory: false
   
-  reload_saved_forecasts: false
+  recompute_forecasts: false
   reload_saved_completions: false
 
 # wandb run metrics, not to be confused with dysts eval metrics
