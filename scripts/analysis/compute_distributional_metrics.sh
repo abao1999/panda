@@ -59,7 +59,7 @@ fi
 
 echo "run_name: $run_name"
 
-num_samples_chronos=0
+num_samples_chronos=10
 if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
     model_dir="chronos_nondeterministic"
 else

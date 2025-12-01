@@ -39,7 +39,7 @@ python scripts/chronos/evaluate.py \
     eval.data_paths_lst=$test_data_dirs_json \
     eval.num_subdirs=null \
     eval.num_test_instances=6 \
-    eval.num_samples=5 \
+    eval.num_samples=10 \
     eval.parallel_sample_reduction=median \
     eval.window_style=sampled \
     eval.batch_size=32 \

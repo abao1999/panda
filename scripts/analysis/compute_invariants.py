@@ -559,6 +559,11 @@ def main(cfg):
                 "temperature": cfg.chronos.temperature,
                 "num_samples": 1 if cfg.eval.chronos.deterministic else cfg.eval.num_samples,
             }
+            log(f"prediction_kwargs (not necessarily used by all models): {prediction_kwargs}")
+            if cfg.eval.model_type == "chronos":
+                log(f"cfg.eval.chronos.deterministic: {cfg.eval.chronos.deterministic}")
+                log(f"cfg.eval.num_samples: {cfg.eval.num_samples}")
+
             preds, ctxs, lbls, _ = evaluate_univariate_forecasting_model(
                 pipeline,
                 datasets,  # type: ignore
