@@ -23,7 +23,7 @@ import pickle
 from collections.abc import Callable
 from functools import partial
 from multiprocessing import Pool
-from typing import Literal
+from typing import Any, Literal
 
 import dysts.flows as flows  # type: ignore
 import hydra
@@ -35,6 +35,7 @@ from dysts.analysis import (  # type: ignore
 )
 from dysts.metrics import (  # type: ignore
     average_hellinger_distance,
+    estimate_kl_divergence,
     geometrical_misalignment,
 )
 from gluonts.transform import LastValueImputation
@@ -64,7 +65,8 @@ def safe_call(fn: Callable, system_name: str, *args, **kwargs):
         return fn(*args, **kwargs)
     except Exception as e:
         print(e)
-        logger.warning(f"Error computing {fn.__name__} for {system_name}")
+        fn_name = getattr(fn, "__name__", None) or getattr(fn.func, "__name__", "unknown")
+        logger.warning(f"Error computing {fn_name} for {system_name}")
         return None
 
 
@@ -86,7 +88,6 @@ def _compute_lyap_worker(
                 - "predictions": np.ndarray, shape (d, T)
                 - "groundtruth": np.ndarray, shape (d, T)
                 - "full_trajectory": np.ndarray, shape (d, T_full)
-                - "elapsed_time": float
             - pred_interval (int): Number of prediction steps to consider.
         rosenstein_traj_len (int): Trajectory length parameter for Lyapunov exponent estimation (Default: 64)
         compute_for_full_traj (bool): Whether to compute lyapunov exponents for the full trajectory (Default: False)
@@ -97,7 +98,6 @@ def _compute_lyap_worker(
                     "max_lyap_gt": float | None,
                     "max_lyap_pred": float | None,
                 },
-                "prediction_time": float,
             })
 
     Notes:
@@ -105,7 +105,6 @@ def _compute_lyap_worker(
         - All arrays are transposed to (T, d) shape before metric computation.
         - "prediction_horizon" compares predictions and ground truth over the forecast interval.
         - "full_trajectory" compares predictions to the full system trajectory.
-        - "prediction_time" is the elapsed time for generating predictions.
         - Lyapunov exponents are computed using the Rosenstein method with the provided trajectory length.
     """
     (
@@ -124,8 +123,6 @@ def _compute_lyap_worker(
 
     predictions = predictions[:pred_interval]
     groundtruth = groundtruth[:pred_interval]
-
-    elapsed_time = data["elapsed_time"]
 
     if predictions.shape != groundtruth.shape:
         raise ValueError(
@@ -172,7 +169,6 @@ def _compute_lyap_worker(
             "max_lyap_gt": max_lyap_gt,
             "max_lyap_pred": max_lyap_pred,
         },
-        "prediction_time": elapsed_time,
     }
 
     if compute_for_full_traj:
@@ -193,6 +189,11 @@ def _compute_lyap_worker(
 def _compute_fdiv_worker(
     args,
     horizons_lst: list[Literal["prediction_horizon", "full_trajectory"]],
+    metrics_to_compute: list[Literal["avg_hellinger_distance", "kl_divergence"]] = [
+        "avg_hellinger_distance",
+        "kl_divergence",
+    ],
+    use_kld_gmm: bool = False,
 ) -> tuple[str, dict[str, dict[str, float | None]]]:
     """
     Compute distributional metrics for a single system, including Hellinger distance between power spectra,
@@ -207,9 +208,10 @@ def _compute_fdiv_worker(
                 - "predictions": np.ndarray, shape (d, T)
                 - "groundtruth": np.ndarray, shape (d, T)
                 - "full_trajectory": np.ndarray, shape (d, T_full)
-                - "elapsed_time": float
             - pred_interval (int): Number of prediction steps to consider.
         horizons_lst (list[Literal["prediction_horizon", "full_trajectory"]]): List of horizons to compute metrics for.
+        metrics_to_compute (list[Literal["avg_hellinger_distance", "kl_divergence"]]): List of metrics to compute.
+        use_kld_gmm (bool): Whether to use the GMM-based KL divergence estimator (estimate_kl_divergence) instead of the geometrical misalignment (geometrical_misalignment)
     Returns:
         tuple:
             (system_name, {
@@ -220,7 +222,6 @@ def _compute_fdiv_worker(
                     "avg_hellinger_distance": float | None,
                     "kl_divergence": float | None,
                 },
-                "prediction_time": float,
             })
 
     Notes:
@@ -228,7 +229,6 @@ def _compute_fdiv_worker(
         - All arrays are transposed to (T, d) shape before metric computation.
         - "prediction_horizon" compares predictions and ground truth over the forecast interval.
         - "full_trajectory" compares predictions to the full system trajectory.
-        - "prediction_time" is the elapsed time for generating predictions.
     """
     (
         system_name,
@@ -236,11 +236,16 @@ def _compute_fdiv_worker(
         pred_interval,
     ) = args
 
+    hellinger_fn = average_hellinger_distance if "avg_hellinger_distance" in metrics_to_compute else lambda x, y: None
+    kld_fn = (
+        (partial(estimate_kl_divergence, n_samples=1000, sigma_scale=None) if use_kld_gmm else geometrical_misalignment)
+        if "kl_divergence" in metrics_to_compute
+        else lambda x, y: None
+    )
+
     # Ensure (T, d) shape for all arrays - only load what we need
     predictions = data["predictions"].T[:pred_interval]
     groundtruth = data["groundtruth"].T[:pred_interval]
-
-    elapsed_time = data["elapsed_time"]
 
     if predictions.shape != groundtruth.shape:
         raise ValueError(
@@ -256,22 +261,21 @@ def _compute_fdiv_worker(
         context = data["context"].T
         predictions = safe_standardize(predictions, context=context, axis=0)
         groundtruth = safe_standardize(groundtruth, context=context, axis=0)
-        avg_hellinger_pred_horizon = average_hellinger_distance(groundtruth, predictions)
-        kl_pred_horizon = geometrical_misalignment(groundtruth, predictions)
+        avg_hellinger_pred_horizon = safe_call(hellinger_fn, system_name, groundtruth, predictions)
+        kl_pred_horizon = safe_call(kld_fn, system_name, groundtruth, predictions)
         del context
 
     if "full_trajectory" in horizons_lst:
         full_trajectory = data["full_trajectory"].T
         predictions = safe_standardize(predictions, context=full_trajectory, axis=0)
         full_trajectory = safe_standardize(full_trajectory, axis=0)
-        avg_hellinger_full_traj = average_hellinger_distance(full_trajectory, predictions)
-        kl_full_traj = geometrical_misalignment(full_trajectory, predictions)
+        avg_hellinger_full_traj = safe_call(hellinger_fn, system_name, full_trajectory, predictions)
+        kl_full_traj = safe_call(kld_fn, system_name, full_trajectory, predictions)
         del full_trajectory
 
     result = {
         "prediction_horizon": {"avg_hellinger_distance": avg_hellinger_pred_horizon, "kl_divergence": kl_pred_horizon},
         "full_trajectory": {"avg_hellinger_distance": avg_hellinger_full_traj, "kl_divergence": kl_full_traj},
-        "prediction_time": elapsed_time,
     }
 
     del predictions, groundtruth
@@ -287,6 +291,7 @@ def get_distributional_metrics(
     horizons_lst: list[Literal["prediction_horizon", "full_trajectory"]],
     use_multiprocessing: bool = True,
     n_proc: int | None = None,
+    fdiv_kwargs: dict[str, Any] = {},
 ) -> dict[str, dict[str, dict[str, float]]]:
     """
     Compute distributional metrics (average Hellinger distance and KL divergence)
@@ -330,8 +335,9 @@ def get_distributional_metrics(
     worker_fn = None
     if metrics_group == "fdiv":
         log(f"Computing f-divergence metrics for horizons: {horizons_lst}")
+        log(f"fdiv_kwargs: {fdiv_kwargs}")
         worker_fn = partial[tuple[str, dict[str, dict[str, float | None]]]](
-            _compute_fdiv_worker, horizons_lst=horizons_lst
+            _compute_fdiv_worker, horizons_lst=horizons_lst, **fdiv_kwargs
         )
     elif metrics_group == "lyap":
         log(
@@ -613,7 +619,6 @@ def main(cfg):
                     "predictions": preds_i,
                     "groundtruth": labels_i,
                     "full_trajectory": full_traj_i,
-                    "elapsed_time": 0.0,
                 }
 
         if cfg.eval.save_forecasts:
@@ -642,13 +647,27 @@ def main(cfg):
         log(f"Use multiprocessing: {cfg.eval.use_multiprocessing}")
         log(f"Number of processes: {cfg.eval.num_processes}")
 
+        # If we use the GMM-based KL divergence estimator, save results to fdiv_kld-gmm subdirectory
+        use_kld_gmm = cfg.eval.use_kld_gmm
+        if metrics_group == "fdiv" and use_kld_gmm:
+            metrics_group_subdirname = "fdiv_kld-gmm"
+        else:
+            metrics_group_subdirname = metrics_group
+
         metrics_group_suffix = f"_{metrics_group}"
         metrics_fname_suffix = f"_{cfg.eval.metrics_fname_suffix}" if cfg.eval.metrics_fname_suffix else ""
         metrics_fname = f"{metrics_fname}{metrics_group_suffix}{metrics_fname_suffix}_{pred_intervals_str}"
-        metrics_path = os.path.join(metrics_save_dir, metrics_group, f"{metrics_fname}.json")
+        metrics_path = os.path.join(metrics_save_dir, metrics_group_subdirname, f"{metrics_fname}.json")
         os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
 
-        log(f"Saved computed metrics to: {metrics_path}")
+        log(f"Computed metrics will be saved to: {metrics_path}")
+
+        fdiv_kwargs = {
+            "metrics_to_compute": cfg.eval.fdiv_metrics_to_compute,
+            "use_kld_gmm": use_kld_gmm,
+        }
+        if metrics_group == "fdiv":
+            log(f"fdiv_kwargs: {fdiv_kwargs}")
 
         distributional_metrics = get_distributional_metrics(
             forecast_dict,
@@ -657,6 +676,7 @@ def main(cfg):
             horizons_lst=cfg.eval.horizons_lst,
             use_multiprocessing=cfg.eval.use_multiprocessing,
             n_proc=cfg.eval.num_processes,
+            fdiv_kwargs=fdiv_kwargs,
         )
 
         log(f"Saving metrics to {metrics_path}")

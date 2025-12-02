@@ -41,6 +41,8 @@ eval:
   distributional_metrics_group: fdiv
   distributional_metrics_predlengths: [1024]
   horizons_lst: ["prediction_horizon"]
+  use_kld_gmm: false
+  fdiv_metrics_to_compute: ["avg_hellinger_distance", "kl_divergence"]
 
   overwrite: false
   seed: 1
