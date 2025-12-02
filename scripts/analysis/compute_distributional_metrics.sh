@@ -62,8 +62,10 @@ echo "run_name: $run_name"
 num_samples_chronos=10
 if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
     model_dir="chronos_nondeterministic"
+    use_deterministic_chronos=false
 else
     model_dir="$model_type"
+    use_deterministic_chronos=true
 fi
 
 echo "model_dir: $model_dir"
@@ -83,13 +85,15 @@ python scripts/analysis/compute_invariants.py \
     eval.data_paths_lst=$test_data_dirs_json \
     eval.num_subdirs=null \
     eval.num_samples_per_subdir=null \
+    eval.chronos.deterministic=$use_deterministic_chronos \
+    eval.num_samples=$num_samples_chronos \
     eval.metrics_save_dir=$WORK/eval_results_distributional_long/$model_dir/$run_name/test_zeroshot \
     'eval.metrics_fname=distributional_metrics_window-${eval.window_start}' \
     eval.save_forecasts=true \
     eval.save_full_trajectory=true \
     eval.compute_distributional_metrics=true \
     eval.recompute_forecasts=false \
-    'eval.distributional_metrics_predlengths=[1024,2048,3072,3584]' \
+    'eval.distributional_metrics_predlengths=[512,1024,2048,3072,3584]' \
     eval.distributional_metrics_group=fdiv \
     eval.num_processes=96 \
     eval.use_multiprocessing=true \

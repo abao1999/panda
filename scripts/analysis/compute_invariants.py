@@ -253,7 +253,7 @@ def _compute_fdiv_worker(
     kl_full_traj = None
 
     if "prediction_horizon" in horizons_lst:
-        context = data["context"].T[:pred_interval]
+        context = data["context"].T
         predictions = safe_standardize(predictions, context=context, axis=0)
         groundtruth = safe_standardize(groundtruth, context=context, axis=0)
         avg_hellinger_pred_horizon = average_hellinger_distance(groundtruth, predictions)
