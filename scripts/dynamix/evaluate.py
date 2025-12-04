@@ -1,98 +1,17 @@
 import logging
-import sys
-from dataclasses import dataclass
 from functools import partial
-from pathlib import Path
-from typing import Literal
 
 import hydra
 import numpy as np
 import torch
 import transformers
 
+from panda.baselines.fm_baselines import DynaMixPipeline
 from panda.dataset import MultivariateTimeSeriesDataset
 from panda.evaluation import evaluate_multivariate_forecasting_model
 from panda.utils.data_utils import get_dim_from_dataset, process_trajs
 from panda.utils.eval_utils import get_eval_data_dict, save_evaluation_results
 from panda.utils.train_utils import log_on_main
-
-
-def _ensure_dynamix_on_path() -> Path:
-    """Insert the DynaMix submodule on sys.path so we can import it inline."""
-    repo_root = Path(__file__).resolve().parents[2]
-    dynamix_root = repo_root / "external" / "dynamix"
-    src_path = dynamix_root / "src"
-
-    if not src_path.exists():
-        raise FileNotFoundError(
-            f"DynaMix sources not found at {src_path}. "
-            "Did you run `git submodule update --init --recursive external/dynamix`?"
-        )
-
-    for path in (dynamix_root, src_path):
-        if str(path) not in sys.path:
-            sys.path.insert(0, str(path))
-
-    return src_path
-
-
-_ensure_dynamix_on_path()
-
-from src.model.forecaster import DynaMixForecaster  # type: ignore  # noqa: E402
-from src.utilities.utilities import load_hf_model  # type: ignore  # noqa: E402
-
-
-@dataclass
-class DynaMixPipeline:
-    model_name: str
-    device: str = "cpu"
-    torch_dtype: torch.dtype = torch.float32
-    preprocessing_method: Literal["pos_embedding", "zero_embedding", "delay_embedding", "delay_embedding_random"] = (
-        "delay_embedding"
-    )
-    standardize: bool = True
-    fit_nonstationary: bool = False
-    mode: str = "predict"
-
-    def __post_init__(self) -> None:
-        self.device = torch.device(self.device)  # type: ignore[assignment]
-        self.model = load_hf_model(self.model_name)
-        self.model = self.model.to(self.device, dtype=self.torch_dtype)
-        self.model.eval()
-        self.forecaster = DynaMixForecaster(self.model)
-
-    @torch.no_grad()
-    def predict(
-        self,
-        context: torch.Tensor,
-        prediction_length: int,
-        preprocessing_method: str | None = None,
-        standardize: bool | None = None,
-        fit_nonstationary: bool | None = None,
-        initial_x: torch.Tensor | None = None,
-        **_: object,
-    ) -> torch.Tensor:
-        if context.ndim == 2:
-            context = context.unsqueeze(0)
-        if context.ndim != 3:
-            raise ValueError("Expected context tensor with shape (batch_size, context_length, dim)")
-
-        method = preprocessing_method or self.preprocessing_method
-        do_standardize = self.standardize if standardize is None else standardize
-        do_fit_nonstationary = self.fit_nonstationary if fit_nonstationary is None else fit_nonstationary
-
-        seq = context.to(self.device, dtype=self.torch_dtype).permute(1, 0, 2)  # (context_len, batch, dim)
-        preds = self.forecaster.forecast(
-            context=seq,
-            horizon=prediction_length,
-            preprocessing_method=method,
-            standardize=do_standardize,
-            fit_nonstationary=do_fit_nonstationary,
-            initial_x=initial_x,
-        )
-
-        return preds.permute(1, 0, 2).unsqueeze(1)
-
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)

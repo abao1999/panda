@@ -6,8 +6,8 @@ import numpy as np
 import torch
 import transformers
 from gluonts.transform import LastValueImputation
-from transformers import AutoModelForCausalLM
 
+from panda.baselines.fm_baselines import TimeMoePipeline
 from panda.dataset import UnivariateTimeSeriesDataset
 from panda.evaluation import evaluate_univariate_forecasting_model
 from panda.utils.data_utils import get_dim_from_dataset, process_trajs
@@ -16,36 +16,6 @@ from panda.utils.train_utils import log_on_main
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
-
-
-class TimeMoePipeline:
-    def __init__(self, model_path: str, device: str, torch_dtype: torch.dtype):
-        self.device = device
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            device_map=device,
-            trust_remote_code=True,
-            torch_dtype=torch_dtype,
-        )
-        self.model.eval()
-
-    @torch.no_grad()
-    def predict(
-        self,
-        context: torch.Tensor,
-        prediction_length: int,
-        num_samples: int = 1,
-        limit_prediction_length: bool = True,
-        **kwargs,
-    ) -> torch.Tensor:
-        seqs = context.to(self.device)
-        mean, std = seqs.mean(dim=-1, keepdim=True), seqs.std(dim=-1, keepdim=True)
-        normed_seqs = (seqs - mean) / std
-        # shape: (batch_size, context_length + prediction_length)
-        output = self.model.generate(normed_seqs, max_new_tokens=prediction_length)
-        # shape: (batch_size, prediction_length)
-        normed_predictions = output[:, -prediction_length:]
-        return (normed_predictions * std + mean).unsqueeze(1)
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)
