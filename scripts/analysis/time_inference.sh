@@ -67,11 +67,13 @@ fi
 
 echo "run_name: $run_name"
 
-num_samples_chronos=1
+num_samples_chronos=10
 if [ "$model_type" = "chronos" ] && [ "$num_samples_chronos" -gt 1 ]; then
     model_dir="chronos_nondeterministic"
+    use_deterministic_chronos=false
 else
     model_dir="$model_type"
+    use_deterministic_chronos=true
 fi
 
 echo "model_dir: $model_dir"
@@ -90,9 +92,12 @@ for idx in "${!window_start_times[@]}"; do
         eval.data_paths_lst=$test_data_dirs_json \
         eval.num_subdirs=300 \
         eval.num_samples_per_subdir=4 \
+        eval.chronos.deterministic=$use_deterministic_chronos \
+        eval.num_samples=$num_samples_chronos \
         eval.metrics_save_dir=$WORK/timer_debug/$model_dir/$run_name \
         eval.metrics_fname=inference_times-start$window_start_time \
         eval.window_start=$window_start_time \
         eval.prediction_length=512 \
-        eval.context_length=3200
+        eval.context_length=512 \
+        # eval.torch_dtype=bfloat16
 done

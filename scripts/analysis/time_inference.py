@@ -32,7 +32,7 @@ def get_model_prediction(
     context: np.ndarray,
     prediction_length: int,
     is_multivariate: bool = False,
-    **kwargs,
+    prediction_kwargs: dict = {},
 ) -> float:
     """
     Generate model predictions for a given context and prediction length.
@@ -52,7 +52,7 @@ def get_model_prediction(
     context_tensor = torch.from_numpy(context.T if is_multivariate else context).float()
 
     start_time = time.time()
-    _ = model.predict(context_tensor, prediction_length, **kwargs).squeeze().cpu().numpy()
+    _ = model.predict(context_tensor, prediction_length, **prediction_kwargs).squeeze().cpu().numpy()
     elapsed_time = time.time() - start_time
 
     return elapsed_time
@@ -70,7 +70,7 @@ def main(cfg):
     metrics_save_dir = cfg.eval.metrics_save_dir
     os.makedirs(metrics_save_dir, exist_ok=True)
 
-    model_kwargs = {
+    model_prediction_kwargs = {
         "panda": {
             "limit_prediction_length": False,
             "sliding_context": True,
@@ -78,8 +78,8 @@ def main(cfg):
         },
         "chronos": {
             "limit_prediction_length": False,
-            "num_samples": cfg.eval.num_samples,
-            "deterministic": True if cfg.eval.num_samples == 1 else False,
+            "deterministic": True if cfg.eval.chronos.deterministic else False,
+            "num_samples": 1 if cfg.eval.chronos.deterministic else cfg.eval.num_samples,
             "verbose": False,
         },
         "dynamix": {},
@@ -145,8 +145,9 @@ def main(cfg):
     log(f"Using context length: {context_length} and prediction length: {prediction_length}")
     log(f"Using window start time: {window_start_time} and window end time: {window_end_time}")
     log(f"Using is_multivariate: {is_multivariate}")
-    log(f"Using model kwargs: {model_kwargs}")
-    log(f"Using num_samples: {cfg.eval.num_samples}")
+    log(f"Using model kwargs: {model_prediction_kwargs}")
+    log(f"Using num_samples (Chronos): {cfg.eval.num_samples}")
+    log(f"Using use_deterministic_chronos: {cfg.eval.chronos.deterministic}")
     log(f"Using num_samples_per_subdir: {cfg.eval.num_samples_per_subdir}")
     log(f"Using num_subdirs: {cfg.eval.num_subdirs}")
 
@@ -170,7 +171,7 @@ def main(cfg):
                 context=context,
                 prediction_length=prediction_length,
                 is_multivariate=is_multivariate,
-                **model_kwargs,
+                prediction_kwargs=model_prediction_kwargs,
             )
             elapsed_times.append(elapsed_time)
 

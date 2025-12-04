@@ -558,11 +558,11 @@ def main(cfg):
         else:
             prediction_kwargs = {
                 "limit_prediction_length": False,
-                "deterministic": True if cfg.eval.chronos.deterministic else False,
                 "verbose": cfg.eval.verbose,
                 "top_k": cfg.chronos.top_k,
                 "top_p": cfg.chronos.top_p,
                 "temperature": cfg.chronos.temperature,
+                "deterministic": True if cfg.eval.chronos.deterministic else False,
                 "num_samples": 1 if cfg.eval.chronos.deterministic else cfg.eval.num_samples,
             }
             log(f"prediction_kwargs (not necessarily used by all models): {prediction_kwargs}")
