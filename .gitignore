@@ -52,6 +52,7 @@ logs/
 **/wandb*
 **/runs*
 **/*.log
+**/multirun*
 *ckpt*
 
 # run outputs
