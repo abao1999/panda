@@ -39,6 +39,7 @@ dependencies = [
 dev = [
     "ruff>=0.13.0",
     "ipykernel",
+    "nbstripout",
 ]
 benchmark = ["neuraloperator", "deepxde"]
 
