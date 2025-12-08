@@ -54,6 +54,7 @@ logs/
 **/*.log
 **/multirun*
 *ckpt*
+**/multirun/**
 
 # run outputs
 *.log
