@@ -41,6 +41,7 @@ dependencies = [
 dev = [
     "ruff>=0.13.0",
     "ipykernel",
+    "nbstripout",
 ]
 pde-benchmark = ["neuraloperator", "deepxde"]
 tsfm-benchmark = ["chronos-forecasting", "timesfm"]

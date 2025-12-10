@@ -70,6 +70,8 @@ In [notebooks/load_mlm_from_hf.ipynb](https://github.com/abao1999/panda/blob/mai
 
 ### PDE Benchmarks
 
+The Von Karman vortex street data is available [here](https://utexas.box.com/s/qhqh214dlldyn00taepqkc329li5nx65).
+
 To run the FNO and DeepONet PDE benchmarks, install the necessary additional dependencies via:
 ```
 uv sync --group pde-benchmark
