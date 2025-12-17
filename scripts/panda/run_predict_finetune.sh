@@ -1,4 +1,9 @@
 #!/bin/bash
+
+# This script runs the panda training (predict mode) on the specified train_data_dirs, providing option for either:
+# 1. finetuning an MLM checkpoint, or
+# 2. training in predict mode from scratch
+
 # read debug flag
 DEBUG=0
 while getopts "d" flag; do

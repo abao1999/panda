@@ -29,7 +29,7 @@ def main(cfg):
 
     pipeline = TimesFMPipeline(
         "google/timesfm-1.0-200m-pytorch",
-        device="gpu",
+        device=cfg.eval.device,
         prediction_length=cfg.eval.prediction_length,
     )
 

@@ -1,3 +1,7 @@
+#!/bin/bash
+
+# This script runs the panda MLM training (pretrain mode) on the specified train_data_dirs
+
 # read debug flag
 DEBUG=0
 while getopts "d" flag; do

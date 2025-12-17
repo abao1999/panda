@@ -1,10 +1,10 @@
 #!/bin/bash
-# Run our model with different patch sizes (and matching patch strides), while maintaining other model parameters
+
+# This script trains panda in forecast mode with different patch sizes (and matching patch strides), while maintaining other model parameters
 # i.e. keep d_model and ffn_dim constant
 # We also disable the dynamics embedding to ensure that we isolate the effect of patch size, as the dynamics embedding will be different for different patch sizes
 # NOTE: patch size affects the maximum possible batch size we can use. For example, if we halve the patch size, we double the number of patches, so we can only use half the batch size
 # read debug flag
-
 
 DEBUG=0
 while getopts "d" flag; do

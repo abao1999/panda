@@ -12,10 +12,9 @@ test_data_dirs=(
 test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c .)
 echo "test_data_dirs: $test_data_dirs_json"
 
-chronos_model_size=mini
-# run_name=chronos_${chronos_model_size}_zeroshot
-run_name=chronos_t5_mini_ft-0
-# run_name=chronos_small_ft_equalized-13
+chronos_model_size=base
+run_name=chronos_${chronos_model_size}_zeroshot
+# run_name=chronos_t5_mini_ft-0
 
 # Set zero_shot flag based on whether "zeroshot" appears in run_name
 if [[ "$run_name" == *"zeroshot"* ]]; then
@@ -24,7 +23,7 @@ else
     zero_shot_flag="false"
 fi
 
-use_deterministic=false
+use_deterministic=true
 model_dirname="chronos"
 if [ "$use_deterministic" = false ]; then
     model_dirname="chronos_nondeterministic"
@@ -48,7 +47,7 @@ python scripts/chronos/evaluate.py \
     eval.metrics_save_dir=$WORK/eval_results/${model_dirname}/${run_name}/test_zeroshot \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
-    eval.device=cuda:0 \
+    eval.device=cuda:1 \
     eval.save_forecasts=true \
     eval.save_labels=true \
     eval.forecast_save_dir=$WORK/eval_results/${model_dirname}/${run_name}/test_zeroshot/forecasts \

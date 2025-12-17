@@ -1,3 +1,6 @@
+#!/bin/bash
+# This script runs the panda MLM training (pretrain mode) on the scalinglaw data
+
 # read debug flag
 DEBUG=0
 while getopts "d" flag; do

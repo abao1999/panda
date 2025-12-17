@@ -3,9 +3,9 @@ Panda: Patched Attention for Nonlinear Dynamics
 
 This repository contains the code to reproduce the experiments presented in our arXiv preprint [arXiv:2505.13755](https://arxiv.org/abs/2505.13755)
 
-We have released model weights on HF at https://huggingface.co/GilpinLab/panda
+We have released model weights on HF at https://huggingface.co/GilpinLab/panda. For a scaled-up version, see https://huggingface.co/GilpinLab/panda-72M.
 
-We also have MLM weights up on HF at https://huggingface.co/GilpinLab/panda_mlm
+We also have MLM weights up on HF at https://huggingface.co/GilpinLab/panda_mlm. For a scaled-up version, see https://huggingface.co/GilpinLab/panda_mlm-66M.
 
 We have also released datasets on HF. 
 
@@ -14,6 +14,8 @@ We have also released datasets on HF.
 - Original training dataset https://huggingface.co/datasets/GilpinLab/skew40.
 
 **We are in the process of scaling up our training and model size. We are also working on a larger dataset with improved filtering for chaotic behavior. Stay tuned!**
+
+**We are also in the process of cleaning up and consolidating our evaluation scripts to make them more user-friendy**
 
 Paper abstract:
 
@@ -75,6 +77,11 @@ The Von Karman vortex street data is available [here](https://utexas.box.com/s/q
 To run the FNO and DeepONet PDE benchmarks, install the necessary additional dependencies via:
 ```
 uv sync --group pde-benchmark
+```
+
+To run the Chronos and TimesFM benchmarks, install the necessary additional dependencies via:
+```
+uv sync --group tsfm-benchmark
 ```
 
 ## Citation

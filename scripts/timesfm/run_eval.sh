@@ -23,7 +23,7 @@ python scripts/timesfm/evaluate.py \
     eval.metrics_save_dir=$WORK/eval_results/timesfm/${run_name}/test_zeroshot \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
-    eval.device=cuda:1 \
+    eval.device=cuda:3 \
     eval.save_forecasts=false \
     eval.save_labels=false \
     eval.seed=99 \
