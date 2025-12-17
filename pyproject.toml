@@ -32,7 +32,9 @@ dependencies = [
     "matplotlib",
     "statsmodels",
     "pandas",
-    "orjson"
+    "orjson",
+    "huggingface_hub>=0.19",
+    "safetensors>=0.4"
 ]
 
 [dependency-groups]
@@ -41,7 +43,8 @@ dev = [
     "ipykernel",
     "nbstripout",
 ]
-benchmark = ["neuraloperator", "deepxde"]
+pde-benchmark = ["neuraloperator", "deepxde"]
+tsfm-benchmark = ["chronos-forecasting", "timesfm"]
 
 [tool.ruff]
 line-length = 120

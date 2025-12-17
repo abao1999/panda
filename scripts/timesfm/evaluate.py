@@ -3,11 +3,11 @@ from functools import partial
 
 import hydra
 import numpy as np
-import timesfm
 import torch
 import transformers
 from gluonts.transform import LastValueImputation
 
+from panda.baselines.fm_baselines import TimesFMPipeline
 from panda.dataset import UnivariateTimeSeriesDataset
 from panda.evaluation import evaluate_univariate_forecasting_model
 from panda.utils.data_utils import get_dim_from_dataset, process_trajs
@@ -16,41 +16,6 @@ from panda.utils.train_utils import log_on_main
 
 logger = logging.getLogger(__name__)
 log = partial(log_on_main, logger=logger)
-
-
-class TimesFMPipeline:
-    def __init__(self, model_id: str, device: str, prediction_length: int):
-        self.device = device
-
-        self.model = timesfm.TimesFm(
-            hparams=timesfm.TimesFmHparams(
-                backend=device,  # type: ignore
-                per_core_batch_size=32,
-                horizon_len=prediction_length,
-            ),
-            checkpoint=timesfm.TimesFmCheckpoint(huggingface_repo_id=model_id),
-        )
-        # for compatibility with panda
-        self.model.device = self.model._device  # type: ignore
-
-    @torch.no_grad()
-    def predict(
-        self,
-        context: torch.Tensor,
-        prediction_length: int = -1,
-        num_samples: int = -1,
-        limit_prediction_length: bool = True,
-        **kwargs,
-    ) -> torch.Tensor:
-        """Generate forecasts for input sequences.
-
-        Returns point forecasts and experimental quantile forecasts.
-        """
-        assert context.ndim == 2, "seqs must be of shape (batch_size, seq_len)"
-
-        point_forecast, quantile_forecast = self.model.forecast(context, normalize=True)  # type: ignore
-        # unsqueeze to add sample dimension
-        return torch.from_numpy(point_forecast).unsqueeze(1)
 
 
 @hydra.main(config_path="../../config", config_name="config", version_base=None)

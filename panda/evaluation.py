@@ -134,7 +134,7 @@ def evaluate_univariate_forecasting_model(
         system_predictions if return_predictions else None,
         system_contexts if return_contexts else None,
         system_labels if return_labels else None,
-        system_metrics,
+        system_metrics,  # type: ignore
     )
 
 
@@ -143,13 +143,13 @@ def evaluate_multivariate_forecasting_model(
     systems: dict[str, MultivariateTimeSeriesDataset],
     batch_size: int,
     prediction_length: int,
+    system_dims: dict[str, int],
     metric_names: list[str] | None = None,
-    system_dims: dict[str, int] | None = None,
     parallel_sample_reduction_fn: Callable | None = None,
     return_predictions: bool = False,
     return_contexts: bool = False,
     return_labels: bool = False,
-    redo_normalization: bool = False,
+    redo_normalization: bool = True,  # to match the default behavior of evaluate_univariate_forecasting_model
     prediction_kwargs: dict | None = None,
     eval_subintervals: list[tuple[int, int]] | None = None,
     num_workers: int = 4,
@@ -181,7 +181,7 @@ def evaluate_multivariate_forecasting_model(
         predictions, labels, contexts, future_values = [], [], [], []
         num_windows = dataset.num_test_instances
         context_length = dataset.context_length
-        dim = system_dims.get(system)
+        dim = system_dims[system]
 
         for batch in DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, pin_memory=True):
             past_values, future_values = batch["past_values"], batch["future_values"]
@@ -244,7 +244,7 @@ def evaluate_multivariate_forecasting_model(
         system_predictions if return_predictions else None,
         system_contexts if return_contexts else None,
         system_labels if return_labels else None,
-        system_metrics,
+        system_metrics,  # type: ignore
     )
 
 

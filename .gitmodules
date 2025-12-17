@@ -1,0 +1,3 @@
+[submodule "external/dynamix"]
+	path = external/dynamix
+	url = https://github.com/DurstewitzLab/DynaMix-python

@@ -4,12 +4,12 @@ import re
 import warnings
 from typing import Any, Literal
 
+import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib import patches as mpatches
 from matplotlib.axes import Axes
-from matplotlib.lines import Line2D
 from matplotlib.patches import FancyArrowPatch, Rectangle
 from mpl_toolkits.mplot3d.proj3d import proj_transform
 from omegaconf import OmegaConf
@@ -374,9 +374,9 @@ def _draw_custom_box(
     whisker_percentile_range: tuple[float, float],
 ) -> None:
     """Draw a custom box plot element."""
-    lower_box, upper_box = np.percentile(run_data, box_percentile_range)
-    lower_whisker, upper_whisker = np.percentile(run_data, whisker_percentile_range)
-    median_val = np.median(run_data)
+    lower_box, upper_box = np.nanpercentile(run_data, box_percentile_range)
+    lower_whisker, upper_whisker = np.nanpercentile(run_data, whisker_percentile_range)
+    median_val = np.nanmedian(run_data)
 
     box_half_width = box_width / 2
     whisker_cap_width = box_half_width * 0.5
@@ -698,7 +698,7 @@ def plot_all_metrics_by_prediction_length(
     model_names_to_exclude: list[str] = [],
     has_nans: dict[str, dict[str, bool]] | None = None,
     replace_nans_with_val: float | None = None,
-) -> list[Line2D]:
+) -> dict[str, plt.Line2D]:
     """Plot multiple metrics across different prediction lengths for various models."""
     has_nans = has_nans or {}
     num_metrics = len(metric_names)
@@ -775,18 +775,19 @@ def plot_all_metrics_by_prediction_length(
 
                 if metric_name in metrics_to_show_envelope:
                     percentile_lower = [
-                        np.percentile(all_vals[idx], percentile_range[0]) for idx in range(len(all_vals))
+                        np.nanpercentile(all_vals[idx], percentile_range[0]) for idx in range(len(all_vals))
                     ]
                     percentile_upper = [
-                        np.percentile(all_vals[idx], percentile_range[1]) for idx in range(len(all_vals))
+                        np.nanpercentile(all_vals[idx], percentile_range[1]) for idx in range(len(all_vals))
                     ]
                     ax.fill_between(
                         metrics["prediction_lengths"], percentile_lower, percentile_upper, alpha=0.1, color=color
                     )
 
         if i == 0:
-            legend_handles = [
-                Line2D(
+            legend_handles = {}
+            legend_handles = {
+                model_name: plt.Line2D(  # type: ignore
                     [0],
                     [0],
                     color=colors[j] if isinstance(colors, list) else colors[model_name],
@@ -801,9 +802,10 @@ def plot_all_metrics_by_prediction_length(
                     else colors[model_name],
                 )
                 for j, model_name in enumerate(metrics_dict.keys())
-            ]
+            }
+            # Reorder legend_handles to put Dynamix as the third key
             if show_legend:
-                legend_handles = ax.legend(handles=legend_handles, **legend_kwargs)
+                legend_handles = ax.legend(handles=list(legend_handles.values()), **legend_kwargs)
 
         ax.set_xlabel("Prediction Length", fontweight="bold", fontsize=12)
         ax.set_xticks(metrics["prediction_lengths"])
@@ -833,3 +835,120 @@ def plot_all_metrics_by_prediction_length(
         plt.show()
 
     return legend_handles
+
+
+def plot_model_completion(
+    completions: np.ndarray,
+    processed_context: np.ndarray,
+    timestep_mask: np.ndarray,
+    figsize: tuple[int, int] = (6, 8),
+    linewidth: float = 2,
+    save_path: str | None = None,
+):
+    n_timesteps = processed_context.shape[1]
+    assert n_timesteps == completions.shape[1] == processed_context.shape[1]
+
+    # Create figure with grid layout
+    fig = plt.figure(figsize=figsize)
+    gs = gridspec.GridSpec(4, 1, height_ratios=[3, 1, 1, 1])
+
+    # Create axes
+    ax_3d = fig.add_subplot(gs[0], projection="3d")
+    axes_2d = [fig.add_subplot(gs[i]) for i in range(1, 4)]
+
+    # Plot completions in 3D
+    ax_3d.plot(
+        processed_context[0, :],
+        processed_context[1, :],
+        processed_context[2, :],
+        alpha=0.5,
+        color="black",
+        linewidth=linewidth,
+    )
+    # ax_3d.set_title("Completions", y=0.94, fontweight="bold")
+    ax_3d.axis("off")
+    ax_3d.grid(False)
+
+    # Plot masked segments in 3D
+    mask_bool = timestep_mask.astype(bool)
+    for dim in range(3):
+        # Find contiguous blocks in mask
+        change_indices = np.where(np.diff(np.concatenate(([False], mask_bool[dim], [False]))))[0]
+
+        # Plot each contiguous block
+        for i in range(0, len(change_indices), 2):
+            if i + 1 < len(change_indices):
+                start_idx, end_idx = change_indices[i], change_indices[i + 1]
+                # Plot masked parts in red
+                ax_3d.plot(
+                    completions[0, start_idx:end_idx],
+                    completions[1, start_idx:end_idx],
+                    completions[2, start_idx:end_idx],
+                    alpha=1,
+                    color="red",
+                    linewidth=linewidth,
+                    zorder=10,
+                )
+                # Plot masked parts in red
+                ax_3d.plot(
+                    processed_context[0, start_idx:end_idx],
+                    processed_context[1, start_idx:end_idx],
+                    processed_context[2, start_idx:end_idx],
+                    alpha=1,
+                    color="black",
+                    linewidth=linewidth,
+                )
+
+    # Plot univariate series for each dimension
+    for dim, ax in enumerate(axes_2d):
+        mask_bool_dim = timestep_mask[dim, :].astype(bool)
+
+        # Plot context
+        ax.plot(processed_context[dim, :], alpha=0.5, color="black", linewidth=2)
+
+        # Find segments where mask changes
+        diffs = np.diff(mask_bool_dim.astype(int))
+        change_indices = np.where(diffs)[0]
+        if not mask_bool_dim[0]:
+            change_indices = np.concatenate(([0], change_indices))
+        segment_indices = np.concatenate((change_indices, [n_timesteps]))
+
+        # Plot completions for masked segments
+        segments = zip(segment_indices[:-1], segment_indices[1:])
+        masked_segments = [idx for i, idx in enumerate(segments) if (i + 1) % 2 == 1]
+        for start, end in masked_segments:
+            if end < n_timesteps - 1:
+                end += 1
+            ax.plot(
+                range(start, end),
+                completions[dim, start:end],
+                alpha=1,
+                color="red",
+                linewidth=linewidth,
+                zorder=10,
+            )
+            ax.plot(
+                range(start, end),
+                processed_context[dim, start:end],
+                alpha=1,
+                color="black",
+                linewidth=linewidth,
+            )
+
+        # Fill between completions and context
+        ax.fill_between(
+            range(n_timesteps),
+            processed_context[dim, :],
+            completions[dim, :],
+            where=~mask_bool_dim,
+            alpha=0.2,
+            color="red",
+        )
+        # ax.set_xticks([])
+        ax.set_xticks(np.arange(0, n_timesteps + 512, 512))
+        ax.set_yticks([])
+
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches="tight")
+    plt.show()

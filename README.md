@@ -74,7 +74,7 @@ The Von Karman vortex street data is available [here](https://utexas.box.com/s/q
 
 To run the FNO and DeepONet PDE benchmarks, install the necessary additional dependencies via:
 ```
-uv sync --group benchmark
+uv sync --group pde-benchmark
 ```
 
 ## Citation

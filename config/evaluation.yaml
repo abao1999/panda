@@ -21,6 +21,7 @@ eval:
   save_masks: false  # for mlm model eval
 
   num_processes: 10 # for multiprocessing
+  use_multiprocessing: true
 
   metric_names:
     - mse
@@ -37,6 +38,12 @@ eval:
   metrics_save_dir: null
   metrics_fname: metrics
   metrics_fname_suffix: null
+  distributional_metrics_group: fdiv
+  distributional_metrics_predlengths: [1024]
+  horizons_lst: ["prediction_horizon"]
+  use_kld_gmm: false
+  fdiv_metrics_to_compute: ["avg_hellinger_distance", "kl_divergence"]
+
   overwrite: false
   seed: 1
 
@@ -62,6 +69,14 @@ eval:
   split_coords: false
   verbose: false
 
+  compute_distributional_metrics: true
+  compute_gp_dims: true
+  compute_naive_interpolations: false
+  naive_interpolation_method: polynomial
+  naive_interpolation_polynomial_degree: 3
+  naive_interpolation_piecewise_spline_degree: 3
+  debug_mode: false
+
   baselines:
     baseline_model: fourier_arima
     order: [4, 1, 4]  # (p, d, q) for ARIMA
@@ -77,8 +92,10 @@ eval:
 
   model_type: panda
   save_full_trajectory: false
-  reload_saved_forecasts: false
   
+  recompute_forecasts: false
+  reload_saved_completions: false
+
 # wandb run metrics, not to be confused with dysts eval metrics
 run_metrics:
   wandb_run_id: null
