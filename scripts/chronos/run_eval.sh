@@ -13,10 +13,9 @@ test_data_dirs_json=$(printf '%s\n' "${test_data_dirs[@]}" | jq -R . | jq -s -c 
 echo "test_data_dirs: $test_data_dirs_json"
 
 chronos_model_size=mini
-#run_name=chronos_${chronos_model_size}_zeroshot
-run_name=chronos_small_ft_equalized-13
-# run_name=chronos_t5_mini_ft-0 # newest chronos sft 300k iterations
-# run_name=chronos_small_ft-4
+# run_name=chronos_${chronos_model_size}_zeroshot
+run_name=chronos_t5_mini_ft-0
+# run_name=chronos_small_ft_equalized-13
 
 # Set zero_shot flag based on whether "zeroshot" appears in run_name
 if [[ "$run_name" == *"zeroshot"* ]]; then
@@ -49,9 +48,11 @@ python scripts/chronos/evaluate.py \
     eval.metrics_save_dir=$WORK/eval_results/${model_dirname}/${run_name}/test_zeroshot \
     eval.metrics_fname=metrics \
     eval.overwrite=true \
-    eval.device=cuda:1 \
+    eval.device=cuda:0 \
     eval.save_forecasts=true \
     eval.save_labels=true \
+    eval.forecast_save_dir=$WORK/eval_results/${model_dirname}/${run_name}/test_zeroshot/forecasts \
+    eval.labels_save_dir=$WORK/eval_results/${model_dirname}/${run_name}/test_zeroshot/labels \
     eval.chronos.zero_shot=$zero_shot_flag \
     eval.dataloader_num_workers=4 \
     eval.seed=99 \

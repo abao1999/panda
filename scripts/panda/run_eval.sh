@@ -103,8 +103,10 @@ for run_name in ${run_names[@]}; do
         eval.metrics_fname=metrics \
         eval.overwrite=true \
         eval.device=cuda:0 \
-        eval.save_labels=false \
-        eval.save_forecasts=false \
+        eval.save_labels=true \
+        eval.save_forecasts=true \
+        eval.forecast_save_dir=$WORK/eval_results/patchtst/$run_name/test_zeroshot/forecasts \
+        eval.labels_save_dir=$WORK/eval_results/patchtst/$run_name/test_zeroshot/labels \
         eval.seed=99 \
         "$@"
 done
