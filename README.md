@@ -54,6 +54,23 @@ For the development setup, use:
 uv sync --group dev
 ```
 
+## Example Usage
+
+```python
+## Load model from GitHub and load weights from Hugging Face
+from panda.patchtst.pipeline import PatchTSTPipeline
+model = PatchTSTPipeline.from_pretrained(
+    mode="predict",
+    pretrain_path="GilpinLab/panda-72M",
+    device_map="cpu",
+)
+
+## Create a simple 3D trajectory and forecast it
+x_context = np.array([np.sin(i * np.linspace(0, 2*np.pi, 512)) for i in range(1, 4)]).T
+x_pred = model.predict(torch.tensor(x_context, dtype=torch.float32), 256, limit_prediction_length=False, sliding_context=True)
+x_pred = x_pred.squeeze().cpu().numpy() # cast to numpy
+```
+
 ## Dataset Generation
 Our dataset consists of parameter perturbations of base and skew systems. Each trajectory is a numerically integrated system of coupled ODEs that we filter according to the methodology outlined in our preprint. To run the data generation, see our scripts for [making trajectories from saved params](https://github.com/abao1999/panda/blob/main/scripts/make_dataset_from_params.py), [parameter perturbations of skew systems](https://github.com/abao1999/panda/blob/main/scripts/make_skew_systems.py), and [parameter perturbations of base systems](https://github.com/abao1999/panda/blob/main/scripts/make_dyst_data.py). For ease of use we have also provided an example data generation [bash script](https://github.com/abao1999/panda/blob/main/scripts/bash_scripts/run_data_generation.sh) that calls these scripts.
 
